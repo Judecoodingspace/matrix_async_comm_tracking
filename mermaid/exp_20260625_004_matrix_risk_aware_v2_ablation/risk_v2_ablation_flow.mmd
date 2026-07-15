@@ -1,0 +1,44 @@
+flowchart TD
+    A["MATRIX GT observations<br>frames 0-199<br>reliable capture time"]
+    B["Fixed support delay<br>fixed_1 fixed_2 fixed_3 fixed_5"]
+    C["Pose/world noise only<br>0.00m 0.25m 0.50m 1.00m"]
+
+    A --> B
+    B --> C
+
+    subgraph BASE["Required baselines"]
+        D1["Drop delayed<br>safety baseline"]
+        D2["Arrival-time fusion<br>stale baseline"]
+        D3["Ideal timestamped fusion<br>oracle check"]
+        D4["Plain timestamped uncertain<br>no risk policy"]
+        D5["Risk-aware v1<br>residual / uncertainty scale"]
+    end
+
+    subgraph V2["V2 ablation variants"]
+        E1["v2a authority cap<br>limit update weight as uncertainty grows"]
+        E2["v2b ambiguity margin<br>reject if best and second-best candidates are close"]
+        E3["v2c cap plus margin<br>combine authority control and ambiguity control"]
+    end
+
+    C --> D1
+    C --> D2
+    C --> D3
+    C --> D4
+    C --> D5
+    C --> E1
+    C --> E2
+    C --> E3
+
+    D1 --> F["Metrics and diagnostics<br>IDF1 IDSW event subsets<br>accept rate reject reasons final weight"]
+    D2 --> F
+    D3 --> F
+    D4 --> F
+    D5 --> F
+    E1 --> F
+    E2 --> F
+    E3 --> F
+
+    F --> G{"Decision<br>fixed_2 + pose_noise_0.50m"}
+    G -->|beats drop and plain| H["Supported<br>ready to prepare Stage B"]
+    G -->|beats plain but not drop| I["Partial support<br>needs redesign before Stage B"]
+    G -->|breaks zero-noise| J["Rejected<br>risk policy unsafe"]

@@ -1,0 +1,96 @@
+flowchart TD
+    subgraph DATA["数据输入"]
+        A1["MATRIX/MATRIX_30x30 帧 0-49"]
+        A2["主无人机: D1 drone_id=0"]
+        A3["辅助无人机: D2-D8"]
+        A4["GT世界坐标 + MATRIX annotations/POMs"]
+    end
+
+    subgraph DELAY["延迟注入 seed=7"]
+        B1["fixed_0"]
+        B2["fixed_1"]
+        B3["fixed_3"]
+        B4["fixed_5"]
+        B5["fixed_10"]
+        B6["uniform_1_10"]
+    end
+
+    subgraph PIPELINES["6 条融合管线"]
+        C1["primary_only - 仅D1观测"]
+        C2["sync_oracle - 全观测无延迟上限"]
+        C3["drop_delayed - 丢弃delay>0的辅助观测"]
+        C4["timestamped_pose_fusion - 回填到捕获时刻关联"]
+        C5["arrival_time_fusion - 到达时刻关联"]
+        C6["arrival_time_exp_decay - 到达时刻+指数衰减"]
+    end
+
+    subgraph TRACKER["跟踪器"]
+        D1["WorldNearestTracker 世界坐标最近邻 阈值: 1.0m"]
+    end
+
+    subgraph METRICS["指标"]
+        E1["IDF1"]
+        E2["IDSW"]
+        E3["MOTA"]
+        E4["World XY MAE / RMSE"]
+    end
+
+    subgraph OUTPUT["输出"]
+        F1["phase1_matrix_async_pose_metrics.csv"]
+        F2["phase1_delay_breakdown.csv"]
+        F3["phase1_decision.md"]
+    end
+
+    subgraph RESULT["核心结果"]
+        G1["Timestamped: IDF1=1.000, IDSW=0"]
+        G2["Arrival fixed_10: IDF1=0.354, IDSW=514"]
+        G3["Drop-delayed: IDF1=0.846, IDSW=251"]
+    end
+
+    A1 --> B1
+    A1 --> B2
+    A1 --> B3
+    A1 --> B4
+    A1 --> B5
+    A1 --> B6
+    A2 --> B1
+    A3 --> B1
+    A4 --> B1
+
+    B1 --> C1
+    B1 --> C2
+    B1 --> C3
+    B1 --> C4
+    B1 --> C5
+    B1 --> C6
+    B2 --> C1
+    B3 --> C1
+    B4 --> C1
+    B5 --> C1
+    B6 --> C1
+
+    C1 --> D1
+    C2 --> D1
+    C3 --> D1
+    C4 --> D1
+    C5 --> D1
+    C6 --> D1
+
+    D1 --> E1
+    D1 --> E2
+    D1 --> E3
+    D1 --> E4
+
+    E1 --> F1
+    E2 --> F2
+    E3 --> F3
+    E4 --> F1
+
+    F1 --> G1
+    F1 --> G2
+    F1 --> G3
+
+    style C4 fill:#44aa99,stroke:#227722,color:#ffffff
+    style G1 fill:#44aa99,stroke:#227722,color:#ffffff
+    style G2 fill:#dd4444,stroke:#772222,color:#ffffff
+    style G3 fill:#ffaa00,stroke:#886600

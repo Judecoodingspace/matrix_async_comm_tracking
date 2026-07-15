@@ -1,0 +1,78 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environments and machine-specific config
+.venv/
+.venvs/
+venv/
+env/
+.env
+.env.*
+!.env.example
+.python-version
+
+# Codex / local agent runtime state
+.agents/
+.codex/
+.gitstore/
+tools/headroom/
+
+# Datasets and generated MATRIX artifacts
+data/*
+!data/.gitkeep
+/MATRIX
+
+# Experiment outputs and run artifacts
+outputs/
+runs/
+*.log
+*.tmp
+
+# Model weights and exported inference engines
+weights/*
+!weights/.gitkeep
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.engine
+*.safetensors
+
+# Large raw or derived data blobs
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.npy
+*.npz
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.log
+*.nav
+*.out
+*.snm
+*.synctex.gz
+*.toc
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

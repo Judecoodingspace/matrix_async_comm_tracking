@@ -1,0 +1,13 @@
+sequenceDiagram
+    participant S as Support UAV
+    participant C as Fusion center
+    participant T as Tracker history
+    S->>S: Capture observation at c
+    Note over C: Frames c to a-1 publish without message
+    S->>C: Message arrives at a
+    C->>T: Restore snapshot before c
+    C->>T: Insert support at capture frame c
+    C->>T: Replay c through a
+    C->>C: Publish frame a online result
+    Note over C: Earlier online outputs remain frozen
+    C->>T: Final replay produces offline-corrected history

@@ -1,0 +1,9 @@
+flowchart TD
+    A[MATRIX GT观测<br/>帧0-49] --> B[固定延迟扫描<br/>fixed_0到fixed_10]
+    B --> C[运行GT世界坐标基线]
+    C --> D[临界延迟阈值]
+    C --> E[逐人逐帧trace]
+    E --> F[事件标签<br/>邻近/交叉/可见性/仅辅助视角/高速运动]
+    F --> G[事件子集IDF1与IDSW归因]
+    D --> H[结论<br/>arrival-time在fixed_2变为有害]
+    G --> H

@@ -1,0 +1,31 @@
+flowchart TB
+    subgraph Tm2["捕获时刻 t-2"]
+        A_old["Person A旧位置 A(t-2)"]
+        B_old["Person B旧位置 B(t-2)"]
+        S_obs["辅助无人机观测<br/>capture_time=t-2"]
+        A_old --> S_obs
+        B_old --> S_obs
+    end
+
+    subgraph T["到达/评估时刻 t"]
+        A_now["Person A当前位置 A(t)"]
+        B_now["Person B当前位置 B(t)"]
+        Tracks["当前tracker状态<br/>已经推进到t附近"]
+        Late["迟到support观测到达<br/>arrival_time=t"]
+        Assign["arrival-time fusion<br/>用旧坐标匹配当前track"]
+        Overwrite["track_positions被旧坐标回写<br/>状态从t被拉回t-2"]
+        Predict["用被污染的track_positions<br/>预测当前帧truth"]
+        Switch["最近邻错配<br/>pred_id改变 => IDSW"]
+    end
+
+    S_obs --> Late
+    Late --> Assign
+    Tracks --> Assign
+    Assign --> Overwrite
+    A_now --> Predict
+    B_now --> Predict
+    Overwrite --> Predict
+    Predict --> Switch
+
+    Risk["邻近/交叉/高速运动时<br/>A(t-2)可能更接近B(t)<br/>B(t-2)可能更接近A(t)"]
+    Risk -.放大错配概率.-> Predict

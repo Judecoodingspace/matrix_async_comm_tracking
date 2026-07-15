@@ -1,0 +1,11 @@
+flowchart TD
+    A[MATRIX GT observations<br/>0-199] --> B[Apply fixed support delay<br/>1,2,3,5 frames]
+    B --> C[Ideal baselines<br/>sync, drop, arrival, timestamped]
+    B --> D[Timestamped uncertain fusion]
+    D --> E[Timestamp jitter<br/>none, +/-1, +/-2 frames]
+    D --> F[Support world-XY noise<br/>0.25, 0.50, 1.00 m]
+    E --> G[Compare to drop-delayed<br/>IDF1 and IDSW rate]
+    F --> G
+    G --> H{Decision}
+    H -->|Robust| I[Timestamp-aware module sufficient]
+    H -->|Fails moderate stress| J[Need uncertainty-aware delayed association]

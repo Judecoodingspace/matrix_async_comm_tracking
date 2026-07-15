@@ -1,0 +1,23 @@
+flowchart LR
+    Q["核心问题: 延迟跨视角观测能否改善身份级多目标跟踪?"] --> A1
+
+    A1["A1: 延迟观测是否包含有用身份信息?"] --> A1_EXP
+    A1_EXP["实验: 身份探测<br>方法: ...<br>指标: ..."] --> A1_RESULT
+    A1_RESULT{"结果"}
+
+    A1_RESULT -->|supported| A2
+    A1_RESULT -->|rejected| STOP1["停止: 延迟观测不含身份信息"]
+
+    A2["A2: 回填是否优于到达时刻融合?"] --> A2_EXP
+    A2_EXP["实验: Backfill vs Arrival<br>方法: ...<br>指标: ..."] --> A2_RESULT
+    A2_RESULT{"结果"}
+
+    A2_RESULT -->|supported| NEXT["下一阶段: 完整OOSM框架"]
+    A2_RESULT -->|rejected| ALT["替代方向: 事件门控 / 选择性融合"]
+
+    style Q fill:#556699,color:#ffffff
+    style A1_RESULT fill:#ffaa00,stroke:#886600
+    style A2_RESULT fill:#ffaa00,stroke:#886600
+    style STOP1 fill:#dd4444,stroke:#772222,color:#ffffff
+    style NEXT fill:#44aa99,stroke:#227722,color:#ffffff
+    style ALT fill:#6699bb,stroke:#335588

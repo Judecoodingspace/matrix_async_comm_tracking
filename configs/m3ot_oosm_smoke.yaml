@@ -1,0 +1,59 @@
+experiment_id: exp_20260616_001_oosm_backfill_smoke
+dataset: M3OT
+
+sources:
+  base:
+    id: m3ot_1_rgb
+    image_dir: data/M3OT/1/rgb/val/1-08/img1
+    gt: data/M3OT/1/rgb/val/1-08/gt/gt.txt
+  support:
+    id: m3ot_2_rgb
+    image_dir: data/M3OT/2/rgb/val/2-08/img1
+    gt: data/M3OT/2/rgb/val/2-08/gt/gt.txt
+
+frames:
+  start: 1
+  end: 600
+  train_end: 300
+  test_start: 301
+
+models:
+  detector: weights/m3ot_detector_best.pt
+  historical_detector_baseline: weights/visdrone_detector_best.pt
+  reid_head: weights/gem_proj_head_l15.pt
+  yolo_reid_layer: 15
+  roi_size: 8
+  image_width: 640
+  image_height: 512
+
+delay:
+  distribution: uniform_int
+  min_frames: 1
+  max_frames: 20
+  seed: 7
+
+phase1:
+  output_csv: outputs/20260616_oosm_backfill_validation/phase1_similarity_vs_delay.csv
+  output_plot: outputs/20260616_oosm_backfill_validation/phase1_similarity_vs_delay.png
+  correlation_note: outputs/20260616_oosm_backfill_validation/idsw_correlation_by_delay.md
+
+phase2:
+  mechanism_csv: outputs/20260616_oosm_backfill_validation/phase2a_candidate_geometry.csv
+  mechanism_decision_note: outputs/20260616_oosm_backfill_validation/phase2a_mechanism_decision.md
+  output_csv: outputs/20260616_oosm_backfill_validation/phase2_tracking_metrics.csv
+  decision_note: outputs/20260616_oosm_backfill_validation/phase2_decision.md
+  gated_output_csv: outputs/20260616_oosm_backfill_validation/phase2c_gated_tracking_metrics.csv
+  gated_decision_note: outputs/20260616_oosm_backfill_validation/phase2c_gated_decision.md
+  baselines:
+    - discard_oosm
+    - fuse_at_current
+    - backfill
+    - fuse_at_current_exp_decay
+
+decision_rule:
+  min_backfill_idf1_gain_points: 1.5
+  max_backfill_mota_drop_points: 1.0
+
+runtime:
+  device: cuda:0
+  yolo_config_dir: /tmp

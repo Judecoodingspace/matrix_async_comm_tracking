@@ -1,0 +1,29 @@
+flowchart TD
+    OBS["辅助无人机观测到达"] --> DELAY{"有延迟?"}
+
+    DELAY -->|"delay = 0"| SYNC["Sync Oracle<br>捕获时刻=到达时刻<br>直接关联"]
+
+    DELAY -->|"delay > 0"| STRATEGY{"融合策略"}
+
+    STRATEGY -->|丢弃| DROP["Drop Delayed<br>丢弃该观测<br>仅主无人机跟踪"]
+
+    STRATEGY -->|回填| BACKFILL["Timestamped Pose Fusion<br>回到捕获时刻的world state<br>在历史帧中做关联"]
+
+    STRATEGY -->|到达融合| ARRIVAL["Arrival Time Fusion<br>在到达时刻做关联<br>使用当前world state"]
+
+    STRATEGY -->|衰减融合| DECAY["Arrival + Exp Decay<br>在到达时刻做关联<br>对旧观测施加指数衰减权重"]
+
+    BACKFILL --> BACKFILL_CHECK{"捕获时刻<br>目标仍在附近?"}
+    BACKFILL_CHECK -->|Yes| BACKFILL_OK["关联成功<br>更新历史轨迹"]
+    BACKFILL_CHECK -->|No| BACKFILL_FAIL["关联失败<br>观测被忽略"]
+
+    ARRIVAL --> ARRIVAL_CHECK{"到达时刻<br>目标仍在附近?"}
+    ARRIVAL_CHECK -->|Yes| ARRIVAL_OK["关联成功<br>但匹配可能错误<br>目标已移动"]
+    ARRIVAL_CHECK -->|No| ARRIVAL_FAIL["关联失败<br>观测浪费"]
+
+    style SYNC fill:#44aa99,stroke:#227722,color:#ffffff
+    style BACKFILL_OK fill:#44aa99,stroke:#227722,color:#ffffff
+    style BACKFILL_FAIL fill:#ffaa00,stroke:#886600
+    style ARRIVAL_OK fill:#ffaa00,stroke:#886600
+    style ARRIVAL_FAIL fill:#dd4444,stroke:#772222,color:#ffffff
+    style DROP fill:#6699bb,stroke:#335588

@@ -1,0 +1,630 @@
+% !TeX program = xelatex
+% !TEX TS-program = xelatex
+%----------------------------------------------------------------------------------------
+%    PACKAGES AND THEMES
+%----------------------------------------------------------------------------------------
+
+\documentclass[aspectratio=169,xcolor=dvipsnames]{beamer}
+\usetheme{SimpleDarkBlue}
+\usepackage[UTF8]{ctex}
+\usepackage{epstopdf}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{tikz}
+\usepackage{amsmath}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,calc}
+
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\paper}[1]{\textit{#1}}
+\newcommand{\metric}[1]{\textbf{#1}}
+\newcommand{\term}[1]{\textbf{#1}}
+
+%----------------------------------------------------------------------------------------
+%    TITLE PAGE
+%----------------------------------------------------------------------------------------
+
+\title{OOSM 对 MDMOT 的影响：Stage A 实验与路线图收窄}
+\subtitle{从 GT world-coordinate 机制验证到文献支撑下的路线图再审视}
+
+\author{杨祖敏}
+
+\institute
+{
+    AISO
+}
+\date{2026-06-26}
+
+%----------------------------------------------------------------------------------------
+%    PRESENTATION SLIDES
+%----------------------------------------------------------------------------------------
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% Speaker notes:
+% 本周汇报的核心变化：(1) Stage A 五个子实验全部完成，已作为 harm-boundary 结果关闭；
+% (2) 实验路线图从概念落实为分阶段控制变量法的可执行计划；
+% (3) 完成了一次针对"support view 角色"的文献调研；
+% (4) 基于实验结果和文献判断，确认了 geometry-only gate 的决策盲区，推进 multi-cue gate 方向。
+
+\begin{frame}{汇报主线}
+\small
+\begin{enumerate}
+  \item 研究问题的递进收窄：从"异步是否有影响"到"何时融合、以多大权重融合、何时拒绝"。
+  \item Stage A 四个子实验完成：
+  \begin{itemize}
+    \item \code{threshold\_stability}（延迟阈值稳定性验证）
+    \item \code{time\_pose\_uncertainty}（时间戳抖动与位姿噪声压力测试）
+    \item \code{risk\_aware\_v1}（geometry-only Mahalanobis gate 基线）
+    \item \code{risk\_aware\_v2\_ablation}（authority cap / ambiguity margin / cap+margin 消融）
+  \end{itemize}
+  \item 实验路线图正式化：5-Stage 控制变量法，每次只引入一类现实压力。
+  \item 文献调研：MVMOT 中 support view 的角色与两阶段方法的固有瓶颈。
+  \item 路线图判断：Stage A 第三条转向条件是否需要调整？串行路线是否应转为并行？
+\end{enumerate}
+
+\begin{block}{本次汇报的一句话结论}
+实验已进入从"是否可行"到"边界在哪"的量化阶段：
+\[
+\text{Stage A 的实验数据表明：仅靠几何距离这一个判断维度，无法在坐标有噪声时区分好观测和坏观测。}
+\]
+文献调研从独立角度确认了两阶段跟踪方法的同类局限。
+\end{block}
+\end{frame}
+
+%----------------------------------------------------------------------------------------
+%    SECTION: 实验设计逻辑
+%----------------------------------------------------------------------------------------
+
+\begin{frame}{实验设计逻辑：控制变量法}
+\small
+\begin{center}
+\begin{tikzpicture}[
+  node distance=6mm and 5mm,
+  real/.style={draw, rounded corners, align=center, minimum height=12mm, minimum width=44mm, fill=orange!15, font=\small},
+  stage/.style={draw, rounded corners, align=center, minimum height=9mm, minimum width=38mm, fill=blue!8, font=\small},
+  keep/.style={draw, rounded corners, align=center, minimum height=7mm, minimum width=34mm, fill=green!10, font=\footnotesize},
+  relax/.style={draw, rounded corners, align=center, minimum height=7mm, minimum width=34mm, fill=orange!15, font=\footnotesize},
+  arr/.style={-Latex, thick},
+  dasharr/.style={-Latex, thick, dashed, gray}
+]
+  % Top: real scenario
+  \node[real] (real) {真实场景\\
+    \footnotesize 主视角 track + support 延迟观测到达\\
+    \footnotesize 身份混淆 · 坐标噪声 · 检测误差 · 通信延迟 \textbf{同时发生}};
+
+  % Bottom row: stages
+  \node[stage, below=of real, xshift=-48mm] (a) {Stage A\\\footnotesize 只引入\\\footnotesize pose noise + delay};
+  \node[stage, right=of a] (b) {Stage B\\\footnotesize 再加\\\footnotesize camera projection};
+  \node[stage, right=of b] (c) {Stage C\\\footnotesize 再加\\\footnotesize detector noise};
+  \node[stage, right=of c] (d) {Stage D\\\footnotesize 再加\\\footnotesize tracker + ReID};
+  \node[stage, right=of d] (e) {Stage E\\\footnotesize 真实部署};
+
+  % Arrows from real to stages
+  \draw[dasharr] (real.south) -- ++(0,-3mm) -| (a.north);
+  \draw[dasharr] (real.south) -- ++(0,-3mm) -| (b.north);
+  \draw[dasharr] (real.south) -- ++(0,-3mm) -| (c.north);
+  \draw[dasharr] (real.south) -- ++(0,-3mm) -| (d.north);
+
+  % Stage progression
+  \draw[arr] (a) -- (b);
+  \draw[arr] (b) -- (c);
+  \draw[arr] (c) -- (d);
+  \draw[arr] (d) -- (e);
+
+  % Keep / Relax under Stage A
+  \node[keep, below=of a, yshift=3mm] (ak) {保留: GT identity\\GT world position};
+  \node[relax, below=of ak] (ar) {引入: 异步到达\\pose noise};
+  \draw[arr, gray] (a) -- (ak);
+
+  % Keep / Relax under Stage C
+  \node[keep, below=of c, yshift=3mm] (ck) {保留: GT identity};
+  \node[relax, below=of ck] (cr) {引入: detector bbox\\漏检/误检};
+  \draw[arr, gray] (c) -- (ck);
+
+  % Keep / Relax under Stage D
+  \node[keep, below=of d, yshift=3mm] (dk) {保留: controlled delay};
+  \node[relax, below=of dk] (dr) {引入: local tracker\\ID switch, ReID};
+  \draw[arr, gray] (d) -- (dk);
+\end{tikzpicture}
+\end{center}
+
+\vspace{1mm}
+\begin{block}{核心逻辑}
+真实场景中多个问题同时发生 → 性能下降了，但\textbf{不知道是哪个问题导致的}。
+控制变量法：\textbf{每次只引入一类现实压力}，其余用 GT 替代——这样才能确切知道每类压力的独立贡献。
+当前 Stage A 只引入 pose noise + delay，其他全部用 GT（identity、bbox、world position）。
+\end{block}
+\end{frame}
+
+%----------------------------------------------------------------------------------------
+%    SECTION: 研究问题收窄
+%----------------------------------------------------------------------------------------
+
+\begin{frame}{研究问题的三次收窄}
+\small
+\begin{center}
+\begin{tikzpicture}[
+  node distance=5mm and 4mm,
+  box/.style={draw, rounded corners, align=center, minimum height=10mm, minimum width=36mm, fill=blue!6, font=\footnotesize},
+  narrow/.style={draw, rounded corners, align=center, minimum height=10mm, minimum width=32mm, fill=green!10, font=\footnotesize},
+  arr/.style={-Latex, thick}
+]
+  \node[box] (a) {宽假设\\(上周前)\\
+    \tiny 异步观测是否\\
+    \tiny 影响多 UAV MOT？};
+  \node[narrow, right=of a] (b) {第一次收窄\\(上周)\\
+    \tiny 过期跨 UAV 信息\\
+    \tiny 何时仍能改善跟踪？\\
+    \tiny 何时应丢弃？};
+  \node[narrow, right=of b] (c) {第二次收窄\\(本周)\\
+    \tiny 何时融合、\\
+    \tiny 以多大权重融合、\\
+    \tiny 何时拒绝？\\
+    \tiny risk gate 决策边界};
+  \draw[arr] (a) -- (b);
+  \draw[arr] (b) -- (c);
+\end{tikzpicture}
+\end{center}
+
+\begin{alertblock}{收窄的本质}
+从"有没有影响"推进到"影响有多大、边界在哪里"：
+\begin{itemize}
+  \item 坐标噪声大到什么程度，support observation 从有帮助变成有害？
+  \item 仅靠几何距离这一个判断依据，决策上限在哪？
+  \item 是否需要引入身份信息（ReID）和时间一致性作为第二、第三个判断维度？
+\end{itemize}
+\end{alertblock}
+\end{frame}
+
+\begin{frame}{研究内容的变化：从概念到控制变量法}
+\scriptsize
+\begin{tabularx}{\linewidth}{p{0.22\linewidth} X}
+\toprule
+维度 & 本周变化 \\
+\midrule
+问题表述 &
+从"延迟观测是否影响 MDMOT"收窄为"timestamped fusion 在 controlled uncertainty 下的 harm threshold 和 risk gate 决策边界"。\\
+\addlinespace
+实验设计 &
+从散点测试转入分阶段控制变量法：每次只引入一类真实压力（pose noise → camera projection → detector noise → tracker/ReID noise），以独立量化每类压力的贡献和交互。\\
+\addlinespace
+方法目标 &
+从"做一个更好的关联算法"调整为"证明 geometry-only gate 的决策盲区，论证 multi-cue gate 的必要性"。\\
+\addlinespace
+文献定位 &
+从仅参考 Ye 2025（跨视角几何）和 Shi 2025（OOSM 融合），扩展至 MVMOT 中 support view 角色和两阶段方法瓶颈的系统性文献调研。\\
+\bottomrule
+\end{tabularx}
+\end{frame}
+
+%----------------------------------------------------------------------------------------
+%    SECTION: Stage A 实验完成
+%----------------------------------------------------------------------------------------
+
+\begin{frame}{本周实验全景：Stage A 四个子实验}
+\tiny
+\begin{tabularx}{\linewidth}{p{0.16\linewidth} p{0.24\linewidth} X p{0.13\linewidth}}
+\toprule
+实验 & 脚本 & 验证问题 & 状态 \\
+\midrule
+\code{threshold\_stability} &
+\code{phase1\_matrix\_}\newline\code{threshold\_stability.py} &
+arrival-time fusion 的 harmful delay threshold 是否跨窗口稳定？ &
+\metric{完成}：2 帧阈值一致 \\
+\addlinespace
+\code{time\_pose\_uncertainty} &
+\code{phase1\_matrix\_}\newline\code{time\_pose\_uncertainty.py} &
+timestamp jitter 和 pose noise 各自造成多大伤害？ &
+\metric{完成}：jitter ±2 + noise 1.0m → IDF1 0.039 \\
+\addlinespace
+\code{risk\_aware\_v1} &
+\code{phase1\_matrix\_risk\_}\newline\code{aware\_delayed\_association.py} &
+geometry-only gate 能否在 noise 下保护 ID？ &
+\metric{完成}：noise=0 为 oracle；noise=0.25m IDF1=0.125 \\
+\addlinespace
+\code{risk\_aware\_v2\_ablation} &
+\code{phase1\_matrix\_risk\_}\newline\code{aware\_v2\_ablation.py} &
+v2a/v2b/v2c 消融：cap/margin/cap+margin &
+\metric{完成}：v2c 最佳，仍低于 drop-delayed \\
+\addlinespace
+\code{support\_marginal\_}\newline\code{value\_audit} &
+\code{phase1\_matrix\_support\_}\newline\code{marginal\_value\_audit.py} &
+逐行审计：support 的净价值是正还是负？ &
+\metric{完成}：helpful - harmful = -5615，净值为负 \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1mm}
+{\small 核心结论：zero-noise 下所有方法 = oracle（IDF1=1.0, IDSW=0）；有 noise 下\textbf{无一超过 drop-delayed (IDF1=0.353)}。Stage A 已作为 harm-boundary 结果关闭。}
+\end{frame}
+
+\begin{frame}{已有实验验证了什么观点（1）：harm threshold}
+\small
+\begin{block}{观点 1：arrival-time fusion 存在明确且稳定的 harmful delay threshold}
+实验 \code{threshold\_stability} 在不同时间窗（50/100/200 帧）上确认：当 support observation 延迟超过 2 帧后，arrival-time fusion 会污染 ID 而非帮助跟踪。该阈值跨窗口一致通过 timestamped sanity check。
+\end{block}
+
+\begin{block}{观点 2：timestamp 是必要的，但不充分}
+实验 \code{time\_pose\_uncertainty} 证明：
+\begin{itemize}
+  \item 仅有 timestamp jitter（无 pose noise）：jitter ±1 帧时 IDF1 从 1.0 降至 0.133；jitter ±2 帧时降至 0.076。
+  \item 仅有 pose noise（无 jitter）：0.25m noise 时 IDF1 降至 0.395；1.0m noise 时降至 0.040。
+  \item 二者叠加时性能进一步恶化。
+\end{itemize}
+{\small → 正确的 capture time 是避免 ID 污染的必要前提，但仅靠 timestamp 不能解决 pose noise 引入的关联歧义。}
+\end{block}
+\end{frame}
+
+\begin{frame}{已有实验验证了什么观点（2）：gate 的决策盲区}
+\small
+\begin{block}{观点 3：geometry-only risk gate 在 GT identity 条件下存在系统性盲区}
+实验 \code{risk\_aware\_v2\_ablation} 的核心发现：
+\begin{itemize}
+  \item v2c (cap + margin) 在所有变体中表现最好：0.50m noise 下 IDF1 从 v1 的 0.065 提升到 0.174。
+  \item 但即使在最佳参数下，IDF1 仍远低于 drop-delayed (0.353)。
+  \item 根本原因不在 gate 参数：在 GT identity 条件下，support observation 携带的身份信息增益为零，坐标噪声的任何正值都使 support 的净边际价值可能为负。geometry-only gate 无法区分"pose noise 导致的几何偏差"和"identity confusion 导致的几何偏差"——两者在几何距离这个一维投影上是不可区分的。
+\end{itemize}
+\end{block}
+
+\begin{block}{观点 4：需要第二维度来打破盲区}
+当前 gate 只有一个判断维度（几何距离）。引入 identity-level 信号（ReID 相似度）可以提供与 geometry 噪声来源独立的交叉验证。这不是"加噪声让 gate 变好"，而是"增加独立的判断维度以消除单维度的歧义"——原理类似于卡尔曼滤波中两个独立噪声的传感器融合后精度优于任一单传感器。
+\end{block}
+\end{frame}
+
+%----------------------------------------------------------------------------------------
+%    SECTION: 实验路线图
+%----------------------------------------------------------------------------------------
+
+\begin{frame}{实验路线图：5-Stage 控制变量法}
+\scriptsize
+\begin{tabularx}{\linewidth}{p{0.14\linewidth} p{0.27\linewidth} p{0.27\linewidth} p{0.23\linewidth}}
+\toprule
+Stage & 保留的 GT 假设 & 引入的现实压力 & 当前状态 \\
+\midrule
+\metric{A} &
+GT identity、GT world position、synthetic delay &
+异步到达、pose/world noise &
+\metric{← 已完成}\newline harm-boundary 关闭 \\
+\addlinespace
+B &
+GT identity、GT bbox、capture time &
+camera projection、calibration noise &
+待进入 \\
+\addlinespace
+C &
+GT identity、capture time、pose logs &
+detector bbox、漏检/误检、confidence &
+待进入 \\
+\addlinespace
+D &
+offline replay、controlled delay &
+local tracker、ID switch、ReID ambiguity &
+待进入 \\
+\addlinespace
+E &
+固定算法、固定指标、capture time &
+真实网络 delay/jitter/loss/disorder &
+待进入 \\
+\bottomrule
+\end{tabularx}
+
+\vspace{2mm}
+\begin{block}{设计原则与阅读方式}
+\small
+\textbf{每行是一个独立实验阶段}：从左到右读——"在 XX 的理想条件下，只引入 YY 这一类现实压力，观察它的单独影响"。
+路线图文件：\code{mermaid/exp\_20260625\_003\_real\_deployment\_bridge/assumption\_tightening\_roadmap.mmd}
+\end{block}
+\end{frame}
+
+\begin{frame}{Stage A 的转向条件与当前状态}
+\scriptsize
+\begin{tabularx}{\linewidth}{p{0.26\linewidth} X p{0.14\linewidth}}
+\toprule
+转向条件 & 当前状态 & 是否通过 \\
+\midrule
+① harmful delay threshold 稳定 & 跨窗口（50/100/200 帧）一致确认 2 帧阈值，timestamped sanity 全部通过 & \metric{✅ 通过} \\
+\addlinespace
+② zero uncertainty 不破坏 oracle & 所有方法在 noise=0 时 IDF1=1.0, IDSW=0 & \metric{✅ 通过} \\
+\addlinespace
+③ risk-aware > drop-delayed
+  under pose uncertainty &
+v2c (cap+margin) 最佳：0.25m noise IDF1=0.169, 0.50m noise IDF1=0.174；drop-delayed 恒为 0.353。
+support marginal value audit 确认净值为负（-5615）。 &
+\metric{已作为 harm-boundary 结果关闭} \\
+\bottomrule
+\end{tabularx}
+
+\vspace{2mm}
+{\small \textbf{决策}：不再要求 geometry-only gate 超过 drop-delayed。将 drop-delayed 重新定位为 safety baseline 和 harm boundary 参考线，而非必须超越的 IDF1 下界。Stage A 的第三条判据已转化为一个发现——geometry-only gate 在 GT identity 条件下存在决策盲区，这本身是有效的研究产出。}
+\end{frame}
+
+%----------------------------------------------------------------------------------------
+%    SECTION: 文献调研
+%----------------------------------------------------------------------------------------
+
+\begin{frame}{文献调研：动机与范围}
+\small
+\begin{block}{触发问题}
+随着实验结果积累，两个基础性问题浮出水面：
+\begin{enumerate}
+  \item 在 MVMOT 中，support view 是否本质上只起辅助作用？最终结果是否被主视角跟踪质量主导？
+  \item 如果两阶段方法（track-then-associate）中 support view 注定是辅助性的，当前以"超越 drop-delayed"为 Stage A 转向条件是否合理？
+\end{enumerate}
+\end{block}
+
+\begin{block}{检索范围}
+以 \term{support view role}、\term{auxiliary vs dominant view}、\term{two-stage error propagation}、\term{multi-cue fusion} 为关键词，检索 2024--2026 年的 arXiv、CVPR、ICCV、IEEE 等来源的 MVMOT/MCMT 相关文献。共筛选 12 篇高相关度论文。
+\end{block}
+\end{frame}
+
+\begin{frame}{文献调研：核心发现（1）——两阶段方法的系统性局限}
+\scriptsize
+\begin{block}{共识一：两阶段方法中 support view 就是辅助性的}
+多篇 2024--2026 论文明确了这一局限：
+\begin{itemize}\setlength\itemsep{0pt}
+  \item GMT (CVPR 2026)：\textit{"Two-stage methods use multi-view information only for post-hoc correction of first-stage errors."}
+  \item Dynamic Message Passing NN (IEEE 2024)：\textit{"Performance highly depends on local tracklet quality."}
+  \item OCMCTrack (CVPR 2024W)：bbox→world 投影误差是跨相机关联的首要瓶颈。
+\end{itemize}
+\end{block}
+
+\begin{block}{共识二：端到端方法消除主/辅层级}
+FusionTrack 用 Tracklet Memory Pool 在所有视角间平等维护时序连续性；
+SCFusion 用单视角辅助损失（β=0.1）+ 多视角主导损失，WildTrack IDF1 达 95.9\%。
+\end{block}
+
+\vspace{-1mm}
+{\small → Stage A 的"risk-aware < drop-delayed"不是方法失败，而是两阶段方法的\textbf{系统性预期}。在 GT identity 条件下 support 的身份信息增益为零，任何 >0 的 coordinate noise 都使净价值趋向负。这恰好印证了——geometry-only gate 存在决策盲区，需要第二判断维度。}
+\end{frame}
+
+\begin{frame}{文献调研：核心发现（2）——什么时候 support view 不只是辅助？}
+\small
+\begin{columns}[T,onlytextwidth]
+  \column{0.52\textwidth}
+  \begin{block}{support view 不可替代的场景}
+  \begin{itemize}
+    \item \textbf{遮挡}：MDMT benchmark (IEEE TMM 2025) 专门设计遮挡场景——此时 support 是唯一信息来源。
+    \item \textbf{移动 UAV 视角}：HomView-MOT 指出移动场景中不存在固定主视角。
+    \item \textbf{低光照/模态失效}：FMMT (2024-25) 用红外+可见光互补。
+  \end{itemize}
+  \end{block}
+
+  \column{0.45\textwidth}
+  \begin{block}{对 MATRIX 场景的启示}
+  MATRIX（30×30 网格，overlapping views）中主视角很少完全丢失目标，support 的边际信息增益天然有限。
+  但这不否定研究价值——\textbf{在 information gain 有限时精确刻画 harm/gain 边界，正是当前文献的空白}。
+  \end{block}
+\end{columns}
+
+\vspace{2mm}
+\begin{block}{关键文献：SCFusion 的设计哲学}
+SCFusion 的损失函数 \(L_{det} = 0.1 \cdot L_{single} + L_{multi}\) 表明：单视角质量是融合质量的必要但不充分条件。消融实验中 "+MC loss" 带来最大 IDF1 提升（→95.9\%），证明即使轻量 per-view 质量改善也能在融合层被放大。
+\end{block}
+\end{frame}
+
+\begin{frame}{文献调研：核心发现（3）——多线索 gate 的必要性证据}
+\small
+\begin{block}{当前 risk gate 的盲区：为什么单维度不够}
+在 GT identity 条件下，geometry-only gate 只有一个判断维度（Mahalanobis distance）。pose noise 导致的坐标偏差和 identity confusion 导致的坐标偏差在这个一维投影上完全重叠——gate 无法区分"Case A: 真 Target 1 + pose noise（应该接受）"和"Case B: 实际是 Target 3 + pose noise 推到了 Target 1 附近（应该拒绝）"。
+\end{block}
+
+\begin{block}{文献中的解决方案：多线索交叉验证}
+\begin{itemize}
+  \item \textbf{SCFusion}：Density-Aware Weighted Aggregation——基于空间置信度和距离自适应加权，而非二值 accept/reject。
+  \item \textbf{VGCRTrack} (ICCV 2025W)：View-Aware Geometric Center Refinement——基于视角质量的差异化几何精化。
+  \item \textbf{Dual Supporting Matching} (Displays 2025)：双视角互支持匹配，联合 epipolar 约束和图拓扑。
+\end{itemize}
+共同思路：\textbf{不依赖单一判据，用多维度交叉验证消除歧义}。
+\end{block}
+\end{frame}
+
+%----------------------------------------------------------------------------------------
+%    SECTION: 路线图判断
+%----------------------------------------------------------------------------------------
+
+\begin{frame}{路线图判断：五个决策问题}
+\scriptsize
+\vspace{-2mm}
+\begin{tabularx}{\linewidth}{p{0.16\linewidth} X p{0.22\linewidth}}
+\toprule
+问题 & 分析 & 当前倾向 \\
+\midrule
+Q1: Stage A 转向条件 ③ 是否可达？ &
+在 GT identity + geometry-only gate 框架内，support 的身份增益为零，坐标噪声代价为正 → 转向条件可能\textbf{理论上不可达}。
+这不是调参问题，是 information budget 问题。 &
+\metric{放宽条件}：改为"risk-aware > plain uncertain under noise"（v2c 已满足） \\
+\addlinespace
+Q2: 是否放宽转向条件？ &
+三个选项：A) 坚持现有条件 → 可能无限卡在 Stage A；B) 修改为 risk-aware > uncertain；C) 接受 Stage A 已完成，推进到 B。 &
+\metric{B 或 C}——文献倾向于将当前发现本身作为贡献输出 \\
+\addlinespace
+Q3: 串行 vs 并行？ &
+如果 geometry-only gate 已确认存在决策盲区，单独引入 projection error (Stage B) 或 detector noise (Stage C) 只会增加更多噪声源而非帮助判断的信号源。
+需要的是 \textbf{multi-cue gate}：geometry + identity + temporal 联合。 &
+\metric{倾向并行}：合并 Stage B/C/D 为 multi-cue risk gate 实验 \\
+\addlinespace
+Q4: 两阶段范式本身是瓶颈？ &
+文献中端到端方法（FusionTrack, ADA-Track）已证明联合优化优于 pipeline。但 MATRIX 数据量是否支持端到端训练待评估。 &
+\metric{暂不切换范式}：先量化两阶段方法在 MATRIX 上的极限 \\
+\addlinespace
+Q5: 战略价值定位？ &
+当前实验的最大贡献不是"超越 drop-delayed"，而是\textbf{系统量化异步 cross-view support 在 controlled uncertainty 下的 harm threshold 和风险边界}——这是文献空白。 &
+\metric{重新叙述}：从"beat drop-delayed"转向"刻画 harm/gain boundary + 证明 multi-cue gate 必要性" \\
+\bottomrule
+\end{tabularx}
+\end{frame}
+
+%----------------------------------------------------------------------------------------
+%    SECTION: 文献支撑与不足
+%----------------------------------------------------------------------------------------
+
+\begin{frame}{当前研究的文献支撑}
+\scriptsize
+\begin{tabularx}{\linewidth}{p{0.18\linewidth} X p{0.18\linewidth}}
+\toprule
+支撑点 & 文献依据 & 对应贡献 \\
+\midrule
+异步通信在 MDMOT 中未被充分研究 &
+Ye 2025 假设 ROS 通信完美可用；Shi 2025 只覆盖传统传感器跟踪 &
+C1: 首次系统量化异步延迟在 MDMOT 中的 harm threshold \\
+\addlinespace
+两阶段方法中 single-view tracker 质量是上限 &
+GMT (CVPR 2026)；Dynamic Message Passing NN (IEEE 2024)；OCMCTrack (CVPR 2024W) &
+C2: 在 controlled setting 下证明 geometry-only gate 的决策盲区 \\
+\addlinespace
+多线索融合优于单一线索 &
+SCFusion (arXiv:2509.08421)；VGCRTrack (ICCV 2025W)；Dual Supporting Matching (Displays 2025) &
+C3: 论证 multi-cue risk gate 的必要性（实验待做） \\
+\addlinespace
+端到端方法消除主/辅层级 &
+FusionTrack (arXiv:2505.18727)；ADA-Track (CVPR 2024)；HomView-MOT &
+为后续范式选择提供参照（是否转向端到端） \\
+\bottomrule
+\end{tabularx}
+
+\vspace{2mm}
+\begin{block}{文献提供的正向支撑}
+当前实验结果与文献共识高度一致——两阶段方法中 support view 的辅助性角色和 geometry-only gate 的局限，都已有独立工作的侧面印证。这增强了当前发现的可靠性：\textbf{不是实验设置的问题，而是方法类别的系统性特征}。
+\end{block}
+\end{frame}
+
+\begin{frame}{当前研究的不足与风险}
+\small
+\begin{block}{方法层面的不足}
+\begin{itemize}
+  \item 当前 risk gate 仍然只是 geometry-only——尽管文献和我们的分析都指出这是不足的，但尚未有实验结果证明 multi-cue gate 能在 MATRIX 上产生正向收益。
+  \item identity-augmented gate 的快速实验使用的是 \textbf{模拟} ReID 信号（向 GT identity 注入受控混淆），而非真实 ReID 模型——存在 sim-to-real gap 风险。
+  \item 两阶段方法的系统性上限可能意味着，即使引入多线索 gate，也难以在 MATRIX 这种主视角很少丢失目标的场景中大幅超越 drop-delayed。
+\end{itemize}
+\end{block}
+
+\begin{block}{实验层面的不足}
+\begin{itemize}
+  \item 当前仅在 frames 0-199（200 帧，8000 个 GT detection）上验证。该 slice 的场景多样性（遮挡程度、目标密度、运动模式）可能不足以覆盖 boundary cases。
+  \item pose noise 的 current range (0.25m/0.50m/1.0m) 与 MATRIX 真实 GPS/pose 精度的对应关系尚未标定。
+  \item 尚未分析 per-person per-event 的 trace，无法区分"方法在所有人身上都差"还是"少数难例拉低了聚合指标"。
+\end{itemize}
+\end{block}
+
+\begin{block}{定位风险}
+如果 MATRIX 场景中主视角跟踪质量天然极高（GT identity + GT position 下主视角 IDF1=1.0），support view 的 marginal information gain 的 upper bound 本身就很低。此时"drop-delayed 已经接近 optimal safety baseline"可能是一个合理的结论——这本身有发表价值，但需要被正确 framing 为"刻画了两阶段方法的 performance ceiling"，而非"方法没做好"。
+\end{block}
+\end{frame}
+
+%----------------------------------------------------------------------------------------
+%    SECTION: 路线图调整
+%----------------------------------------------------------------------------------------
+
+\begin{frame}{推荐的路线图调整}
+\small
+\begin{block}{短期（本周→下周）}
+\begin{enumerate}
+  \item 完成 IDSW 分解分析：将 v2c 的 ID 错误分解为 false-accept 和 false-reject，量化 geometry-only gate 的两类错误比例。
+  \item 测试 identity update 与 position update 分离：让 noisy support 只更新 position state 而不修改 identity state，观察是否降低 harm。
+  \item 做一次 \textbf{Simulated ReID Ambiguity Augmented Gate} 快速实验：向 GT identity 注入受控混淆，测试二维 gate（geometry + identity）是否能在 pose noise 下超越 drop-delayed。
+\end{enumerate}
+\end{block}
+
+\begin{block}{中期（基于快速实验结果）}
+\begin{itemize}
+  \item 如果 identity-augmented gate 有效 → 合并 Stage B/C/D 为 multi-cue risk gate 单一阶段。
+  \item 如果仍然无效 → 接受两阶段方法的固有上限，将论文重心调整为"系统性刻画两阶段 MVMOT 在异步通信下的 harm threshold 与 safety baseline"。
+\end{itemize}
+\end{block}
+\end{frame}
+
+%----------------------------------------------------------------------------------------
+%    SECTION: 下周行动项
+%----------------------------------------------------------------------------------------
+
+\begin{frame}{下周行动项}
+\scriptsize
+\begin{tabularx}{\linewidth}{p{0.12\linewidth} p{0.38\linewidth} X}
+\toprule
+优先级 & 任务 & 产出与判据 \\
+\midrule
+P0 & IDSW 分解分析：将 v2c 的 ID 错误定量分解为 false-accept（gate 错误 accept）和 false-reject（gate 错误 reject）。 &
+\code{outputs/.../risk\_v2\_idsw\_decomposition.csv}；
+判据：false-accept 占比是否 > 60\%？如果是，说明 gate 的主要问题是"接受太多不该接受的"。 \\
+\addlinespace
+P0 & 完成 Simulated ReID Ambiguity Augmented Gate 快速实验：在 Stage A 框架内，向 GT identity 注入受控混淆，测试 geometry + identity 二维 gate。 &
+\code{scripts/phase1\_matrix\_identity\_augmented\_gate.py}；
+判据：二维 gate IDF1 是否在 0.25m noise 下 > drop-delayed (0.353)？如果是，推进并行路线图。 \\
+\addlinespace
+P1 & identity update 与 position update 分离：让 noisy support 只贡献 position 更新而不修改 identity state。 &
+\code{scripts/phase1\_matrix\_decoupled\_update.py}；
+判据：分离后的 IDF1 是否 > v2c？如果是，写入方法设计。 \\
+\addlinespace
+P1 & 扩展 per-event trace 分析：输出 per-person per-frame 的 accept/reject 决策日志，分析难例特征。 &
+\code{outputs/.../per\_event\_trace.csv}；
+判据：是否存在明显的"难例子集"（如高速运动目标、临近目标对）？ \\
+\addlinespace
+P2 & 标定 MATRIX GPS/pose 精度：确定 0.25m/0.50m/1.0m noise 对应什么级别的真实部署条件。 &
+\code{summary\_md/experiments/.../noise\_calibration.md} \\
+\addlinespace
+P2 & 扩展实验到 frames 0-499 或更大 slice，增加场景多样性。 &
+扩大后的 threshold / risk gate 结果对比 \\
+\bottomrule
+\end{tabularx}
+\end{frame}
+
+%----------------------------------------------------------------------------------------
+%    SECTION: 总结
+%----------------------------------------------------------------------------------------
+
+\begin{frame}{总结}
+\small
+\begin{enumerate}
+  \item Stage A 五个子实验全部完成，确认了：(a) arrival-time fusion 的 harmful delay threshold 稳定在 2 帧；(b) timestamp 是必要但不充分的条件；(c) geometry-only risk gate 在 pose noise 下存在决策盲区——仅靠几何距离无法区分好观测和坏观测；(d) support marginal value audit 确认净值为负（-5615），Stage A 已作为 harm-boundary 结果关闭。
+  \item 实验路线图正式化为 5-Stage 控制变量法，每次只引入一类现实压力。Stage A 的第三条判据已从"必须超越 drop-delayed"转变为"确认 geometry-only gate 的决策边界"——这是一个发现，不是一个未解决的 bug。
+  \item 文献调研（12 篇，2024-2026）确认了两阶段方法中 support view 的固有辅助性角色，以及单线索 gate 的固有局限——当前实验结果与文献共识一致，不是实验失败。
+  \item 路线图已做出决策：drop-delayed 定位为 safety baseline 和 harm boundary 参考线；下一步从 geometry-only 转向 multi-cue（geometry + identity）gate。
+  \item 下周 P0 行动：simulated ReID augmented gate 快速实验——这将直接决定 Stage B/C/D 是合并为 multi-cue 单一阶段，还是需要更根本的范式调整。
+\end{enumerate}
+
+\begin{block}{最终结论}
+当前研究可从贡献维度重新表述为三条链：
+\[
+\begin{aligned}
+\text{C1: } & \text{系统量化异步跨视角 support 的 harm threshold（已完成）} \\
+\text{C2: } & \text{证明 geometry-only gate 的决策盲区：单维度无法区分 pose noise 和 identity confusion（数据已完备）} \\
+\text{C3: } & \text{验证 multi-cue (geometry + identity) risk gate 能否突破单维度盲区（待做）}
+\end{aligned}
+\]
+\end{block}
+\end{frame}
+
+\begin{frame}{参考文献索引}
+\tiny
+\begin{tabularx}{\linewidth}{p{0.05\linewidth} p{0.38\linewidth} p{0.13\linewidth} p{0.40\linewidth}}
+\toprule
+\# & 论文 & 出处 & 核心观点 \\
+\midrule
+1 & Ye et al., Multi-target Association and Localization with Distributed Drone Following: A Factor Graph Approach & IROS 2025 & MDMOT 跨视角关联与定位；默认通信可用 \\
+2 & Shi et al., AS-MSPDA for OOSM fusion & - & 延迟观测应回到真实采样时刻融合；OOS-D/OOS-Re/AS-MSPDA baseline \\
+3 & Zhen et al., GMT: Effective Global Framework for MC-MT Tracking & CVPR 2026 & 两阶段方法中单视角 tracker 错误不可逆传播 \\
+4 & Learning to Track With Dynamic Message Passing NN for MC-MOT & IEEE 2024 & local tracklet 质量决定 MCMT 上限 \\
+5 & Specker, OCMCTrack: Online MTMC Tracking with Corrective Matching Cascade & CVPR 2024W & bbox→world 投影误差是跨相机关联首要瓶颈 \\
+6 & Toida et al., SCFusion: Sparse BEV Fusion with Self-View Consistency & arXiv:2509.08421 & 单视角辅助损失 (β=0.1) + 多视角主导损失；Density-Aware 加权 \\
+7 & FusionTrack: End-to-End MOT in Arbitrary Multi-View & arXiv:2505.18727 & Tracklet Memory Pool 消除主/辅层级 \\
+8 & ADA-Track: End-to-End Multi-Camera 3D MOT & CVPR 2024 & 检测与关联交替优化 \\
+9 & HomView-MOT: View-Centric MOT with Homographic Matching & arXiv:2403.10830 & Homographic Slot Attention；移动 UAV \\
+10 & MITracker: Multi-View Integration for Visual Object Tracking & arXiv:2502.20111 & BEV 融合 → attention 反哺 per-view 精化 \\
+11 & MDMT: Robust Multi-Drone Multi-Target Tracking & IEEE TMM 2025 & 遮挡场景下 support view 的不可替代性 \\
+12 & VGCRTrack: View-Aware Geometric Center Refinement & ICCV 2025W & 基于视角质量的差异化几何精化 \\
+\bottomrule
+\end{tabularx}
+
+\vspace{2mm}
+{\small 完整文献综述见：\code{relatedwork/20260626\_mvmot\_support\_view\_role\_literature\_review.md}}
+\end{frame}
+
+\end{document}

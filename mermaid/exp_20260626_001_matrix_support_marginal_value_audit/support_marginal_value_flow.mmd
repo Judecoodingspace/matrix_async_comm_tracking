@@ -1,0 +1,16 @@
+flowchart TD
+    A[MATRIX GT observations<br>frames 0-199] --> B[Fixed_2 delayed support<br>D2-D8 to D1]
+    B --> C[Baselines<br>drop delayed and plain uncertain]
+    B --> D[Risk pipelines<br>v1, v2a, v2c]
+    C --> E[Per frame person traces]
+    D --> E
+    D --> F[Gate diagnostics<br>accept, reject, weight]
+    E --> G[Align by frame_id and person_id]
+    F --> H[Aggregate gate outcomes]
+    G --> I[Classify marginal value]
+    H --> I
+    I --> J[Event subset summary<br>support only, proximity, crossing, motion, normal]
+    I --> K{Stage A decision}
+    K -->|v2c below drop and net negative| L[close_stage_a_boundary]
+    K -->|v2c beats uncertain but below drop| M[relax_condition]
+    K -->|implementation defect| N[keep_old_condition]

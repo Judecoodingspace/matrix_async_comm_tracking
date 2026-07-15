@@ -1,0 +1,23 @@
+flowchart TD
+    A["MATRIX 0-199<br>D1 遮挡片段 76 个"] --> B["每个 delay 完整 causal baseline"]
+    B --> C["Run A<br>保留目标遮挡支撑消息"]
+    B --> D["Run B<br>只屏蔽目标遮挡支撑消息"]
+    C --> E["复现检查<br>Run A 必须逐帧等于 baseline"]
+    D --> F["成对反事实<br>during gain = A - B"]
+    E --> G["Gate 通过<br>mismatch = 0"]
+    F --> H["按 delay 和 rho 聚合"]
+    G --> I["测量有效"]
+    H --> I
+    I --> J["结果<br>500ms 强正收益<br>1000ms 正收益但大幅衰减<br>1500ms 后不稳定"]
+    J --> K["决策<br>measurement_valid_but_underdetermined"]
+    K --> L["下一步<br>扩展到 0-999 后拟合边界"]
+
+    classDef input fill:#eef5ff,stroke:#4f78a8,stroke-width:1px,color:#172536
+    classDef run fill:#fff4df,stroke:#b77a22,stroke-width:1px,color:#332100
+    classDef gate fill:#eef8ed,stroke:#4f8a54,stroke-width:1px,color:#143018
+    classDef decision fill:#fff1f1,stroke:#b65757,stroke-width:1px,color:#351616
+
+    class A,B input
+    class C,D,F,H run
+    class E,G,I gate
+    class J,K,L decision

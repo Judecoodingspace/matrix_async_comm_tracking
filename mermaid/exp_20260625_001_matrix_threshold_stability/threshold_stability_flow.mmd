@@ -1,0 +1,13 @@
+flowchart TD
+    A[Generate MATRIX derived files<br/>annotations/POMs 0-199] --> B[Load GT world observations<br/>0-199]
+    B --> C[Slice seven windows]
+    C --> D[Run fixed delay scan<br/>fixed_0 through fixed_10]
+    D --> E[Compute T_main<br/>arrival below drop]
+    D --> F[Compute T_drop5<br/>5 IDF1 point drop]
+    D --> G[Compute T_idsw_rate<br/>normalized IDSW rate]
+    C --> H[Compute event coverage<br/>proximity, crossing, high-motion]
+    E --> I[Stability decision]
+    F --> I
+    G --> I
+    H --> I
+    I --> J[Stable threshold<br/>T = 2 frames]

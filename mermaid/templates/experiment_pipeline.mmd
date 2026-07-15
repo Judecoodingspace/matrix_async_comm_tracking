@@ -1,0 +1,70 @@
+flowchart TD
+    subgraph DATA["数据输入"]
+        A1["数据集: ..."]
+        A2["帧范围: ..."]
+        A3["主无人机: ..."]
+        A4["辅助无人机: ..."]
+    end
+
+    subgraph DELAY["延迟注入"]
+        B1["延迟分布: ..."]
+        B2["种子: ..."]
+    end
+
+    subgraph PIPELINES["融合管线"]
+        C1["Primary Only - 仅主无人机"]
+        C2["Sync Oracle - 全观测同步"]
+        C3["Drop Delayed - 丢弃延迟观测"]
+        C4["Timestamped Pose Fusion - 回填到捕获时刻"]
+        C5["Arrival Time Fusion - 到达时刻融合"]
+        C6["Arrival + Exp Decay - 到达时刻+指数衰减"]
+    end
+
+    subgraph METRICS["指标计算"]
+        D1["IDF1"]
+        D2["IDSW"]
+        D3["MOTA"]
+        D4["World XY MAE"]
+    end
+
+    subgraph DECISION["决策"]
+        E1{"通过阈值? IDF1 gain >= 1.5pt"}
+        E2["Accept: 继续展开"]
+        E3["Reject: 放弃/调整方向"]
+    end
+
+    A1 --> B1
+    A2 --> B1
+    A3 --> B1
+    A4 --> B1
+    B1 --> B2
+    B2 --> C1
+    B2 --> C2
+    B2 --> C3
+    B2 --> C4
+    B2 --> C5
+    B2 --> C6
+    C1 --> D1
+    C2 --> D1
+    C3 --> D1
+    C4 --> D1
+    C5 --> D1
+    C6 --> D1
+    C1 --> D2
+    C2 --> D2
+    C3 --> D2
+    C4 --> D2
+    C5 --> D2
+    C6 --> D2
+    C1 --> D3
+    C2 --> D3
+    C3 --> D3
+    C4 --> D3
+    C5 --> D3
+    C6 --> D3
+    D1 --> E1
+    E1 -->|Yes| E2
+    E1 -->|No| E3
+
+    style E2 fill:#44aa99,stroke:#227722,color:#ffffff
+    style E3 fill:#dd4444,stroke:#772222,color:#ffffff

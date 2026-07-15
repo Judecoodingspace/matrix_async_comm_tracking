@@ -1,0 +1,472 @@
+% !TeX program = xelatex
+% !TEX TS-program = xelatex
+%----------------------------------------------------------------------------------------
+%    PACKAGES AND THEMES
+%----------------------------------------------------------------------------------------
+
+\documentclass[aspectratio=169,xcolor=dvipsnames]{beamer}
+\usetheme{SimpleDarkBlue}
+\usepackage[UTF8]{ctex}
+\usepackage{epstopdf}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{tikz}
+\usepackage{amsmath}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,calc}
+
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\paper}[1]{\textit{#1}}
+\newcommand{\metric}[1]{\textbf{#1}}
+\newcommand{\term}[1]{\textbf{#1}}
+
+%----------------------------------------------------------------------------------------
+%    TITLE PAGE
+%----------------------------------------------------------------------------------------
+
+\title{OOSM 对 MDMOT 的影响}
+\subtitle{从多 UAV 协同感知逐步收窄到延迟观测下的多目标持续跟踪}
+
+\author{杨祖敏}
+
+\institute
+{
+    AISO
+}
+\date{2026-06-11}
+
+%----------------------------------------------------------------------------------------
+%    PRESENTATION SLIDES
+%----------------------------------------------------------------------------------------
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% Speaker notes:
+% 本周汇报不是新增实验数值，而是基于两篇新读论文，把研究主题从宽泛的
+% 多 UAV 协同感知进一步收窄到 OOSM 对 MDMOT 的影响。
+
+\begin{frame}{汇报主线}
+\small
+\begin{enumerate}
+  \item 上周问题纠偏：跨 UAV ReID 不是第一瓶颈，local proposal validity 先决定了 promotion label。
+  \item 本周文献补强：Ye 2025 给出 MDMOT 中跨视角关联与定位问题；Shi 2025 给出通信受限下 OOSM 融合问题。
+  \item 新收窄方向：研究无线延迟、非满速率和过期位姿/检测对 MDMOT 的影响。
+  \item 下一步目标：构造 OOSM-aware MDMOT 的 baseline 体系与实验矩阵。
+\end{enumerate}
+
+\begin{block}{本次汇报的一句话结论}
+研究主线可以从“多 UAV 协同感知泛问题”收窄为：
+\[
+\text{过期的跨 UAV 信息在什么条件下仍能改善多目标跟踪，什么时候应丢弃或等待？}
+\]
+\end{block}
+\end{frame}
+
+\begin{frame}{从上一阶段到本周收窄}
+\small
+\begin{center}
+\begin{tikzpicture}[
+  node distance=7mm,
+  box/.style={draw, rounded corners, align=center, minimum height=9mm, minimum width=35mm, fill=blue!6},
+  warn/.style={draw, rounded corners, align=center, minimum height=9mm, minimum width=38mm, fill=orange!13},
+  good/.style={draw, rounded corners, align=center, minimum height=9mm, minimum width=40mm, fill=green!12},
+  arr/.style={-Latex, thick}
+]
+  \node[box] (a) {跨 UAV\\证据促发};
+  \node[warn, right=of a] (b) {GT-track audit\\label 先考 local validity};
+  \node[box, right=of b] (c) {local proposal\\validity refinement};
+  \node[good, below=of c] (d) {OOSM-aware MDMOT\\时间戳 + 延迟 + 关联};
+  \draw[arr] (a) -- (b);
+  \draw[arr] (b) -- (c);
+  \draw[arr] (c) -- (d);
+\end{tikzpicture}
+\end{center}
+
+\begin{alertblock}{为什么继续收窄}
+只讨论“是否协作”仍然太宽；在持续跟踪中，协作信息不是静态样本，而是带有采集时间、到达时间、位姿版本和 tracklet 状态的时序消息。
+\end{alertblock}
+
+\begin{block}{本周新的研究切口}
+把延迟信息从普通 latency cost 升级为 \term{staleness-aware tracking utility}：
+延迟不仅增加通信开销，还会改变跨 UAV 观测是否仍有创新量。
+\end{block}
+\end{frame}
+
+\begin{frame}{术语统一}
+\scriptsize
+\begin{itemize}\setlength\itemsep{1mm}
+  \item \term{MDMOT} = 多无人机多目标跟踪，多个 UAV 从不同视角同时估计目标身份、位置和轨迹。
+  \item \term{OOSM} = out-of-sequence measurement，即采样时间早于当前状态更新时间、但现在才到达的延迟观测。
+  \item \term{AS-MSPDA} = augmented state multi-sensor probabilistic data association，用扩展状态窗口处理多传感器、多步滞后、来源不确定的延迟观测。
+  \item \term{OOS-D} = out-of-sequence discarding，直接丢弃迟到观测，是最低复杂度但可能损失信息的 baseline。
+  \item \term{OOS-Re} = out-of-sequence re-ordering，把历史观测缓存并按真实时间重排，是高精度但高开销的上界 baseline。
+  \item \term{fixed-lag window} = 固定长度历史状态窗口，让迟到观测回到对应采样时刻更新，再传播到当前状态。
+  \item \term{staleness-aware utility} = 显式考虑观测年龄的协作效用，避免把过期信息当成当前帧证据。
+  \item \term{AA} = Association Accuracy，用正确关联数相对正确、错误、漏关联总数的比例衡量跨视角目标关联质量。
+  \item \term{RMSE} = root mean square error，用估计位置和真实位置之间的均方根误差衡量定位/跟踪精度。
+  \item \term{HOTA / IDF1 / IDSW} = MOT 常用指标，分别衡量检测关联综合质量、身份保持 F1、身份切换次数。
+\end{itemize}
+\end{frame}
+
+\begin{frame}{两篇文献各自回答什么}
+\scriptsize
+\begin{tabularx}{\linewidth}{p{0.22\linewidth} X X}
+\toprule
+文献 & 已回答的问题 & 留下的空白 \\
+\midrule
+Ye 2025, MLMF &
+多 UAV 视角下如何做目标关联、三维定位和持续跟随；用几何三角测量、重投影误差、因子图 BA/MPC 形成感知-行动闭环。 &
+通信链路被抽象为 ROS 数据流；没有建模 A2A 带宽、RTT、丢包、队列、非满速率或 OOSM。 \\
+\addlinespace
+Shi 2025, AS-MSPDA &
+通信受限多传感器跟踪中，随机延迟、非满速率和来源不确定如何共同导致多步滞后 OOSM；给出 OOS-D、OOS-Re、AS-MSPDA baseline 结构。 &
+场景是 UMV / 传统传感器二维跟踪；没有 UAV 视觉检测、ReID、相机位姿过期、跨相机几何和 MDMOT 指标。 \\
+\bottomrule
+\end{tabularx}
+
+\vspace{2mm}
+\begin{block}{拼接后的研究空白}
+Ye 给出“MDMOT 应研究什么对象”，Shi 给出“通信延迟应如何进入跟踪融合”；
+两者之间的交叉空白就是 \term{OOSM 对 MDMOT 的影响}。
+\end{block}
+\end{frame}
+
+\begin{frame}{Ye 2025：MDMOT 的问题骨架}
+\small
+\begin{block}{原文核心任务}
+多个 observer drones 通过 onboard video streams 进行实时多目标身份和空间坐标估计，并在选择 Target of Interest 后持续跟随。
+\end{block}
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=6mm,
+  box/.style={draw, rounded corners, align=center, minimum height=8mm, minimum width=30mm, fill=blue!6},
+  opt/.style={draw, rounded corners, align=center, minimum height=8mm, minimum width=32mm, fill=green!12},
+  arr/.style={-Latex, thick}
+]
+  \node[box] (det) {YOLO + SORT\\像素坐标};
+  \node[box, right=of det] (tri) {三角测量\\候选3D位置};
+  \node[box, right=of tri] (rep) {重投影误差\\匈牙利匹配};
+  \node[opt, below=of rep] (fgo) {FGO: BA + MPC\\定位精化+跟随};
+  \draw[arr] (det) -- (tri);
+  \draw[arr] (tri) -- (rep);
+  \draw[arr] (rep) -- (fgo);
+\end{tikzpicture}
+\end{center}
+
+\begin{block}{对本课题的价值}
+它把 MDMOT 的关键环节拆清楚：跨视角关联、目标定位、跟随控制。
+这为后续研究延迟观测影响提供了明确靶点：延迟会分别影响 bbox、pose、ReID/几何关联和 track state。
+\end{block}
+\end{frame}
+
+\begin{frame}{Ye 2025：原文实验给出的可用证据}
+\scriptsize
+\begin{tabularx}{\linewidth}{lrrrr}
+\toprule
+方法 & AA(\%) & RMSE-x(m) & RMSE-y(m) & RMSE-z(m) \\
+\midrule
+Baseline & 95.6 & 0.1566 & 0.0997 & 0.2380 \\
+Baseline + ML & 98.8 & 0.0675 & 0.0732 & 0.0450 \\
+Baseline + MLMF & \metric{99.3} & \metric{0.0293} & \metric{0.0231} & \metric{0.0361} \\
+\bottomrule
+\end{tabularx}
+
+\vspace{2mm}
+\begin{itemize}
+  \item 原文用 AA 和 RMSE 证明几何关联 + BA/MPC 能改善跨视角关联和定位。
+  \item 真机 Scenario 2 中 full model 的 RMSE 为 x=0.0669、y=0.0687、z=0.0435 m，说明方法至少有小规模实物可行性。
+  \item 但原文也说明所有 data/image streams 通过 ROS 传到同一台计算机处理；因此通信不是被研究的变量。
+\end{itemize}
+
+\begin{alertblock}{对我们的启发}
+Ye 的问题结构可以保留，但必须把“默认可用的数据流”替换成“带 capture time / arrival time / payload / pose version 的延迟消息”。
+\end{alertblock}
+\end{frame}
+
+\begin{frame}{Shi 2025：OOSM 的机制骨架}
+\small
+\begin{block}{原文核心任务}
+在 centralized fusion 中，传感器到 Fusion Center 的通信同时存在 random delay 和 non-full-rate transmission，导致多帧观测打包后乱序到达；同时 clutter 下测量来源不确定。
+\end{block}
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=7mm,
+  box/.style={draw, rounded corners, align=center, minimum height=8mm, minimum width=31mm, fill=blue!6},
+  warn/.style={draw, rounded corners, align=center, minimum height=8mm, minimum width=31mm, fill=orange!12},
+  opt/.style={draw, rounded corners, align=center, minimum height=8mm, minimum width=33mm, fill=green!12},
+  arr/.style={-Latex, thick}
+]
+  \node[box] (a) {来源不确定\\观测集合};
+  \node[warn, right=of a] (b) {随机延迟\\非满速率传输};
+  \node[box, right=of b] (c) {多步滞后\\乱序观测};
+  \node[opt, below=of c] (d) {扩展状态\\概率关联融合};
+  \draw[arr] (a) -- (b);
+  \draw[arr] (b) -- (c);
+  \draw[arr] (c) -- (d);
+\end{tikzpicture}
+\end{center}
+
+\begin{block}{对本课题的价值}
+它把延迟从“传输开销”改写成“状态估计问题”：迟到信息必须回到真实采样时刻融合，否则会引入时间错配和身份错配。
+\end{block}
+\end{frame}
+
+\begin{frame}{Shi 2025：原文实验给出的可用证据}
+\scriptsize
+\begin{tabularx}{\linewidth}{p{0.23\linewidth} X}
+\toprule
+实验观察 & 对 OOSM-aware MDMOT 的含义 \\
+\midrule
+Scenario 1 中 Sensor 2 采用 \(r_2=2,d_2=2\)，最大 3 step lag。 &
+非满速率会造成“批量迟到”的跨 UAV 观测，不是单个 delayed packet。 \\
+\addlinespace
+AS-MSPDAf 的 RMSE 明显低于 OOS-D，并达到 OOS-Re 精度；时间和存储分别仅为 OOS-Re 的 5.42\% 与 11.98\%。 &
+需要同时设置“丢弃迟到信息”和“完美重排上界”，再证明有限窗口方法的部署价值。 \\
+\addlinespace
+高杂波交叉轨迹 Scenario 3 中，OOS-D 产生 20 条 divergent tracks，而 AS-MSPDA/OOS-Re 为 3 条。 &
+延迟观测如果处理得当，可能明显改善 track maintenance，尤其在目标接近和轨迹交叉时。 \\
+\addlinespace
+Severe constraint \(r_2=3,d_2=10\) 时，OOSM 融合收益趋近消失。 &
+必须研究“多大 lag 以内仍有正创新量”，而不是无条件等待或无条件融合。 \\
+\bottomrule
+\end{tabularx}
+\end{frame}
+
+\begin{frame}{核心收窄：OOSM 如何影响 MDMOT}
+\small
+\begin{columns}[T,onlytextwidth]
+  \column{0.48\textwidth}
+  \begin{block}{MDMOT 中会过期的信息}
+  \begin{itemize}
+    \item detection bbox / confidence
+    \item ReID embedding
+    \item camera pose / extrinsic version
+    \item local tracklet state
+    \item receiver queue state
+  \end{itemize}
+  \end{block}
+
+  \column{0.48\textwidth}
+  \begin{block}{过期后的主要风险}
+  \begin{itemize}
+    \item 时间错位：当前目标已移动
+    \item 位姿错位：几何重投影不可信
+    \item 身份错配：ID switch / duplicate track
+    \item 等待代价：延迟融合可能拖慢在线决策
+  \end{itemize}
+  \end{block}
+\end{columns}
+
+\begin{alertblock}{新的研究问题}
+不是简单问“通信延迟会不会降低性能”，而是问：
+\[
+\text{不同类型的迟到信息在多大时间窗内仍有正 tracking utility？}
+\]
+\end{alertblock}
+\end{frame}
+
+\begin{frame}{问题定义草案}
+\scriptsize
+\begin{block}{核心定位}
+不是把问题改写成一般通信资源分配，而是研究：\textbf{在不同任务偏好下，迟到的跨 UAV 信息是否仍具有 MDMOT 融合价值。}
+\end{block}
+
+\begin{columns}[T,onlytextwidth]
+  \column{0.47\textwidth}
+  \begin{block}{OOSM 消息建模}
+  \[
+  m_i=\{z_i,e_i,p_i,\tau_i^{cap},\tau_i^{arr},b_i,q_i\}
+  \]
+  \(z_i/e_i/p_i\) 表示观测、特征与位姿；\(\tau_i^{cap},\tau_i^{arr}\) 决定观测年龄；\(b_i,q_i\) 表示 payload 与队列状态。
+  \end{block}
+
+  \column{0.50\textwidth}
+  \begin{block}{任务条件化价值}
+  \[
+  U_{\mathcal{T}}(m_i)
+  = Q_{\mathcal{T}}(m_i)
+  - \lambda_{\mathcal{T}}^{comm} C_{comm}
+  - \lambda_{\mathcal{T}}^{age} C_{age}
+  \]
+  \(Q_{\mathcal{T}}\) 表示该任务真正关心的跟踪收益，而不是通用通信收益。
+  \end{block}
+\end{columns}
+
+\begin{block}{三类任务偏好}
+\begin{itemize}\setlength\itemsep{0pt}
+  \item \textbf{高价值目标跟踪}：优先保证 HOTA / IDF1，通信代价权重低，迟到信息只要能减少断轨或 IDSW 就倾向融合。
+  \item \textbf{低通信巡航}：在低 payload 下维持可接受跟踪质量，只保留高收益 OOSM，其余迟到消息丢弃或降级。
+  \item \textbf{实时跟随/避障}：优先限制观测年龄和控制延迟，过期信息即使准确，也可能不参与当前决策。
+\end{itemize}
+\end{block}
+\end{frame}
+
+\begin{frame}{Baseline 体系：从 Shi 迁移到 MDMOT}
+\scriptsize
+\begin{tabularx}{\linewidth}{p{0.20\linewidth} p{0.23\linewidth} X}
+\toprule
+Baseline & 对应含义 & 需要回答的问题 \\
+\midrule
+\code{latest-only} & 只用当前已到达的最新消息 & 不等迟到信息时，实时性最好但会损失多少 ID 连续性？ \\
+\addlinespace
+\code{discard-late} / OOS-D & 超过当前 update time 的消息直接丢弃 & OOSM 是否仍有跟踪创新量？ \\
+\addlinespace
+\code{fixed-wait} & 固定等待一个短窗口后再融合 & 等待是否用延迟换来更高 HOTA / IDF1？ \\
+\addlinespace
+\code{reorder-oracle} / OOS-Re & 按真实采样时间完美重排 & 理论上界是多少，部署代价多大？ \\
+\addlinespace
+\code{fixed-lag-fusion} & 保留最近 \(N\) 帧状态窗口并回填迟到观测 & 能否接近 oracle，同时保持在线性/低阶开销？ \\
+\addlinespace
+\shortstack[l]{\code{stale-aware}\\\code{selector}} & 按观测年龄、payload、预测收益决定传/等/丢 & 是否能形成任务导向的可部署策略？ \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1mm}
+\begin{block}{设计原则}
+baseline 必须同时包含“简单可部署下界”和“理想时间重排上界”，否则无法说明 OOSM 处理本身的必要性。
+\end{block}
+\end{frame}
+
+\begin{frame}{下一步实验数据流}
+\scriptsize
+\begin{center}
+\begin{tikzpicture}[
+  node distance=5mm and 7mm,
+  input/.style={draw, rounded corners, align=center, minimum height=8mm, minimum width=29mm, fill=blue!10},
+  proc/.style={draw, rounded corners, align=center, minimum height=8mm, minimum width=30mm, fill=green!12},
+  outnode/.style={draw, rounded corners, align=center, minimum height=8mm, minimum width=30mm, fill=orange!16},
+  base/.style={draw, rounded corners, align=center, minimum height=7mm, minimum width=27mm, fill=gray!10},
+  arr/.style={-Latex, thick},
+  dashedarr/.style={-Latex, thick, dashed}
+]
+  \node[input] (a) {多无人机视频\\检测框/位姿};
+  \node[proc, right=of a] (b) {本地跟踪\\生成短轨迹};
+  \node[proc, right=of b] (c) {注入往返时延\\丢包/非满速率};
+  \node[proc, right=of c] (d) {按采集/到达时间\\标记乱序观测};
+  \node[proc, below=of d] (e) {固定滞后窗口\\回填融合};
+  \node[outnode, left=of e] (f) {跟踪质量\\身份/定位误差};
+  \node[base, below=of b] (g) {丢弃迟到信息};
+  \node[base, below=of c] (h) {固定等待窗口};
+  \node[base, below=of a] (i) {完美重排上界};
+  \draw[arr] (a) -- (b);
+  \draw[arr] (b) -- (c);
+  \draw[arr] (c) -- (d);
+  \draw[arr] (d) -- (e);
+  \draw[arr] (e) -- (f);
+  \draw[dashedarr] (c) -- (g);
+  \draw[dashedarr] (c) -- (h);
+  \draw[dashedarr] (c) -- (i);
+  \draw[dashedarr] (g) -- (f);
+  \draw[dashedarr] (h) -- (f);
+  \draw[dashedarr] (i) -- (f);
+\end{tikzpicture}
+\end{center}
+
+\begin{block}{Mermaid 源文件}
+\code{Mermaid/20260611_oosm_mdmot_flow.mmd}
+\end{block}
+\end{frame}
+
+\begin{frame}{实验边界：从延迟影响到观测价值}
+\small
+\begin{alertblock}{过宽的问题表述}
+“通信延迟是否影响多 UAV MOT 性能？”这个问题太宽，结论大概率只是“会影响”。
+\end{alertblock}
+
+\begin{block}{本阶段的四个判据}
+\begin{enumerate}
+  \item 多大 OOS lag 以内，迟到的 bbox / ReID / pose / tracklet 仍能带来正收益？
+  \item 哪类信息最怕延迟：bbox、ReID embedding、camera pose 还是 local tracklet？
+  \item fixed-wait 的收益是否超过等待代价，还是 latest-only 更适合在线控制？
+  \item staleness-aware selector 能否接近 reorder-oracle，同时低于 fixed-wait 的延迟和 payload？
+\end{enumerate}
+\end{block}
+\end{frame}
+
+\begin{frame}{指标体系：不能只看检测精度}
+\scriptsize
+\begin{tabularx}{\linewidth}{p{0.20\linewidth} p{0.26\linewidth} X}
+\toprule
+指标组 & 指标 & 为什么需要 \\
+\midrule
+MOT 质量 & HOTA, IDF1, IDSW, fragmentation & OOSM 主要影响身份连续性和关联质量，不能只看检测 AP。 \\
+\addlinespace
+定位质量 & AA, RMSE & Ye 2025 的跨视角定位指标可迁移，用于观察几何/位姿延迟的影响。 \\
+\addlinespace
+通信状态 & RTT, lag step, payload, drop rate, effective trigger rate & 延迟机制必须显式可控，否则无法解释性能变化来源。 \\
+\addlinespace
+系统代价 & waiting latency, queue length, computation per frame & 判断 fixed-lag / fixed-wait 是否可部署。 \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1mm}
+\begin{block}{报告策略}
+主结果可以报告 HOTA/IDF1 与 latency/payload 的 Pareto 曲线；RMSE/AA 用于诊断几何关联是否被过期位姿破坏。
+\end{block}
+\end{frame}
+
+\begin{frame}{研究边界}
+\small
+\begin{block}{聚焦范围}
+\begin{itemize}
+  \item 把多 UAV MOT 消息显式区分为采集时间和到达时间。
+  \item 比较 OOS-D、fixed-wait、reorder-oracle、fixed-lag、staleness-aware selector。
+  \item 分析 bbox / ReID / pose / tracklet 四类信息对延迟的敏感性。
+\end{itemize}
+\end{block}
+
+\begin{alertblock}{暂不展开的部分}
+\begin{itemize}
+  \item 不直接扩展到全链路语义通信大系统。
+  \item 不把 Ye 的完整 FGO+MPC 作为必须复现的 baseline。
+  \item 不把 Shi 的 AS-MSPDA 原样搬到视觉 MDMOT；它是机制和 baseline 参考。
+\end{itemize}
+\end{alertblock}
+\end{frame}
+
+\begin{frame}{下周行动项}
+\scriptsize
+\begin{tabularx}{\linewidth}{p{0.16\linewidth} p{0.42\linewidth} X}
+\toprule
+优先级 & 任务 & 产出 \\
+\midrule
+P0 & 选择一个可跑的 MDMOT/MOT 基础管线，先确认输入输出能导出 tracklet、bbox、ID 和时间戳。 & \code{experiments/index.md} 中新增 planned/running 记录；保留环境与数据路径。 \\
+\addlinespace
+P0 & 设计 synthetic communication wrapper：为跨 UAV 消息注入 RTT 抖动、丢包、非满速率打包和 arrival time。 & 可复现实验脚本 + 小规模 sanity check。 \\
+\addlinespace
+P1 & 跑三类最小 baseline：latest-only、discard-late、reorder-oracle。 & 第一张 HOTA/IDF1/IDSW vs lag 表。 \\
+\addlinespace
+P1 & 加 fixed-wait 与 fixed-lag window。 & 判断等待/回填是否有必要。 \\
+\addlinespace
+P2 & 拆分信息类型：bbox-only、ReID-only、pose-only、tracklet-only 延迟。 & 找出最敏感的信息类型，决定后续方法重点。 \\
+\bottomrule
+\end{tabularx}
+\end{frame}
+
+\begin{frame}{总结}
+\small
+\begin{enumerate}
+  \item Ye 2025 证明 MDMOT 的核心瓶颈包括跨视角关联、定位和持续跟随，但默认通信可用。
+  \item Shi 2025 证明 OOSM 不是普通延迟开销；适度延迟信息仍有融合价值，极端 lag 下创新量会消失。
+  \item 两篇文献合起来给出清晰收窄：研究 OOSM 对 MDMOT 中 bbox、ReID、pose、tracklet 融合的影响。
+  \item 下一步不应泛泛做“通信延迟影响实验”，而应建立 OOS-D / OOS-Re / fixed-lag / staleness-aware selector 的 baseline 体系。
+\end{enumerate}
+
+\begin{block}{最终结论}
+当前研究方向可暂定为：
+\[
+\text{OOSM-aware Multi-Drone Multi-Object Tracking under constrained A2A communication.}
+\]
+\end{block}
+\end{frame}
+
+\end{document}

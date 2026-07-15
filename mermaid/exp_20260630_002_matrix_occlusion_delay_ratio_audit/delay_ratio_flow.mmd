@@ -1,0 +1,18 @@
+flowchart TD
+    A[MATRIX 0-199<br>D1 LoS occlusion] --> B[All episodes len at least 1]
+    B --> C[Observation filter<br>keep single-frame events]
+    B --> D[Metric episodes len at least 2<br>exclude censored continuity]
+    C --> E[Delay sweep<br>0 500 1000 1500 2500 5000 ms]
+    E --> F1[Primary only]
+    E --> F2[Sync oracle]
+    E --> F3[Offline timestamped oracle]
+    E --> F4[Arrival-time fusion]
+    D --> G[Episode rho]
+    E --> H[Message rho remaining]
+    F1 --> I[Descriptive tables]
+    F2 --> I
+    F3 --> I
+    F4 --> I
+    G --> I
+    H --> I
+    I --> J[No online boundary claim]

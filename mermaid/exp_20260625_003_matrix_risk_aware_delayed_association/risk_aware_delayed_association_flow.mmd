@@ -1,0 +1,44 @@
+flowchart TD
+    A["MATRIX GT observations<br>frames 0-199<br>reliable capture time"]
+    B["Fixed support delay<br>fixed_1 fixed_2 fixed_3 fixed_5"]
+    C["Pose/world-coordinate noise<br>0.00m 0.25m 0.50m 1.00m<br>timestamp jitter disabled"]
+
+    A --> B
+    B --> C
+
+    subgraph BASE["Baselines"]
+        D1["Drop delayed<br>safety baseline"]
+        D2["Arrival-time fusion<br>stale support baseline"]
+        D3["Ideal timestamped fusion<br>zero-noise upper bound"]
+        D4["Plain timestamped uncertain fusion<br>no gate no downweight"]
+    end
+
+    subgraph RISK["Risk-aware delayed association v1"]
+        E1["Compute residual<br>support xy minus track state xy at capture time"]
+        E2["Compute risk<br>residual distance divided by uncertainty scale"]
+        E3{"risk <= gate threshold"}
+        E4["Accept support<br>weighted update"]
+        E5["Reject support<br>keep existing track state"]
+    end
+
+    C --> D1
+    C --> D2
+    C --> D3
+    C --> D4
+    C --> E1
+    E1 --> E2
+    E2 --> E3
+    E3 -->|yes| E4
+    E3 -->|no| E5
+
+    D1 --> F["Metrics<br>IDF1 IDSW MOTA<br>event subsets<br>gate diagnostics"]
+    D2 --> F
+    D3 --> F
+    D4 --> F
+    E4 --> F
+    E5 --> F
+
+    F --> G{"Decision at fixed_2 + 0.50m"}
+    G -->|passes| H["Move to Stage B<br>GT bbox plus camera projection"]
+    G -->|fails but zero-noise safe| I["Needs tuning<br>risk model too weak or gate/weight policy wrong"]
+    G -->|breaks zero-noise| J["Reject v1<br>do not expand"]

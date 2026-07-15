@@ -1,0 +1,97 @@
+flowchart TD
+    IDEA["宽假设 / Initial idea<br>异步跨视角观测会影响多 UAV 持续 MOT<br>延迟观测可能提供身份信息 也可能污染关联"]
+    TARGET["压实后的目标<br>不再只问 是否有影响<br>而是问 何时融合 以多大权重融合 何时拒绝"]
+    CURRENT["当前进度<br>Stage A 已完成 threshold stability time/pose stress risk-aware v1 和 v2 ablation<br>v2c cap plus margin 最好 但仍未超过 drop-delayed IDF1<br>尚未满足 Stage B 转向条件"]
+
+    IDEA --> TARGET
+
+    subgraph A["Stage A: GT world-coordinate mechanism test"]
+        A_KEEP["保留的理想假设<br>GT identity<br>GT world position<br>reliable capture time<br>synthetic communication delay<br>controlled pose/world noise"]
+        A_RELAX["本阶段引入的现实压力<br>从同步理想输入 转为异步到达<br>从完美 world coordinate 转为受控 pose/reprojection noise"]
+        A_QUESTION["验证问题<br>arrival-time stale support 是否伤害 ID<br>timestamped fusion 在 zero uncertainty 下是否达到 oracle<br>plain timestamped fusion 在不确定性下是否低于 drop-delayed"]
+        A_PASS["转向条件<br>harmful delay threshold 稳定<br>zero uncertainty 不破坏 oracle<br>risk-aware delayed association 能在 pose/reprojection uncertainty 下超过 drop-delayed"]
+        A_KEEP --> A_RELAX
+        A_RELAX --> A_QUESTION
+        A_QUESTION --> A_PASS
+    end
+
+    TARGET --> A_KEEP
+    CURRENT --> A_PASS
+
+    subgraph B["Stage B: GT bbox plus camera projection"]
+        B_KEEP["保留的理想假设<br>GT bbox<br>GT identity<br>known capture time<br>controlled delay<br>no detector miss or false positive"]
+        B_RELAX["本阶段解除的理想化<br>不再直接使用 GT world position<br>改为由 camera intrinsics extrinsics pose 投影到 BEV/world<br>加入 pose calibration projection noise"]
+        B_QUESTION["验证问题<br>真实几何投影误差是否破坏 delayed association<br>pose/reprojection covariance 能否解释坐标偏差<br>gate 是否能拒绝高风险迟到观测"]
+        B_PASS["转向条件<br>covariance-aware gate 在 moderate projection noise 下优于 drop-delayed<br>IDSW 低于 plain timestamped uncertain fusion<br>对 zero-noise 几何投影不显著降级"]
+        B_KEEP --> B_RELAX
+        B_RELAX --> B_QUESTION
+        B_QUESTION --> B_PASS
+    end
+
+    A_PASS --> B_KEEP
+
+    subgraph C["Stage C: detector bbox plus GT identity matching"]
+        C_KEEP["保留的理想假设<br>identity 仍由 GT matching 赋值<br>不引入 local tracker ID switch<br>capture time and pose logs are trusted"]
+        C_RELAX["本阶段解除的理想化<br>GT bbox 改为 detector bbox<br>引入 bbox center bias<br>引入 miss detection and false positive<br>引入 detector confidence"]
+        C_QUESTION["验证问题<br>检测误差对 world-coordinate candidate 的影响有多大<br>性能下降主要来自 detector 还是 delayed association<br>fusion confidence 是否应联合 detector confidence 和 geometry uncertainty"]
+        C_PASS["转向条件<br>方法在 detector noise 下仍优于 drop-delayed 和 arrival-time fusion<br>错误样本可归因到 detector miss false positive 或 association risk<br>confidence-weighted fusion 有稳定收益"]
+        C_KEEP --> C_RELAX
+        C_RELAX --> C_QUESTION
+        C_QUESTION --> C_PASS
+    end
+
+    B_PASS --> C_KEEP
+
+    subgraph D["Stage D: detector plus single-UAV tracker plus ReID"]
+        D_KEEP["保留的理想假设<br>离线 replay<br>controlled communication delay<br>pose and capture time logs remain available"]
+        D_RELAX["本阶段解除的理想化<br>融合端不再接收独立 detection<br>而是接收 local tracklet<br>引入 local ID switch fragmentation ReID ambiguity"]
+        D_QUESTION["验证问题<br>local tracker 错误会被跨 UAV 融合修正还是放大<br>ReID feature 与 geometry uncertainty 如何联合决策<br>迟到 tracklet update 是否需要 history replay or limited backfill"]
+        D_PASS["转向条件<br>uncertainty-aware delayed association 降低全局 IDSW<br>不会显著增加 fragmentation<br>在 proximity crossing high-motion 子集上优于简单融合"]
+        D_KEEP --> D_RELAX
+        D_RELAX --> D_QUESTION
+        D_QUESTION --> D_PASS
+    end
+
+    C_PASS --> D_KEEP
+
+    subgraph E["Stage E: log replay and real deployment"]
+        E_KEEP["保留的理想假设<br>算法固定<br>指标和 baselines 固定<br>capture time 由系统日志可靠提供"]
+        E_RELAX["本阶段解除的理想化<br>synthetic delay 改为真实网络 delay jitter loss disorder<br>离线受控输入改为真实多 UAV 感知通信日志<br>场景分布不再只限当前 MATRIX slice"]
+        E_QUESTION["验证问题<br>真实部署链路中方法是否稳定优于 safety baseline<br>延迟 视角遮挡 通信乱序是否触发预期 gate 行为<br>计算代价是否满足在线系统要求"]
+        E_PASS["最终判据<br>IDF1 高于 drop-delayed and arrival-time fusion<br>IDSW 降低且 event subsets 收益明确<br>latency memory bandwidth 在系统预算内"]
+        E_KEEP --> E_RELAX
+        E_RELAX --> E_QUESTION
+        E_QUESTION --> E_PASS
+    end
+
+    D_PASS --> E_KEEP
+
+    N1["收窄 1<br>从 延迟是否有影响<br>到 stale arrival-time fusion 会在临界延迟后污染 ID"]
+    N2["收窄 2<br>从 有 capture time 就够了<br>到 timestamp necessary but not sufficient"]
+    N3["收窄 3<br>从 坐标最近邻关联<br>到 pose/reprojection uncertainty-aware delayed association"]
+    N4["收窄 4<br>从 干净 observation 融合<br>到 detector confidence tracklet reliability ReID ambiguity 联合决策"]
+    FINAL["可形成的论文主张<br>Reliable capture time is a prerequisite<br>but robust asynchronous multi-UAV MOT requires risk-aware delayed association<br>that uses pose/reprojection uncertainty to accept reject or downweight late cross-view observations"]
+
+    A_PASS --> N1
+    B_PASS --> N2
+    C_PASS --> N3
+    D_PASS --> N4
+    E_PASS --> FINAL
+    N1 --> N2
+    N2 --> N3
+    N3 --> N4
+    N4 --> FINAL
+
+    classDef idea fill:#f4f1ff,stroke:#6f59b5,stroke-width:1px,color:#1f1a2e
+    classDef keep fill:#eef5ff,stroke:#4f78a8,stroke-width:1px,color:#172536
+    classDef relax fill:#fff4df,stroke:#b77a22,stroke-width:1px,color:#332100
+    classDef question fill:#eef8ed,stroke:#4f8a54,stroke-width:1px,color:#143018
+    classDef pass fill:#fff1f1,stroke:#b65757,stroke-width:1px,color:#351616
+    classDef narrow fill:#f2f2f2,stroke:#666666,stroke-width:1px,color:#1f1f1f
+
+    class IDEA,TARGET,CURRENT idea
+    class A_KEEP,B_KEEP,C_KEEP,D_KEEP,E_KEEP keep
+    class A_RELAX,B_RELAX,C_RELAX,D_RELAX,E_RELAX relax
+    class A_QUESTION,B_QUESTION,C_QUESTION,D_QUESTION,E_QUESTION question
+    class A_PASS,B_PASS,C_PASS,D_PASS,E_PASS pass
+    class N1,N2,N3,N4,FINAL narrow
