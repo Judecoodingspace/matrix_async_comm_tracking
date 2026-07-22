@@ -70,7 +70,7 @@ def parse_args() -> argparse.Namespace:
 
 
 _WORKER_DELAYED: Sequence | None = None
-_WORKER_RUN_A_BY_BRANCH_END: dict[int, list] | None = None
+_WORKER_RUN_A_PREDICTIONS: list | None = None
 _WORKER_FRAME_START = 0
 _WORKER_FRAME_END = 0
 _WORKER_DISTANCE_THRESHOLD = 1.0
@@ -81,7 +81,7 @@ _WORKER_FRESH_AGE_THRESHOLD_FRAMES = 1
 
 def _init_counterfactual_worker(
     delayed: Sequence,
-    run_a_by_branch_end: dict[int, list],
+    run_a_predictions: list,
     frame_start: int,
     frame_end: int,
     distance_threshold: float,
@@ -90,7 +90,7 @@ def _init_counterfactual_worker(
     fresh_age_threshold_frames: int,
 ) -> None:
     global _WORKER_DELAYED
-    global _WORKER_RUN_A_BY_BRANCH_END
+    global _WORKER_RUN_A_PREDICTIONS
     global _WORKER_FRAME_START
     global _WORKER_FRAME_END
     global _WORKER_DISTANCE_THRESHOLD
@@ -98,7 +98,7 @@ def _init_counterfactual_worker(
     global _WORKER_FPS
     global _WORKER_FRESH_AGE_THRESHOLD_FRAMES
     _WORKER_DELAYED = delayed
-    _WORKER_RUN_A_BY_BRANCH_END = run_a_by_branch_end
+    _WORKER_RUN_A_PREDICTIONS = run_a_predictions
     _WORKER_FRAME_START = int(frame_start)
     _WORKER_FRAME_END = int(frame_end)
     _WORKER_DISTANCE_THRESHOLD = float(distance_threshold)
@@ -110,11 +110,11 @@ def _init_counterfactual_worker(
 def _counterfactual_worker(
     job: tuple[int, object, int],
 ) -> tuple[int, dict[str, object], dict[str, object], int, list[dict[str, object]], dict[str, object]]:
-    if _WORKER_DELAYED is None or _WORKER_RUN_A_BY_BRANCH_END is None:
+    if _WORKER_DELAYED is None or _WORKER_RUN_A_PREDICTIONS is None:
         raise RuntimeError("counterfactual worker was not initialized")
     index, episode, spillover_end = job
     branch_end = max(int(episode.end_frame), int(spillover_end))
-    run_a_predictions = _WORKER_RUN_A_BY_BRANCH_END[branch_end]
+    run_a_predictions = _WORKER_RUN_A_PREDICTIONS
     masked, support_msg_masked = mask_episode_support_observations(
         _WORKER_DELAYED,
         episode,
@@ -399,24 +399,13 @@ def main() -> None:
                 }
             )
 
-        run_a_cache: dict[int, list] = {}
         episode_contexts: list[dict[str, object]] = []
+        run_a_predictions = causal.predictions
         for index, episode in enumerate(metric_episodes):
             duration_ms = frames_to_ms(episode.episode_length, args.fps)
             rho_episode = delay_ms / duration_ms if duration_ms else float("inf")
             spillover_end = min(args.frame_end, int(episode.end_frame) + max_delay_frames)
             branch_end = max(int(episode.end_frame), spillover_end)
-
-            if branch_end not in run_a_cache:
-                run_a_cache[branch_end] = _run_causal(
-                    delayed,
-                    truth_observations=delayed,
-                    frame_start=args.frame_start,
-                    frame_end=branch_end,
-                    distance_threshold=args.distance_threshold,
-                    primary_drone_id=args.primary_drone_id,
-                )
-            run_a_predictions = run_a_cache[branch_end]
 
             compare_start = max(args.frame_start, int(episode.start_frame) - 1)
             reproduction = compare_prediction_window(
@@ -456,7 +445,7 @@ def main() -> None:
             )
 
         print(
-            f"[counterfactual] delay={delay_name} run_a_cache={len(run_a_cache)} branch_end values; "
+            f"[counterfactual] delay={delay_name} run_a=baseline_causal_predictions; "
             f"episodes={len(episode_contexts)}; workers={workers}",
             flush=True,
         )
@@ -464,7 +453,7 @@ def main() -> None:
             branch_results = {}
             _init_counterfactual_worker(
                 delayed,
-                run_a_cache,
+                run_a_predictions,
                 args.frame_start,
                 args.frame_end,
                 args.distance_threshold,
@@ -484,7 +473,7 @@ def main() -> None:
                 initializer=_init_counterfactual_worker,
                 initargs=(
                     delayed,
-                    run_a_cache,
+                    run_a_predictions,
                     args.frame_start,
                     args.frame_end,
                     args.distance_threshold,
