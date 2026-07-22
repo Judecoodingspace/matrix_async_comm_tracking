@@ -57,6 +57,7 @@ summary_md/experiments/2026-6-30/exp_20260630_002_matrix_occlusion_delay_ratio_a
 summary_md/experiments/2026-6-30/exp_20260630_003_matrix_causal_oosm_delay_ratio_audit.md
 summary_md/experiments/2026-7-5/exp_20260705_001_matrix_occlusion_counterfactual_measurement_calibration.md
 summary_md/experiments/2026-7-22/exp_20260722_001_matrix_occlusion_temporal_boundary_expansion.md
+summary_md/experiments/2026-7-22/exp_20260722_002_matrix_temporal_boundary_matched_diagnostics.md
 ```
 
 Latest causal/counterfactual result:
@@ -80,8 +81,18 @@ Latest causal/counterfactual result:
 - Ratio-only is disfavored: within `rho<0.25`, mean gain drops from `0.915576`
   at 500ms to `0.146273` at 1000ms, `0.023258` at 1500ms, and `0.008351` at
   2500ms.
-- Temporal boundary expansion formal `0-999` is complete. The correct current
-  decision is `measurement_valid_boundary_still_sparse`.
+- Temporal boundary expansion formal `0-999` is complete, and the follow-up
+  matched diagnostics are complete.
+- Refined decision is now `early_frame_gap_boundary`. Measurement remains valid:
+  Run A reproduction mismatches `0`, mask mismatch rows `0`, and
+  no-effective-support nonzero gain rows `0`.
+- Model stability passes after relaxing strict cell count into extrapolation
+  risk: `M4_delay_coverage_interaction` group-CV RMSE `0.277068` vs
+  `M1_delay_only` `0.416513`, R2 `0.758755` vs `0.458015`, and
+  `delay_x_coverage` CI `[-0.959284, -0.846348]` does not cross zero.
+- Matched diagnostics show the clearest mechanism is early online support gap,
+  not simple coverage buckets. Same-delay coverage spread is only `0.005815`,
+  while early-frame gain drops by `0.704866` from 500ms to 1000ms.
 
 Previous Stage A result:
 
@@ -150,14 +161,15 @@ boundary reference**, not as a required IDF1 lower bound.
 
 Immediate next action:
 
-1. Refine the boundary decision gate: use group-CV and bootstrap stability as
-   the main criterion, with sparse cells reported as extrapolation risk rather
-   than a hard stop by itself.
-2. Add matched diagnostics within the same `rho_bucket` and within the same
-   `delay_ms` to isolate whether the loss comes from early-frame gaps, stale
-   support, or post-occlusion spillover.
-3. Only after the temporal gate is stable, add pose noise and
-   `v*delay/gate_radius`.
+1. Design an online-proxy readiness experiment for the early-frame gap
+   mechanism. Candidate proxy variables: `latest_support_age_ms`,
+   `time_since_last_primary_seen`, `frames_since_support_arrived`, and
+   early occlusion run length.
+2. Keep `rho_episode` as a post-hoc diagnostic only; do not use it as an online
+   gate input because the true occlusion duration is unknown until the episode
+   ends.
+3. After online proxy readiness, add pose/world-coordinate noise and test
+   whether `v*delay/gate_radius` becomes a third boundary dimension.
 
 Deferred multi-cue mainline:
 

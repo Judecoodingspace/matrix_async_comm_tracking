@@ -34,6 +34,7 @@ Status labels:
 | `exp_20260630_003_matrix_causal_oosm_delay_ratio_audit` | 2026-06-30 | 因果在线 OOSM delay-ratio 审计 | MATRIX `0-199` | Arrival-time 可用性、capture-time rollback/replay、冻结历史在线输出 | `outputs/20260630_matrix_causal_oosm_delay_ratio_audit/` | mainline | Causal 遮挡 IDF1：500ms 0.990、1000ms 0.393、5000ms 0.184；offline corrected 始终 1.0。 | `insufficient_evidence`；已有 delay 效应，但 rho-only 与联合边界需扩展数据。 |
 | `exp_20260705_001_matrix_occlusion_counterfactual_measurement_calibration` | 2026-07-05 | 遮挡支撑成对反事实测量校准 | MATRIX `0-199` | Run A 保留目标遮挡支撑，Run B 仅屏蔽目标遮挡支撑；检查 Run A 复现、lineage 稳定和 delay-rho gain | `outputs/20260705_matrix_occlusion_counterfactual_measurement_calibration/` | mainline | 测量 gate 全通过：Run A mismatch 0、mask mismatch 0、lineage ambiguity 0。During gain：500ms 0.910、1000ms 0.271、1500ms 0.049、2500ms 0.013、5000ms 0.001。 | `measurement_valid_but_underdetermined`；成对反事实测量可信，但只有 8 个有效 delay-rho cell，下一步扩展到 `0-999`。 |
 | `exp_20260722_001_matrix_occlusion_temporal_boundary_expansion` | 2026-07-22 | 遮挡时间边界扩展 | MATRIX `0-999` | 成对反事实 + publish-time support freshness + delay/coverage 模型比较 | `outputs/20260722_matrix_occlusion_temporal_boundary_expansion/` | mainline | Formal 完成：385 episodes × 6 delays，Run A mismatch 0、mask mismatch 0。M4 delay×coverage interaction 明显优于 M1 delay-only：group-CV RMSE `0.277068` vs `0.416513`，R2 `0.758755` vs `0.458015`。 | `measurement_valid_boundary_still_sparse`；joint temporal boundary 信号成立，但 strict coverage gate 仍未通过，不能宣称最终数值阈值。Analysis: `summary_md/experiments/2026-7-22/exp_20260722_001_matrix_occlusion_temporal_boundary_expansion_analysis.md` |
+| `exp_20260722_002_matrix_temporal_boundary_matched_diagnostics` | 2026-07-22 | 时间边界 gate 修正与匹配诊断 | MATRIX `0-999` | 复用上一轮 formal 输出；group-CV/R2/CI 模型稳定性 gate；same-rho delay、same-delay coverage、early-frame、spillover 诊断 | `outputs/20260722_matrix_temporal_boundary_matched_diagnostics/` | mainline | 测量 gate 继续通过：mismatch 0、mask mismatch 0、no-effective-support nonzero gain 0。M4 继续稳定优于 M1，delay_x_coverage CI `[-0.959284,-0.846348]` 不跨 0；same-delay coverage spread 仅 `0.005815`，early-frame gain drop `0.704866`。 | `early_frame_gap_boundary`；strict cell count 降级为外推风险，当前最可解释机制是遮挡早期在线发布帧缺少可用 support。Analysis: `summary_md/experiments/2026-7-22/exp_20260722_002_matrix_temporal_boundary_matched_diagnostics_analysis.md` |
 
 ## Current Mainline Chain
 
@@ -65,3 +66,8 @@ Status labels:
    stronger than delay-only, but the strict coverage gate is still sparse. Do
    not claim a final numeric boundary yet; next refine the gate and add matched
    diagnostics.
+10. Temporal boundary matched diagnostics are complete. Strict cell count is no
+    longer a hard failure; model stability is accepted, but the clearest
+    mechanism is `early_frame_gap_boundary`: support misses the early online
+    publish frames, and same-delay coverage buckets add little separation in the
+    current data.

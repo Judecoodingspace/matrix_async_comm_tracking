@@ -1,0 +1,20 @@
+flowchart LR
+    A["上一轮 formal<br>0-999 反事实输出"] --> B["旧问题<br>cell 数硬门槛"]
+    B --> C["本轮修正<br>模型稳定性 gate"]
+    C --> D{"M4 是否稳定优于 M1?"}
+    D -- "否" --> E["绝对延迟边界"]
+    D -- "是" --> F["matched diagnostics"]
+    F --> G["同一 rho<br>比较不同 delay"]
+    F --> H["同一 delay<br>比较不同 coverage"]
+    F --> I["遮挡早期帧<br>support 是否已到"]
+    F --> J["遮挡后 spillover"]
+    G --> K["rho 相同<br>gain 仍随 delay 下降"]
+    H --> L["coverage 桶内差异很小"]
+    I --> M["早期到达率下降<br>早期 gain 被压缩"]
+    J --> N["late support<br>更多影响恢复期"]
+    K --> O{"最终判定"}
+    L --> O
+    M --> O
+    N --> O
+    O --> P["当前阶段<br>early-frame gap boundary"]
+    P --> Q["下一步<br>在线 proxy 或 pose noise"]

@@ -388,6 +388,38 @@ Support 消息在 arrival time 前不可用；到达后 tracker 回滚到 captur
 
 ---
 
+### Matched Diagnostics / 匹配条件诊断
+
+> 就像比较两家医院的疗效时，先把病情相近的人放在同一组，再看治疗方法是否真的有差别。
+
+在固定某个条件后比较另一个变量的诊断方法。本项目当前使用两种 matched diagnostics：固定 `rho_bucket` 后比较不同 `delay_ms`，以及固定 `delay_ms` 后比较不同 `coverage_bucket`。它的作用是避免把混在一起的 episode 长度、延迟和覆盖差异误解释成单一变量的效果。
+
+---
+
+### Early-Frame Gap Boundary / 早期帧缺口边界
+
+> 就像救援队虽然最后赶到了，但最关键的前几分钟已经没人接应，后面再到也很难挽回。
+
+遮挡开始后的早期在线发布帧缺少可用 support，导致 identity continuity 已经断开；后续 support 即使仍在遮挡结束前到达，也难以恢复遮挡期间的 `during_gain`。当前 `exp_20260722_002` 的 refined decision 是 `early_frame_gap_boundary`：500ms 到 1000ms 的 early-frame gain drop 为 `0.704866`。
+
+---
+
+### Spillover Gain / 遮挡后溢出增益
+
+> 就像迟到的提示没帮你答上当前题，但可能影响你后面几题的思路。
+
+成对反事实中，目标遮挡结束后的一个延迟窗口内，Run A 相比 Run B 在身份连续性或恢复上的收益。它与 [[#During Gain / 遮挡期因果增益]] 分开报告：`during_gain` 衡量遮挡期间在线输出是否被 support 帮到，`spillover_gain` 衡量 late support 是否在遮挡结束后帮助恢复或污染后续 identity。
+
+---
+
+### Group-CV / 分组交叉验证
+
+> 就像复习时不能只考练过的题型，而要整组拿掉一种题型，看方法能不能迁移。
+
+Group cross-validation。当前 temporal boundary 实验中的 group 是 `(delay_ms, rho_bucket)` 时间条件格子。每次留出一个 group，用其他 group 拟合模型，再预测被留出的 group。它比普通 RMSE 更严格，因为它检验模型是否能推广到没见过的时间条件，而不是只记住样本多的 cell。
+
+---
+
 ## 当前实验结论速查
 
 | 发现 | 通俗解释 |
@@ -401,7 +433,8 @@ Support 消息在 arrival time 前不可用；到达后 tracker 回滚到 captur
 | support 边际价值为负时应关闭 geometry-only 条件 | 如果迟到包裹偶尔送对但总体让路线更乱，就不要继续只调门槛，而要换信息源或换派送机制 |
 | 回填后需要重放下游关联 | 案卷第 5 页改了结论，第 6-10 页不能假装没看见——要么重写整卷（一致性），要么留着矛盾（但可能引入新的错误） |
 | 成对反事实测量通过但边界仍未定 | 同一张答卷的 A/B 对照证明提示确实有用，但题目数量还不够，不能画出稳定分数线 |
+| 当前时间边界判为早期帧缺口 | 支撑消息不是只要在遮挡结束前到就够；如果前几帧在线结果已经发布且身份断开，后到的支撑只能影响恢复期 |
 
 ---
 
-*最后更新: 2026-07-22 | 当前术语数: 42*
+*最后更新: 2026-07-22 | 当前术语数: 46*

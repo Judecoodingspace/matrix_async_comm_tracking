@@ -4,22 +4,20 @@ Updated: 2026-07-22
 
 ## Latest Research Focus
 
-The current focus is now the paired counterfactual value of support during D1
-LoS occlusion. The latest formal run calibrates the measurement framework: Run
-A exactly reproduces the causal baseline, Run B masks only the target episode
-support, and no GT-ID based track repair is used. On MATRIX `0-199`, during
-gain is strong at 500ms (`0.910`), still positive at 1000ms (`0.271`), and
-near-zero after 1500ms (`0.049`, `0.013`, `0.001`). The boundary form remains
-underdetermined because only 8 delay-rho cells have `n>=5`; the next action is
-to expand the corrected paired audit to `0-999`.
+The current focus is the temporal boundary of useful support during D1 LoS
+occlusion. The `exp_20260722_001_matrix_occlusion_temporal_boundary_expansion`
+formal `0-999` run is complete, and
+`exp_20260722_002_matrix_temporal_boundary_matched_diagnostics` refined the
+decision gate without rerunning the tracker.
 
-The `exp_20260722_001_matrix_occlusion_temporal_boundary_expansion` formal
-`0-999` run is now complete. It adds per-frame publish-time support freshness
-and compares delay-only, coverage-only, delay+coverage interaction,
-expired-support, and publish-freshness boundary models. The paired measurement
-remains valid, and the interaction model is much stronger than delay-only
-(`M4` group-CV RMSE `0.277068` vs `M1` `0.416513`), but the strict coverage
-gate is still sparse, so no final numeric boundary should be claimed yet.
+The current refined decision is `early_frame_gap_boundary`. The measurement
+framework remains valid: Run A reproduction mismatches `0`, mask mismatch rows
+`0`, and no-effective-support nonzero gain rows `0`. `M4_delay_coverage_interaction`
+is stable over `M1_delay_only` (`0.277068` vs `0.416513` group-CV RMSE, R2
+`0.758755` vs `0.458015`, delay_x_coverage CI `[-0.959284, -0.846348]`), but
+matched diagnostics show that same-delay coverage buckets add little separation
+in the current data. The strongest mechanism is that early online publish frames
+miss usable support: 500ms to 1000ms early-frame gain drops by `0.704866`.
 
 The original Backfill-centered OOSM direction has been tested and rejected in
 the controlled M3OT setup. The viable next direction is to evaluate MATRIX for
@@ -58,9 +56,11 @@ scripts/phase2_gated_oosm.py
 scripts/phase2_common.py
 scripts/phase2_matrix_occlusion_counterfactual_calibration.py
 scripts/analyze_occlusion_temporal_boundary.py
+scripts/analyze_occlusion_temporal_boundary_matched.py
 scripts/validate_matrix_dataset.py
 src/tracking/support_audit.py
 tests/test_matrix_gt.py
+tests/test_temporal_boundary_matched.py
 ```
 
 Concept notes:
@@ -183,6 +183,14 @@ threshold-stability experiments.
   vs `0.458015`, group-CV RMSE `0.277068` vs `0.416513`), but the strict
   coverage gate remains sparse: delay-rho cells with `n>=5` = `8`,
   delay-rho-coverage cells with `n>=5` = `10`.
+- MATRIX temporal boundary matched diagnostics completed by reusing the
+  `0-999` formal outputs. The refined gate keeps the measurement validity
+  checks, replaces strict cell count with model-stability checks, and reports
+  sparsity as extrapolation risk. Decision is `early_frame_gap_boundary`:
+  `M4_delay_coverage_interaction` remains stable over `M1_delay_only`
+  (`0.277068` vs `0.416513` group-CV RMSE; CI `[-0.959284, -0.846348]`), but
+  same-delay coverage spread is only `0.005815` and early-frame gain drops
+  `0.704866` from 500ms to 1000ms.
 - MATRIX server migration completed to
   `aiso-image@10.16.9.138:/mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/`
   using `migration_matrix_server_files.txt`. All manifest paths exist on the
@@ -218,14 +226,22 @@ update mechanics, for example appearance-augmented support risk or
 identity/position update separation, rather than continue scalar v2 threshold
 sweeps.
 
+For the occlusion-support temporal boundary, accept `early_frame_gap_boundary`
+as the current refined mechanism. Do not use strict delay-rho cell count as a
+hard failure, but still report group sparsity as extrapolation risk. The next
+step is to convert early-frame availability into online proxy variables before
+policy learning.
+
 ## Known Caveats
 
 - The working directory is not a Git worktree, and
   `experiment_validation_plan.md` is absent.
 - `rho_episode` and `rho_remaining` are post-hoc analysis variables, not
   real-time gate inputs.
-- The 0-999 temporal-boundary result still has sparse delay-rho coverage under
-  the current strict gate; do not claim a final numeric harm threshold yet.
+- The 0-999 temporal-boundary result no longer fails solely because of sparse
+  delay-rho cell count, but sparsity remains an extrapolation risk. Do not claim
+  a final numeric harm threshold; the accepted mechanism-level decision is
+  `early_frame_gap_boundary`.
 
 - Phase 2 used GT boxes plus ReID features to isolate OOSM timing; detector
   miss/false-positive behavior was not measured.
@@ -254,68 +270,61 @@ sweeps.
   not a strict causal counterfactual. Use it for Stage A boundary decisions and
   event-subset prioritization, not as a replacement for full MOT metrics.
 
-## Latest Session Update (2026-07-22 temporal boundary implementation)
+## Latest Session Update (2026-07-22 matched diagnostics)
 
 Changed files:
 
 ```text
-src/tracking/matrix_occlusion.py
-scripts/phase2_matrix_occlusion_counterfactual_calibration.py
-scripts/analyze_occlusion_temporal_boundary.py
-tests/test_phase2_occlusion.py
+scripts/analyze_occlusion_temporal_boundary_matched.py
+tests/test_temporal_boundary_matched.py
+summary_md/experiments/2026-7-22/exp_20260722_002_matrix_temporal_boundary_matched_diagnostics.md
+summary_md/experiments/2026-7-22/exp_20260722_002_matrix_temporal_boundary_matched_diagnostics_analysis.md
+mermaid/exp_20260722_002_matrix_temporal_boundary_matched_diagnostics/matched_diagnostics_flow.mmd
 summary_md/current_experiment_stage.md
 summary_md/current_status.md
 summary_md/experiments/INDEX.md
-summary_md/experiments/2026-7-22/exp_20260722_001_matrix_occlusion_temporal_boundary_expansion.md
-mermaid/exp_20260722_001_matrix_occlusion_temporal_boundary_expansion/temporal_boundary_flow.mmd
-ascii_diagrams/README.md
-ascii_diagrams/06_temporal_boundary_model.md
 GLOSSARY.md
 ```
 
 Outputs created:
 
 ```text
-outputs/20260722_matrix_occlusion_temporal_boundary_smoke/
-outputs/20260722_matrix_occlusion_temporal_boundary_smoke_0_49/
+outputs/20260722_matrix_temporal_boundary_matched_diagnostics_smoke/
+outputs/20260722_matrix_temporal_boundary_matched_diagnostics/
 ```
 
 Verified results:
 
-- `compute_episode_frame_freshness` reports publish-time latest support age,
-  fresh/stale/no-support frame fractions, and frame-level A/B gain.
-- `phase2_matrix_occlusion_counterfactual_calibration.py` now writes
-  `temporal_boundary_frame_freshness.csv`.
-- `analyze_occlusion_temporal_boundary.py` writes
-  `temporal_boundary_cell_summary.csv`,
-  `temporal_boundary_model_comparison.csv`, and
-  `temporal_boundary_decision.md`.
-- 0-49 smoke passed with `fixed_0 fixed_1 fixed_2`, 20 occlusion episodes per
-  delay, and 12 eligible rows for `M6_delay_publish_freshness`.
+- New analyzer writes `matched_rho_delay_diagnostics.csv`,
+  `matched_delay_coverage_diagnostics.csv`, `early_frame_gain_profile.csv`,
+  `spillover_gain_diagnostics.csv`,
+  `boundary_gate_refined_model_stability.csv`, and
+  `boundary_gate_refined_decision.md`.
+- Formal decision is `early_frame_gap_boundary`.
+- Gate 1 passed: Run A reproduction mismatches `0`, mask mismatch rows `0`,
+  no-effective-support nonzero gain rows `0`.
+- Gate 2 passed: M4 group-CV RMSE `0.277068` vs M1 `0.416513`, R2 `0.758755`
+  vs `0.458015`, delay_x_coverage CI `[-0.959284, -0.846348]`.
+- Gate 3 points to early-frame gap: same-delay coverage spread `0.005815`,
+  early-frame gain drop `0.704866`.
+- GitHub tracking issue created:
+  `https://github.com/Judecoodingspace/matrix_async_comm_tracking/issues/2`.
 
 Commands run:
 
 ```bash
-PYTHONPATH=src /usr/bin/python3 -m py_compile src/tracking/matrix_occlusion.py scripts/phase2_matrix_occlusion_counterfactual_calibration.py scripts/analyze_occlusion_temporal_boundary.py
-PYTHONPATH=src python -m pytest tests/test_phase2_occlusion.py -q
-PYTHONPATH=src /usr/bin/python3 scripts/phase2_matrix_occlusion_counterfactual_calibration.py --matrix-root MATRIX/MATRIX_30x30 --frame-start 0 --frame-end 49 --fps 2 --primary-drone-id 0 --support-drone-ids 1 2 3 4 5 6 7 --delay-profiles fixed_0 fixed_1 fixed_2 --min-episode-length 2 --seed 7 --workers 4 --output-dir outputs/20260722_matrix_occlusion_temporal_boundary_smoke_0_49
-PYTHONPATH=src /usr/bin/python3 scripts/analyze_occlusion_temporal_boundary.py --input-dir outputs/20260722_matrix_occlusion_temporal_boundary_smoke_0_49 --output-dir outputs/20260722_matrix_occlusion_temporal_boundary_smoke_0_49 --seed 7 --bootstrap-iterations 50
+PYTHONPATH=src /usr/bin/python3 -m py_compile scripts/analyze_occlusion_temporal_boundary_matched.py
+PYTHONPATH=src python -m pytest tests/test_temporal_boundary_matched.py -q
+PYTHONPATH=src python -m pytest tests/ -q
+PYTHONPATH=src /usr/bin/python3 scripts/analyze_occlusion_temporal_boundary_matched.py --input-dir outputs/20260722_matrix_occlusion_temporal_boundary_expansion --output-dir outputs/20260722_matrix_temporal_boundary_matched_diagnostics_smoke --max-rows 2000 --seed 7
+PYTHONPATH=src /usr/bin/python3 scripts/analyze_occlusion_temporal_boundary_matched.py --input-dir outputs/20260722_matrix_occlusion_temporal_boundary_expansion --output-dir outputs/20260722_matrix_temporal_boundary_matched_diagnostics --seed 7
 ```
 
 Failed attempts:
 
 ```text
-PYTHONPATH=src /usr/bin/python3 -m pytest tests/test_phase2_occlusion.py -q
-```
-
-failed because `/usr/bin/python3` has no `pytest`; the same test passed under
-the default Python with `PYTHONPATH=src`.
-
-Formal blocker:
-
-```text
-MATRIX/MATRIX_30x30/POMs and annotations_positions currently cover only 0-199.
-Formal 0-999 requires generating frames 200-999 first.
+`rtk` is not installed in this shell, so status/file reads used regular shell
+commands.
 ```
 
 ## Previous Session Update (2026-07-15 paired counterfactual calibration)
@@ -561,16 +570,18 @@ git status --short failed because this directory is not a Git worktree.
 
 ## Next Command
 
-Generate MATRIX derived files for frames `200-999`, then run the temporal
-boundary formal experiment:
+Run the online-proxy readiness experiment design next. The immediate coding
+starting point is to reuse the `exp_20260722_002` matched diagnostics outputs
+and build a predictor for whether an episode/frame has positive support value
+from online-observable variables.
 
 ```bash
-cd MATRIX/MATRIX_30x30
-MPLCONFIGDIR=/tmp PYTHONPATH=. /usr/bin/python3 -c "from generatePOM import generate_POM; from generateAnnotation import annotate; max_timestep=1000; [ (generate_POM(t), annotate(t, max_timestep)) for t in range(200, max_timestep) ]"
+PYTHONPATH=src /usr/bin/python3 scripts/analyze_occlusion_temporal_boundary_matched.py \
+  --input-dir outputs/20260722_matrix_occlusion_temporal_boundary_expansion \
+  --output-dir outputs/20260722_matrix_temporal_boundary_matched_diagnostics \
+  --seed 7
 ```
 
 ```bash
-cd /mnt/data/yzm/experiments/matrix_async_pose_comm_tracking
-PYTHONPATH=src /usr/bin/python3 scripts/phase2_matrix_occlusion_counterfactual_calibration.py --matrix-root MATRIX/MATRIX_30x30 --frame-start 0 --frame-end 999 --fps 2 --primary-drone-id 0 --support-drone-ids 1 2 3 4 5 6 7 --delay-profiles fixed_0 fixed_1 fixed_2 fixed_3 fixed_5 fixed_10 --min-episode-length 2 --seed 7 --workers 8 --output-dir outputs/20260722_matrix_occlusion_temporal_boundary_expansion
-PYTHONPATH=src /usr/bin/python3 scripts/analyze_occlusion_temporal_boundary.py --input-dir outputs/20260722_matrix_occlusion_temporal_boundary_expansion --output-dir outputs/20260722_matrix_occlusion_temporal_boundary_expansion --seed 7
+PYTHONPATH=src python -m pytest tests/ -q
 ```
