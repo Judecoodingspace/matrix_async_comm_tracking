@@ -22,8 +22,8 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
 ## Current Data
 
 - Dataset root: `MATRIX/MATRIX_30x30`
-- The first expanded validated range is frames `0-199`.
-- Generated derived files for frames `0-199`:
+- The first expanded validated range is frames `0-999`.
+- Generated derived files for frames `0-999`:
   - `MATRIX/MATRIX_30x30/POMs/rectangles_*.pom`
   - `MATRIX/MATRIX_30x30/annotations_positions/*.json`
 - Readiness report:
@@ -61,24 +61,27 @@ summary_md/experiments/2026-7-22/exp_20260722_001_matrix_occlusion_temporal_boun
 
 Latest causal/counterfactual result:
 
-- Offline timestamped correction remains IDF1 `1.000000` at every delay.
-- Causal online occlusion IDF1 is `0.990164` at 500ms, `0.392787` at
-  1000ms, and `0.184262` at 5000ms.
+- Offline timestamped correction is delay-invariant on `0-999`: occlusion IDF1
+  `0.872278` at every delay.
+- Causal online occlusion IDF1 is near the offline upper bound at 500ms
+  (`0.865872`) but drops sharply at 1000ms (`0.225852`) and 5000ms
+  (`0.128107`).
 - Paired counterfactual measurement calibration is now complete on `0-199`:
   Run A reproduction mismatches `0`, mask mismatch rows `0`, and lineage
   ambiguity `0`.
 - During-gain confirms strong support value at short delay and rapid decay:
   `500ms` mean gain `0.910`, `1000ms` `0.271`, `1500ms` `0.049`,
   `2500ms` `0.013`, and `5000ms` `0.001`.
-- The boundary form remains underdetermined: only `8` delay-rho cells have
-  at least 5 episodes, below the `15`-cell criterion.
-- Ratio-only is disfavored: within `rho<0.25`, mean gain drops from `0.926`
-  at 500ms to `0.275` at 1000ms and `0.050` at 1500ms.
-- Temporal boundary expansion is implemented and smoke-tested on `0-49`:
-  publish-time support freshness is measured per occlusion frame, and the new
-  analysis script compares delay-only, coverage-only, interaction,
-  expired-support, and publish-freshness models. This is a wiring result only;
-  formal `0-999` still requires generated MATRIX files for `200-999`.
+- The boundary form is now clearer but not final: delay×coverage interaction is
+  much stronger than delay-only (`M4` group-CV RMSE `0.277068` vs `M1`
+  `0.416513`, R2 `0.758755` vs `0.458015`), but the strict coverage gate still
+  fails with only `8` delay-rho cells and `10` delay-rho-coverage cells at
+  `n>=5`.
+- Ratio-only is disfavored: within `rho<0.25`, mean gain drops from `0.915576`
+  at 500ms to `0.146273` at 1000ms, `0.023258` at 1500ms, and `0.008351` at
+  2500ms.
+- Temporal boundary expansion formal `0-999` is complete. The correct current
+  decision is `measurement_valid_boundary_still_sparse`.
 
 Previous Stage A result:
 
@@ -147,13 +150,13 @@ boundary reference**, not as a required IDF1 lower bound.
 
 Immediate next action:
 
-1. Generate POM and `annotations_positions` for MATRIX frames `200-999`.
-2. Re-run the paired counterfactual calibration on `0-999` with publish-time
-   freshness enabled and `--workers 8` or higher.
-3. Run `scripts/analyze_occlusion_temporal_boundary.py` to compare
-   `delay_ms`, `online_support_coverage_fraction`, expired-support ratio, and
-   publish-time freshness models.
-4. Only after the boundary is identifiable, add pose noise and
+1. Refine the boundary decision gate: use group-CV and bootstrap stability as
+   the main criterion, with sparse cells reported as extrapolation risk rather
+   than a hard stop by itself.
+2. Add matched diagnostics within the same `rho_bucket` and within the same
+   `delay_ms` to isolate whether the loss comes from early-frame gaps, stale
+   support, or post-occlusion spillover.
+3. Only after the temporal gate is stable, add pose noise and
    `v*delay/gate_radius`.
 
 Deferred multi-cue mainline:

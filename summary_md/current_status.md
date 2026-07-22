@@ -13,12 +13,13 @@ near-zero after 1500ms (`0.049`, `0.013`, `0.001`). The boundary form remains
 underdetermined because only 8 delay-rho cells have `n>=5`; the next action is
 to expand the corrected paired audit to `0-999`.
 
-The `exp_20260722_001_matrix_occlusion_temporal_boundary_expansion` wiring is
-now implemented and smoke-tested. It adds per-frame publish-time support
-freshness and compares delay-only, coverage-only, delay+coverage interaction,
-expired-support, and publish-freshness boundary models. The `0-49` smoke
-passed; formal `0-999` is still blocked by missing MATRIX `POMs` and
-`annotations_positions` for frames `200-999`.
+The `exp_20260722_001_matrix_occlusion_temporal_boundary_expansion` formal
+`0-999` run is now complete. It adds per-frame publish-time support freshness
+and compares delay-only, coverage-only, delay+coverage interaction,
+expired-support, and publish-freshness boundary models. The paired measurement
+remains valid, and the interaction model is much stronger than delay-only
+(`M4` group-CV RMSE `0.277068` vs `M1` `0.416513`), but the strict coverage
+gate is still sparse, so no final numeric boundary should be claimed yet.
 
 The original Backfill-centered OOSM direction has been tested and rejected in
 the controlled M3OT setup. The viable next direction is to evaluate MATRIX for
@@ -173,6 +174,15 @@ threshold-stability experiments.
   `temporal_boundary_decision.md`. The smoke generated 12 eligible rows for
   `M6_delay_publish_freshness`; this is wiring validation only, not a boundary
   claim.
+- MATRIX temporal boundary expansion formal completed on frames `0-999` after
+  generating derived `POMs` and `annotations_positions` for frames `200-999`.
+  The formal run has 385 occlusion episodes, 2310 episode rows, and 46836
+  frame-freshness rows. Measurement gates pass: Run A mismatch `0`, mask
+  mismatch rows `0`, and no-effective-support nonzero gain rows `0`. The
+  joint delay×coverage model improves strongly over delay-only (`R2` `0.758755`
+  vs `0.458015`, group-CV RMSE `0.277068` vs `0.416513`), but the strict
+  coverage gate remains sparse: delay-rho cells with `n>=5` = `8`,
+  delay-rho-coverage cells with `n>=5` = `10`.
 - MATRIX server migration completed to
   `aiso-image@10.16.9.138:/mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/`
   using `migration_matrix_server_files.txt`. All manifest paths exist on the
@@ -214,8 +224,8 @@ sweeps.
   `experiment_validation_plan.md` is absent.
 - `rho_episode` and `rho_remaining` are post-hoc analysis variables, not
   real-time gate inputs.
-- The 0-199 causal result has only 10 populated delay-rho cells with `n>=5`;
-  do not claim a ratio-only threshold from it.
+- The 0-999 temporal-boundary result still has sparse delay-rho coverage under
+  the current strict gate; do not claim a final numeric harm threshold yet.
 
 - Phase 2 used GT boxes plus ReID features to isolate OOSM timing; detector
   miss/false-positive behavior was not measured.

@@ -193,15 +193,65 @@ PYTHONPATH=src /usr/bin/python3 -m py_compile \
 
 Note: `/usr/bin/python3` does not have pytest installed in this environment; pytest verification used the default Python with `PYTHONPATH=src`.
 
+## Formal Result
+
+Formal `0-999` completed after generating MATRIX derived files for frames `200-999`.
+
+Output:
+
+```text
+outputs/20260722_matrix_occlusion_temporal_boundary_expansion/
+```
+
+Generated files:
+
+```text
+aggregate_pipeline_metrics.csv
+counterfactual_decision.md
+counterfactual_episode_gain.csv
+counterfactual_gain_by_cell.csv
+lineage_stability_audit.csv
+replay_reproduction_audit.csv
+temporal_boundary_frame_freshness.csv
+temporal_boundary_cell_summary.csv
+temporal_boundary_model_comparison.csv
+temporal_boundary_decision.md
+```
+
+Key formal facts:
+
+| Check | Result |
+| --- | ---: |
+| Metric episodes | 385 |
+| Episode rows | 2310 |
+| Frame freshness rows | 46836 |
+| Run A reproduction mismatches | 0 |
+| Mask manifest mismatch rows | 0 |
+| No-effective-support nonzero gain rows | 0 |
+| Delay-rho cells with `n>=5` | 8 |
+| Delay-rho-coverage cells with `n>=5` | 10 |
+
+Main model comparison:
+
+| Model | R2 | RMSE | Group-CV RMSE |
+| --- | ---: | ---: | ---: |
+| `M1_delay_only` | 0.458015 | 0.313481 | 0.416513 |
+| `M4_delay_coverage_interaction` | 0.758755 | 0.209144 | 0.277068 |
+
 ## Current Decision
 
-`smoke_passed_formal_blocked_on_derived_files`
+`measurement_valid_boundary_still_sparse`
 
-The measurement and analysis code are wired. Formal `0-999` remains blocked until MATRIX frames `200-999` have generated POM and annotation files.
+The paired counterfactual measurement is valid on `0-999`: reproduction and mask gates pass. The scientific signal favors a joint temporal boundary because delay×coverage interaction strongly improves over delay-only. However, the strict coverage gate still fails, so this run should not yet claim a final numeric harm threshold.
+
+Tracked analysis:
+
+```text
+summary_md/experiments/2026-7-22/exp_20260722_001_matrix_occlusion_temporal_boundary_expansion_analysis.md
+```
 
 ## Next Actions
 
-- [ ] Generate MATRIX derived files for frames `200-999`.
-- [ ] Run formal `0-999` counterfactual calibration.
-- [ ] Run temporal boundary model comparison.
-- [ ] Generate 7-dimension analysis report after formal.
+- [ ] Refine the boundary decision gate: use group-CV and bootstrap stability as the main criterion, with cell sparsity reported as extrapolation risk.
+- [ ] Add matched diagnostics within the same `rho_bucket` and within the same `delay_ms`.
+- [ ] After the temporal gate is stable, introduce pose/world-coordinate noise to test whether `v * delay / gate_radius` becomes a third boundary dimension.
