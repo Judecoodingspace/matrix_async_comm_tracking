@@ -37,6 +37,9 @@ VISIBILITY_STATE_LABELS: dict[VisibilityState, str] = {
     VisibilityState.NO_SUPPORT_VISIBLE: "no_support_visible",
 }
 
+_MATRIX_POM_CELLS_PER_DRONE = 90_000
+_MATRIX_POM_FAST_PATH_MIN_BYTES = 1_000_000
+
 
 def build_delay_audit_configs(
     delay_profiles: Sequence[str],
@@ -101,6 +104,31 @@ def _parse_pom_frame(
         None means "notvisible".
     """
     by_drone: dict[int, dict[int, tuple[int, int, int, int] | None]] = defaultdict(dict)
+
+    if target_position_ids is not None and pom_path.stat().st_size >= _MATRIX_POM_FAST_PATH_MIN_BYTES:
+        target_positions = set(target_position_ids)
+        with pom_path.open("r", encoding="utf-8") as fp:
+            for line_index, raw in enumerate(fp):
+                pos = line_index % _MATRIX_POM_CELLS_PER_DRONE
+                if pos not in target_positions:
+                    continue
+                parts = raw.split()
+                if len(parts) < 4 or parts[0] != "RECTANGLE":
+                    continue
+                cam = line_index // _MATRIX_POM_CELLS_PER_DRONE
+                if parts[3] == "notvisible":
+                    by_drone[cam][pos] = None
+                    continue
+                if len(parts) < 7:
+                    by_drone[cam][pos] = None
+                    continue
+                by_drone[cam][pos] = (
+                    int(parts[3]),
+                    int(parts[4]),
+                    int(parts[5]),
+                    int(parts[6]),
+                )
+        return dict(by_drone)
 
     with pom_path.open("r", encoding="utf-8") as fp:
         for raw in fp:
