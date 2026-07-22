@@ -1,0 +1,21 @@
+flowchart TD
+    A["MATRIX 0-999<br>D1 遮挡片段"] --> B["派生文件检查<br>POM 和 annotations"]
+    B --> C{"200-999 已生成?"}
+    C -- "否" --> D["生成 200-999<br>POM 和 annotations"]
+    D --> E["成对反事实测量"]
+    C -- "是" --> E
+    E --> F["Run A<br>保留目标 support"]
+    E --> G["Run B<br>屏蔽目标 support"]
+    F --> H["复现 gate<br>Run A 等于 baseline"]
+    G --> I["因果 gain<br>during 和 spillover"]
+    I --> J["逐帧 freshness<br>发布时最新 support 年龄"]
+    H --> K{"测量有效?"}
+    J --> L["边界模型比较<br>delay / coverage / interaction"]
+    K -- "否" --> M["先修测量框架"]
+    K -- "是" --> N{"cell 覆盖足够?"}
+    N -- "否" --> O["边界欠定<br>继续补数据或换场景"]
+    N -- "是" --> P{"M4 是否优于 M1?"}
+    P -- "否" --> Q["绝对延迟边界"]
+    P -- "是" --> R["二维时间边界"]
+    R --> S["下一轮<br>实时 surrogate gate"]
+    Q --> T["下一轮<br>速度乘延迟边界"]

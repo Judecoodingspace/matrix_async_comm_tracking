@@ -20,6 +20,7 @@ Stage A 几何门控        已关闭：作为 harm-boundary 结果保留
 3. [遮挡、rho 和消息及时性](03_occlusion_rho_and_delay.md)
 4. [成对反事实测量](04_paired_counterfactual.md)
 5. [为什么同一 rho 桶内绝对 delay 仍然重要](05_same_rho_different_delay.md)
+6. [时间边界模型](06_temporal_boundary_model.md)
 
 ## 通用符号
 

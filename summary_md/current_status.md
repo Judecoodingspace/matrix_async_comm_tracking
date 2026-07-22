@@ -1,6 +1,6 @@
 # Current Status
 
-Updated: 2026-07-15
+Updated: 2026-07-22
 
 ## Latest Research Focus
 
@@ -12,6 +12,13 @@ gain is strong at 500ms (`0.910`), still positive at 1000ms (`0.271`), and
 near-zero after 1500ms (`0.049`, `0.013`, `0.001`). The boundary form remains
 underdetermined because only 8 delay-rho cells have `n>=5`; the next action is
 to expand the corrected paired audit to `0-999`.
+
+The `exp_20260722_001_matrix_occlusion_temporal_boundary_expansion` wiring is
+now implemented and smoke-tested. It adds per-frame publish-time support
+freshness and compares delay-only, coverage-only, delay+coverage interaction,
+expired-support, and publish-freshness boundary models. The `0-49` smoke
+passed; formal `0-999` is still blocked by missing MATRIX `POMs` and
+`annotations_positions` for frames `200-999`.
 
 The original Backfill-centered OOSM direction has been tested and rejected in
 the controlled M3OT setup. The viable next direction is to evaluate MATRIX for
@@ -48,6 +55,8 @@ scripts/phase2_candidate_geometry_stress.py
 scripts/phase2_backfill_vs_current.py
 scripts/phase2_gated_oosm.py
 scripts/phase2_common.py
+scripts/phase2_matrix_occlusion_counterfactual_calibration.py
+scripts/analyze_occlusion_temporal_boundary.py
 scripts/validate_matrix_dataset.py
 src/tracking/support_audit.py
 tests/test_matrix_gt.py
@@ -156,6 +165,14 @@ threshold-stability experiments.
   V2C still beats plain uncertain at `0.50m` and `1.00m`, and lowers IDSW at
   `0.50m`, but row-level support marginal value is negative overall:
   `helpful - harmful - weak/reject = -5615`.
+- MATRIX temporal boundary expansion smoke completed on frames `0-49`. The
+  counterfactual script now writes `temporal_boundary_frame_freshness.csv`, and
+  `analyze_occlusion_temporal_boundary.py` writes
+  `temporal_boundary_cell_summary.csv`,
+  `temporal_boundary_model_comparison.csv`, and
+  `temporal_boundary_decision.md`. The smoke generated 12 eligible rows for
+  `M6_delay_publish_freshness`; this is wiring validation only, not a boundary
+  claim.
 - MATRIX server migration completed to
   `aiso-image@10.16.9.138:/mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/`
   using `migration_matrix_server_files.txt`. All manifest paths exist on the
@@ -227,7 +244,71 @@ sweeps.
   not a strict causal counterfactual. Use it for Stage A boundary decisions and
   event-subset prioritization, not as a replacement for full MOT metrics.
 
-## Latest Session Update (2026-07-15 paired counterfactual calibration)
+## Latest Session Update (2026-07-22 temporal boundary implementation)
+
+Changed files:
+
+```text
+src/tracking/matrix_occlusion.py
+scripts/phase2_matrix_occlusion_counterfactual_calibration.py
+scripts/analyze_occlusion_temporal_boundary.py
+tests/test_phase2_occlusion.py
+summary_md/current_experiment_stage.md
+summary_md/current_status.md
+summary_md/experiments/INDEX.md
+summary_md/experiments/2026-7-22/exp_20260722_001_matrix_occlusion_temporal_boundary_expansion.md
+mermaid/exp_20260722_001_matrix_occlusion_temporal_boundary_expansion/temporal_boundary_flow.mmd
+ascii_diagrams/README.md
+ascii_diagrams/06_temporal_boundary_model.md
+GLOSSARY.md
+```
+
+Outputs created:
+
+```text
+outputs/20260722_matrix_occlusion_temporal_boundary_smoke/
+outputs/20260722_matrix_occlusion_temporal_boundary_smoke_0_49/
+```
+
+Verified results:
+
+- `compute_episode_frame_freshness` reports publish-time latest support age,
+  fresh/stale/no-support frame fractions, and frame-level A/B gain.
+- `phase2_matrix_occlusion_counterfactual_calibration.py` now writes
+  `temporal_boundary_frame_freshness.csv`.
+- `analyze_occlusion_temporal_boundary.py` writes
+  `temporal_boundary_cell_summary.csv`,
+  `temporal_boundary_model_comparison.csv`, and
+  `temporal_boundary_decision.md`.
+- 0-49 smoke passed with `fixed_0 fixed_1 fixed_2`, 20 occlusion episodes per
+  delay, and 12 eligible rows for `M6_delay_publish_freshness`.
+
+Commands run:
+
+```bash
+PYTHONPATH=src /usr/bin/python3 -m py_compile src/tracking/matrix_occlusion.py scripts/phase2_matrix_occlusion_counterfactual_calibration.py scripts/analyze_occlusion_temporal_boundary.py
+PYTHONPATH=src python -m pytest tests/test_phase2_occlusion.py -q
+PYTHONPATH=src /usr/bin/python3 scripts/phase2_matrix_occlusion_counterfactual_calibration.py --matrix-root MATRIX/MATRIX_30x30 --frame-start 0 --frame-end 49 --fps 2 --primary-drone-id 0 --support-drone-ids 1 2 3 4 5 6 7 --delay-profiles fixed_0 fixed_1 fixed_2 --min-episode-length 2 --seed 7 --workers 4 --output-dir outputs/20260722_matrix_occlusion_temporal_boundary_smoke_0_49
+PYTHONPATH=src /usr/bin/python3 scripts/analyze_occlusion_temporal_boundary.py --input-dir outputs/20260722_matrix_occlusion_temporal_boundary_smoke_0_49 --output-dir outputs/20260722_matrix_occlusion_temporal_boundary_smoke_0_49 --seed 7 --bootstrap-iterations 50
+```
+
+Failed attempts:
+
+```text
+PYTHONPATH=src /usr/bin/python3 -m pytest tests/test_phase2_occlusion.py -q
+```
+
+failed because `/usr/bin/python3` has no `pytest`; the same test passed under
+the default Python with `PYTHONPATH=src`.
+
+Formal blocker:
+
+```text
+MATRIX/MATRIX_30x30/POMs and annotations_positions currently cover only 0-199.
+Formal 0-999 requires generating frames 200-999 first.
+```
+
+## Previous Session Update (2026-07-15 paired counterfactual calibration)
 
 Implemented:
 
@@ -470,15 +551,16 @@ git status --short failed because this directory is not a Git worktree.
 
 ## Next Command
 
-Design the next mechanism experiment around appearance-augmented support risk
-or identity/position update separation. Use the support audit output as the
-diagnostic baseline:
+Generate MATRIX derived files for frames `200-999`, then run the temporal
+boundary formal experiment:
 
 ```bash
-sed -n '1,220p' summary_md/experiments/2026-6-26/exp_20260626_001_matrix_support_marginal_value_audit_analysis.md
+cd MATRIX/MATRIX_30x30
+MPLCONFIGDIR=/tmp PYTHONPATH=. /usr/bin/python3 -c "from generatePOM import generate_POM; from generateAnnotation import annotate; max_timestep=1000; [ (generate_POM(t), annotate(t, max_timestep)) for t in range(200, max_timestep) ]"
 ```
 
-The next experiment should keep `drop_delayed`, `timestamped_uncertain_fusion`,
-v1, v2a, and v2c as required baselines. Use `personID` as the identity key and
-treat `positionID` as a per-frame grid/location key rather than a stable
-identity.
+```bash
+cd /mnt/data/yzm/experiments/matrix_async_pose_comm_tracking
+PYTHONPATH=src /usr/bin/python3 scripts/phase2_matrix_occlusion_counterfactual_calibration.py --matrix-root MATRIX/MATRIX_30x30 --frame-start 0 --frame-end 999 --fps 2 --primary-drone-id 0 --support-drone-ids 1 2 3 4 5 6 7 --delay-profiles fixed_0 fixed_1 fixed_2 fixed_3 fixed_5 fixed_10 --min-episode-length 2 --seed 7 --workers 8 --output-dir outputs/20260722_matrix_occlusion_temporal_boundary_expansion
+PYTHONPATH=src /usr/bin/python3 scripts/analyze_occlusion_temporal_boundary.py --input-dir outputs/20260722_matrix_occlusion_temporal_boundary_expansion --output-dir outputs/20260722_matrix_occlusion_temporal_boundary_expansion --seed 7
+```

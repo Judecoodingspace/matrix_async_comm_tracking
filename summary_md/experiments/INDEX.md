@@ -33,6 +33,7 @@ Status labels:
 | `exp_20260630_002_matrix_occlusion_delay_ratio_audit` | 2026-06-30 | 遮挡时长与延迟比值描述性审计 | MATRIX `0-199` | 单帧事件修复、六档 delay、episode rho 与 message rho_remaining | `outputs/20260630_matrix_occlusion_delay_ratio_audit/` | mainline | 76 个 metric episodes、77 个全部 episodes；offline timestamped 各 delay IDF1 1.0，arrival 遮挡 IDF1 从 500ms 的 0.990 降至 1000ms 的 0.197。 | `descriptive_only_proceed_to_causal_audit`；不从 offline oracle 宣称在线边界。 |
 | `exp_20260630_003_matrix_causal_oosm_delay_ratio_audit` | 2026-06-30 | 因果在线 OOSM delay-ratio 审计 | MATRIX `0-199` | Arrival-time 可用性、capture-time rollback/replay、冻结历史在线输出 | `outputs/20260630_matrix_causal_oosm_delay_ratio_audit/` | mainline | Causal 遮挡 IDF1：500ms 0.990、1000ms 0.393、5000ms 0.184；offline corrected 始终 1.0。 | `insufficient_evidence`；已有 delay 效应，但 rho-only 与联合边界需扩展数据。 |
 | `exp_20260705_001_matrix_occlusion_counterfactual_measurement_calibration` | 2026-07-05 | 遮挡支撑成对反事实测量校准 | MATRIX `0-199` | Run A 保留目标遮挡支撑，Run B 仅屏蔽目标遮挡支撑；检查 Run A 复现、lineage 稳定和 delay-rho gain | `outputs/20260705_matrix_occlusion_counterfactual_measurement_calibration/` | mainline | 测量 gate 全通过：Run A mismatch 0、mask mismatch 0、lineage ambiguity 0。During gain：500ms 0.910、1000ms 0.271、1500ms 0.049、2500ms 0.013、5000ms 0.001。 | `measurement_valid_but_underdetermined`；成对反事实测量可信，但只有 8 个有效 delay-rho cell，下一步扩展到 `0-999`。 |
+| `exp_20260722_001_matrix_occlusion_temporal_boundary_expansion` | 2026-07-22 | 遮挡时间边界扩展 | MATRIX smoke `0-49`, formal planned `0-999` | 成对反事实 + publish-time support freshness + delay/coverage 模型比较 | `outputs/20260722_matrix_occlusion_temporal_boundary_smoke_0_49/` | smoke | 实现逐帧 freshness 输出和边界分析脚本；0-49 smoke 通过，`M6_delay_publish_freshness` 有 12 个有效行。 | `smoke_passed_formal_blocked_on_derived_files`；formal 前需生成 MATRIX `200-999` 的 POM 和 `annotations_positions`。 |
 
 ## Current Mainline Chain
 
@@ -59,3 +60,8 @@ Status labels:
    calibration confirms the measurement is valid without GT-ID leakage, but
    only 8 delay-rho cells have `n>=5`; expand to `0-999` before claiming a
    publishable boundary.
+9. Temporal boundary expansion implementation has started: publish-time
+   support freshness is now measured per occlusion frame, and the boundary
+   analysis compares delay-only, coverage-only, delay+coverage, interaction,
+   expired-support, and publish-freshness models. Formal `0-999` is blocked
+   only by missing MATRIX derived files for frames `200-999`.

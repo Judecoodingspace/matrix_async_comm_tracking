@@ -36,6 +36,7 @@ from tracking.matrix_occlusion import (
     build_occlusion_episodes,
     build_occlusion_event_keys,
     compare_prediction_window,
+    compute_episode_frame_freshness,
     compute_paired_episode_outcome,
     episode_length_bucket,
     filter_to_occlusion_support,
@@ -60,6 +61,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--distance-threshold", type=float, default=1.0)
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--fresh-age-threshold-frames", type=int, default=1)
     parser.add_argument(
         "--output-dir", type=Path,
         default=Path("outputs/20260705_matrix_occlusion_counterfactual_measurement_calibration"),
@@ -74,6 +76,7 @@ _WORKER_FRAME_END = 0
 _WORKER_DISTANCE_THRESHOLD = 1.0
 _WORKER_PRIMARY_DRONE_ID = 0
 _WORKER_FPS = 2.0
+_WORKER_FRESH_AGE_THRESHOLD_FRAMES = 1
 
 
 def _init_counterfactual_worker(
@@ -84,6 +87,7 @@ def _init_counterfactual_worker(
     distance_threshold: float,
     primary_drone_id: int,
     fps: float,
+    fresh_age_threshold_frames: int,
 ) -> None:
     global _WORKER_DELAYED
     global _WORKER_RUN_A_BY_BRANCH_END
@@ -92,6 +96,7 @@ def _init_counterfactual_worker(
     global _WORKER_DISTANCE_THRESHOLD
     global _WORKER_PRIMARY_DRONE_ID
     global _WORKER_FPS
+    global _WORKER_FRESH_AGE_THRESHOLD_FRAMES
     _WORKER_DELAYED = delayed
     _WORKER_RUN_A_BY_BRANCH_END = run_a_by_branch_end
     _WORKER_FRAME_START = int(frame_start)
@@ -99,9 +104,12 @@ def _init_counterfactual_worker(
     _WORKER_DISTANCE_THRESHOLD = float(distance_threshold)
     _WORKER_PRIMARY_DRONE_ID = int(primary_drone_id)
     _WORKER_FPS = float(fps)
+    _WORKER_FRESH_AGE_THRESHOLD_FRAMES = int(fresh_age_threshold_frames)
 
 
-def _counterfactual_worker(job: tuple[int, object, int]) -> tuple[int, dict[str, object], dict[str, object], int]:
+def _counterfactual_worker(
+    job: tuple[int, object, int],
+) -> tuple[int, dict[str, object], dict[str, object], int, list[dict[str, object]], dict[str, object]]:
     if _WORKER_DELAYED is None or _WORKER_RUN_A_BY_BRANCH_END is None:
         raise RuntimeError("counterfactual worker was not initialized")
     index, episode, spillover_end = job
@@ -135,7 +143,18 @@ def _counterfactual_worker(job: tuple[int, object, int]) -> tuple[int, dict[str,
         primary_drone_id=_WORKER_PRIMARY_DRONE_ID,
         spillover_end=spillover_end,
     )
-    return index, outcome, timing, support_msg_masked
+    freshness_rows, freshness_summary = compute_episode_frame_freshness(
+        _WORKER_DELAYED,
+        episode,
+        run_a_predictions=run_a_predictions,
+        run_b_predictions=run_b_predictions,
+        frame_start=_WORKER_FRAME_START,
+        frame_end=_WORKER_FRAME_END,
+        fps=_WORKER_FPS,
+        primary_drone_id=_WORKER_PRIMARY_DRONE_ID,
+        fresh_age_threshold_frames=_WORKER_FRESH_AGE_THRESHOLD_FRAMES,
+    )
+    return index, outcome, timing, support_msg_masked, freshness_rows, freshness_summary
 
 
 def _rho_bucket(value: float) -> str:
@@ -296,6 +315,7 @@ def main() -> None:
 
     aggregate_rows: list[dict[str, object]] = []
     episode_rows: list[dict[str, object]] = []
+    frame_freshness_rows: list[dict[str, object]] = []
     reproduction_rows: list[dict[str, object]] = []
     lineage_rows: list[dict[str, object]] = []
 
@@ -450,12 +470,13 @@ def main() -> None:
                 args.distance_threshold,
                 args.primary_drone_id,
                 args.fps,
+                args.fresh_age_threshold_frames,
             )
             for context in episode_contexts:
-                index, outcome, timing, support_msg_masked = _counterfactual_worker(
+                index, outcome, timing, support_msg_masked, freshness, freshness_summary = _counterfactual_worker(
                     (int(context["index"]), context["episode"], int(context["spillover_end"]))
                 )
-                branch_results[index] = (outcome, timing, support_msg_masked)
+                branch_results[index] = (outcome, timing, support_msg_masked, freshness, freshness_summary)
         else:
             branch_results = {}
             with ProcessPoolExecutor(
@@ -469,6 +490,7 @@ def main() -> None:
                     args.distance_threshold,
                     args.primary_drone_id,
                     args.fps,
+                    args.fresh_age_threshold_frames,
                 ),
             ) as executor:
                 futures = [
@@ -480,8 +502,8 @@ def main() -> None:
                 ]
                 completed = 0
                 for future in as_completed(futures):
-                    index, outcome, timing, support_msg_masked = future.result()
-                    branch_results[index] = (outcome, timing, support_msg_masked)
+                    index, outcome, timing, support_msg_masked, freshness, freshness_summary = future.result()
+                    branch_results[index] = (outcome, timing, support_msg_masked, freshness, freshness_summary)
                     completed += 1
                     if completed % 10 == 0 or completed == len(futures):
                         print(
@@ -496,7 +518,7 @@ def main() -> None:
             rho_episode = float(context["rho_episode"])
             spillover_end = int(context["spillover_end"])
             reproduction = context["reproduction"]
-            outcome, timing, support_msg_masked = branch_results[index]
+            outcome, timing, support_msg_masked, freshness, freshness_summary = branch_results[index]
             episode_row = {
                 "delay_profile": delay_name,
                 "delay_frames": delay_frames,
@@ -512,9 +534,27 @@ def main() -> None:
                 "spillover_end_frame": spillover_end,
                 "support_msg_masked": support_msg_masked,
                 **timing,
+                **freshness_summary,
                 **outcome,
             }
             episode_rows.append(episode_row)
+            for freshness_row in freshness:
+                frame_freshness_rows.append(
+                    {
+                        "delay_profile": delay_name,
+                        "delay_frames": delay_frames,
+                        "delay_ms": f"{delay_ms:.3f}",
+                        "person_id": episode.person_id,
+                        "start_frame": episode.start_frame,
+                        "end_frame": episode.end_frame,
+                        "episode_length": episode.episode_length,
+                        "length_bucket": episode_length_bucket(episode.episode_length),
+                        "occlusion_duration_ms": f"{duration_ms:.3f}",
+                        "rho_episode": f"{rho_episode:.6f}",
+                        "rho_bucket": _rho_bucket(rho_episode),
+                        **freshness_row,
+                    }
+                )
             lineage_rows.append(
                 {
                     "delay_profile": delay_name,
@@ -536,6 +576,7 @@ def main() -> None:
     gain_cells = _aggregate_gain_cells(episode_rows, seed=args.seed)
     _write_rows(output_dir / "counterfactual_episode_gain.csv", episode_rows)
     _write_rows(output_dir / "counterfactual_gain_by_cell.csv", gain_cells)
+    _write_rows(output_dir / "temporal_boundary_frame_freshness.csv", frame_freshness_rows)
     _write_rows(output_dir / "replay_reproduction_audit.csv", reproduction_rows)
     _write_rows(output_dir / "lineage_stability_audit.csv", lineage_rows)
     _write_rows(output_dir / "aggregate_pipeline_metrics.csv", aggregate_rows)

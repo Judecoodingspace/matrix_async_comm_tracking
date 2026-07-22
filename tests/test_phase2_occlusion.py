@@ -26,6 +26,7 @@ from tracking.matrix_occlusion import (
     classify_frame_visibility,
     aggregate_episode_support_timing,
     compare_prediction_window,
+    compute_episode_frame_freshness,
     compute_identity_survival,
     compute_episode_continuity,
     compute_message_rho_remaining,
@@ -720,6 +721,57 @@ def test_aggregate_episode_support_timing_features() -> None:
     assert float(features["timely_message_fraction"]) == pytest.approx(1 / 3)
     assert float(features["online_support_coverage_fraction"]) == pytest.approx(1 / 3)
     assert float(features["spillover_support_coverage_fraction"]) == pytest.approx(1.0)
+
+
+def test_compute_episode_frame_freshness_publish_time_age() -> None:
+    episode = OcclusionEpisode(1, 2, 4, 3, VisibilityState.PRIMARY_OCCLUDED_SUPPORT_VISIBLE, (1,))
+    observations = [
+        MatrixObservation(2, 1, 1, 1, (0, 0, 0), (0, 0, 1, 1), 2, 3, 1),
+        MatrixObservation(3, 1, 1, 1, (0, 0, 0), (0, 0, 1, 1), 3, 5, 2),
+        MatrixObservation(4, 0, 1, 1, (0, 0, 0), (0, 0, 1, 1), 4, 4, 0),
+    ]
+    run_a = [
+        Prediction(1, 1, 10),
+        Prediction(2, 1, 10),
+        Prediction(3, 1, 10),
+        Prediction(4, 1, 10),
+    ]
+    run_b = [
+        Prediction(1, 1, 10),
+        Prediction(2, 1, -1),
+        Prediction(3, 1, 10),
+        Prediction(4, 1, 11),
+    ]
+    rows, summary = compute_episode_frame_freshness(
+        observations,
+        episode,
+        run_a_predictions=run_a,
+        run_b_predictions=run_b,
+        frame_start=0,
+        frame_end=5,
+        fps=2.0,
+        primary_drone_id=0,
+        fresh_age_threshold_frames=1,
+    )
+    assert len(rows) == 3
+    assert rows[0]["frame_id"] == 2
+    assert rows[0]["has_arrived_support"] == 0
+    assert rows[0]["frame_gain"] == 1
+    assert rows[1]["frame_id"] == 3
+    assert rows[1]["latest_support_capture_frame"] == 2
+    assert rows[1]["latest_support_age_frames"] == 1
+    assert rows[1]["is_fresh_support"] == 1
+    assert rows[1]["frame_gain"] == 0
+    assert rows[2]["frame_id"] == 4
+    assert rows[2]["latest_support_capture_frame"] == 2
+    assert rows[2]["latest_support_age_frames"] == 2
+    assert rows[2]["is_fresh_support"] == 0
+    assert rows[2]["frame_gain"] == 1
+    assert float(summary["fresh_support_frame_fraction"]) == pytest.approx(1 / 3)
+    assert float(summary["stale_support_frame_fraction"]) == pytest.approx(1 / 3)
+    assert float(summary["no_support_available_frame_fraction"]) == pytest.approx(1 / 3)
+    assert float(summary["mean_latest_support_age_ms"]) == pytest.approx(750.0)
+    assert float(summary["max_latest_support_age_ms"]) == pytest.approx(1000.0)
 
 
 # ---------------------------------------------------------------------------

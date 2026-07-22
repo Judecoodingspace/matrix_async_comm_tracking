@@ -922,6 +922,119 @@ def aggregate_episode_support_timing(
     }
 
 
+def compute_episode_frame_freshness(
+    observations: Sequence,
+    episode: OcclusionEpisode,
+    *,
+    run_a_predictions: Sequence,
+    run_b_predictions: Sequence,
+    frame_start: int,
+    frame_end: int,
+    fps: float,
+    primary_drone_id: int = 0,
+    fresh_age_threshold_frames: int = 1,
+) -> tuple[list[dict[str, object]], dict[str, object]]:
+    """Measure publish-time support freshness for each frame in one episode.
+
+    The rows answer a narrower question than ``rho_episode``: when a specific
+    online frame is published, what is the newest target support observation
+    that has already arrived?
+    """
+    if float(fps) <= 0.0:
+        raise ValueError("fps must be positive")
+    target_messages = [
+        obs for obs in observations
+        if int(obs.drone_id) != int(primary_drone_id)
+        and int(obs.person_id) == int(episode.person_id)
+        and int(episode.start_frame) <= int(obs.capture_time) <= int(episode.end_frame)
+    ]
+    lookup_a = prediction_lookup(run_a_predictions)
+    lookup_b = prediction_lookup(run_b_predictions)
+    pre_frame = int(episode.start_frame) - 1
+    pre_id_a = lookup_a.get((pre_frame, int(episode.person_id)))
+    pre_id_b = lookup_b.get((pre_frame, int(episode.person_id)))
+    eligible = (
+        int(episode.start_frame) > int(frame_start)
+        and int(episode.end_frame) < int(frame_end)
+        and pre_id_a is not None
+        and pre_id_b is not None
+        and int(pre_id_a) >= 0
+    )
+
+    rows: list[dict[str, object]] = []
+    ages_ms: list[float] = []
+    fresh_count = 0
+    stale_count = 0
+    no_support_count = 0
+    threshold = int(fresh_age_threshold_frames)
+    for frame_id in range(int(episode.start_frame), int(episode.end_frame) + 1):
+        arrived = [
+            obs for obs in target_messages
+            if int(obs.arrival_time) <= frame_id and int(obs.capture_time) <= frame_id
+        ]
+        latest_capture: object = ""
+        latest_age_frames: object = ""
+        latest_age_ms: object = ""
+        is_fresh: object = ""
+        has_support = bool(arrived)
+        if has_support:
+            latest_capture_int = max(int(obs.capture_time) for obs in arrived)
+            age_frames = frame_id - latest_capture_int
+            age_ms = frames_to_ms(age_frames, fps)
+            latest_capture = latest_capture_int
+            latest_age_frames = age_frames
+            latest_age_ms = f"{age_ms:.3f}"
+            ages_ms.append(float(age_ms))
+            is_fresh = int(age_frames <= threshold)
+            if int(is_fresh):
+                fresh_count += 1
+            else:
+                stale_count += 1
+        else:
+            no_support_count += 1
+
+        same_a: object = ""
+        same_b: object = ""
+        frame_gain: object = ""
+        pred_a = lookup_a.get((frame_id, int(episode.person_id)))
+        pred_b = lookup_b.get((frame_id, int(episode.person_id)))
+        if eligible and pred_a is not None:
+            same_a = int(int(pred_a) == int(pre_id_a))
+        if eligible and pred_b is not None:
+            same_b = int(int(pred_b) == int(pre_id_a))
+        if same_a != "" and same_b != "":
+            frame_gain = int(same_a) - int(same_b)
+
+        rows.append(
+            {
+                "frame_id": frame_id,
+                "has_arrived_support": int(has_support),
+                "latest_support_capture_frame": latest_capture,
+                "latest_support_age_frames": latest_age_frames,
+                "latest_support_age_ms": latest_age_ms,
+                "fresh_age_threshold_frames": threshold,
+                "is_fresh_support": is_fresh,
+                "same_as_pre_id_A": same_a,
+                "same_as_pre_id_B": same_b,
+                "frame_gain": frame_gain,
+            }
+        )
+
+    frame_count = len(rows)
+    summary = {
+        "freshness_frame_count": frame_count,
+        "mean_latest_support_age_ms": "",
+        "max_latest_support_age_ms": "",
+        "fresh_support_frame_fraction": f"{fresh_count / frame_count:.6f}" if frame_count else "",
+        "stale_support_frame_fraction": f"{stale_count / frame_count:.6f}" if frame_count else "",
+        "no_support_available_frame_fraction": f"{no_support_count / frame_count:.6f}" if frame_count else "",
+    }
+    if ages_ms:
+        summary["mean_latest_support_age_ms"] = f"{sum(ages_ms) / len(ages_ms):.3f}"
+        summary["max_latest_support_age_ms"] = f"{max(ages_ms):.3f}"
+    return rows, summary
+
+
 def compute_episode_continuity(
     predictions_by_pipeline: Mapping[str, Sequence],
     episodes: Sequence[OcclusionEpisode],

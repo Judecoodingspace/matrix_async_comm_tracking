@@ -372,6 +372,22 @@ Support 消息在 arrival time 前不可用；到达后 tracker 回滚到 captur
 
 ---
 
+### Publish-Time Freshness / 发布时刻新鲜度
+
+> 就像你要在这一秒做决定时，手里最新的路况信息到底是刚拍的，还是几秒前拍的。
+
+在某个在线帧发布时，已经到达的最新 target support observation 距离当前发布帧的时间间隔。当前实现以 `latest_support_age_ms_at_publish` / `latest_support_age_frames` 形式记录到 `temporal_boundary_frame_freshness.csv`。它比 [[#Occlusion Delay Ratio / 遮挡延迟比]] 更细，因为它按发布帧计算，而不是把整个遮挡片段压成一个平均比例。
+
+---
+
+### Online Support Coverage / 在线支撑覆盖率
+
+> 就像一段主摄像头看不见人的时间里，有多少时刻真的有人把可用信息递到了你手上。
+
+遮挡 episode 中，在遮挡结束前已经收到 support observation 的 capture frame 比例。当前字段为 `online_support_coverage_fraction`。它描述 support 是否覆盖了遮挡窗口，但不保证这些 support 仍足够新；因此需要与 [[#Publish-Time Freshness / 发布时刻新鲜度]] 和绝对 `delay_ms` 一起解释。
+
+---
+
 ## 当前实验结论速查
 
 | 发现 | 通俗解释 |
@@ -388,4 +404,4 @@ Support 消息在 arrival time 前不可用；到达后 tracker 回滚到 captur
 
 ---
 
-*最后更新: 2026-07-15 | 当前术语数: 40*
+*最后更新: 2026-07-22 | 当前术语数: 42*

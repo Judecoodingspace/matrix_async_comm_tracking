@@ -41,6 +41,8 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
   - `scripts/phase1_matrix_risk_aware_delayed_association.py`
   - `scripts/phase1_matrix_risk_aware_v2_ablation.py`
   - `scripts/phase1_matrix_support_marginal_value_audit.py`
+  - `scripts/phase2_matrix_occlusion_counterfactual_calibration.py`
+  - `scripts/analyze_occlusion_temporal_boundary.py`
 - Support audit helpers:
   `src/tracking/support_audit.py`
 - Tests:
@@ -54,6 +56,7 @@ Experiments:
 summary_md/experiments/2026-6-30/exp_20260630_002_matrix_occlusion_delay_ratio_audit.md
 summary_md/experiments/2026-6-30/exp_20260630_003_matrix_causal_oosm_delay_ratio_audit.md
 summary_md/experiments/2026-7-5/exp_20260705_001_matrix_occlusion_counterfactual_measurement_calibration.md
+summary_md/experiments/2026-7-22/exp_20260722_001_matrix_occlusion_temporal_boundary_expansion.md
 ```
 
 Latest causal/counterfactual result:
@@ -71,6 +74,11 @@ Latest causal/counterfactual result:
   at least 5 episodes, below the `15`-cell criterion.
 - Ratio-only is disfavored: within `rho<0.25`, mean gain drops from `0.926`
   at 500ms to `0.275` at 1000ms and `0.050` at 1500ms.
+- Temporal boundary expansion is implemented and smoke-tested on `0-49`:
+  publish-time support freshness is measured per occlusion frame, and the new
+  analysis script compares delay-only, coverage-only, interaction,
+  expired-support, and publish-freshness models. This is a wiring result only;
+  formal `0-999` still requires generated MATRIX files for `200-999`.
 
 Previous Stage A result:
 
@@ -140,10 +148,11 @@ boundary reference**, not as a required IDF1 lower bound.
 Immediate next action:
 
 1. Generate POM and `annotations_positions` for MATRIX frames `200-999`.
-2. Re-run the paired counterfactual calibration on `0-999` with `--workers 8`
-   or higher.
-3. Fit episode/capture-frame weighted
-   `gain ~ delay_ms + online_support_coverage_fraction + interaction`.
+2. Re-run the paired counterfactual calibration on `0-999` with publish-time
+   freshness enabled and `--workers 8` or higher.
+3. Run `scripts/analyze_occlusion_temporal_boundary.py` to compare
+   `delay_ms`, `online_support_coverage_fraction`, expired-support ratio, and
+   publish-time freshness models.
 4. Only after the boundary is identifiable, add pose noise and
    `v*delay/gate_radius`.
 
