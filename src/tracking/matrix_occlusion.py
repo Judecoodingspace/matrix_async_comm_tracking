@@ -11,7 +11,6 @@ Only the annotation JSON is already LoS-filtered; this module reads the raw sour
 from __future__ import annotations
 
 import math
-import re
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -90,38 +89,39 @@ class OcclusionEpisode:
 # ---------------------------------------------------------------------------
 
 
-def _parse_pom_frame(pom_path: Path) -> dict[int, dict[int, tuple[int, int, int, int] | None]]:
+def _parse_pom_frame(
+    pom_path: Path,
+    *,
+    target_position_ids: set[int] | None = None,
+) -> dict[int, dict[int, tuple[int, int, int, int] | None]]:
     """Parse a single POM file.
 
     Returns:
         {drone_id: {position_id: (left, top, right, bottom) or None}}
         None means "notvisible".
     """
-    cam_pos_pattern = re.compile(r"(\d+) (\d+)")
-    cam_pos_bbox_pattern = re.compile(r"(\d+) (\d+) ([-\d]+) ([-\d]+) (\d+) (\d+)")
     by_drone: dict[int, dict[int, tuple[int, int, int, int] | None]] = defaultdict(dict)
 
-    for raw in pom_path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if "RECTANGLE" not in line:
-            continue
-        match = cam_pos_pattern.search(line)
-        if match is None:
-            continue
-        cam = int(match.group(1))
-        pos = int(match.group(2))
-        if "notvisible" in line:
-            by_drone[cam][pos] = None
-        else:
-            bbox_match = cam_pos_bbox_pattern.search(line)
-            if bbox_match is None:
+    with pom_path.open("r", encoding="utf-8") as fp:
+        for raw in fp:
+            parts = raw.split()
+            if len(parts) < 4 or parts[0] != "RECTANGLE":
+                continue
+            cam = int(parts[1])
+            pos = int(parts[2])
+            if target_position_ids is not None and pos not in target_position_ids:
+                continue
+            if parts[3] == "notvisible":
+                by_drone[cam][pos] = None
+                continue
+            if len(parts) < 7:
                 by_drone[cam][pos] = None
                 continue
             by_drone[cam][pos] = (
-                int(bbox_match.group(3)),
-                int(bbox_match.group(4)),
-                int(bbox_match.group(5)),
-                int(bbox_match.group(6)),
+                int(parts[3]),
+                int(parts[4]),
+                int(parts[5]),
+                int(parts[6]),
             )
     return dict(by_drone)
 
@@ -262,23 +262,25 @@ def build_frame_visibilities(
     results: list[FrameVisibility] = []
 
     for frame_id in range(int(frame_start), int(frame_end) + 1):
+        # Load GT 3D first so POM parsing only retains positions that matter for
+        # this frame's people instead of materializing every map cell.
+        gt_path = gt_dir / f"3d_{frame_id:04d}.txt"
+        if not gt_path.is_file():
+            raise FileNotFoundError(f"Missing GT 3D file: {gt_path}")
+        gt_persons = _parse_gt_3d_frame(gt_path)
+        target_position_ids = {position_id for position_id, _world_xyz in gt_persons.values()}
+
         # Load POM for this frame
         pom_path = pom_dir / f"rectangles_{frame_id:04d}.pom"
         if not pom_path.is_file():
             raise FileNotFoundError(f"Missing POM file: {pom_path}")
-        pom_by_drone = _parse_pom_frame(pom_path)
+        pom_by_drone = _parse_pom_frame(pom_path, target_position_ids=target_position_ids)
 
         # Load LoS for all drones at this frame
         los_by_drone: dict[int, set[tuple[int, int]]] = {}
         for drone_id in all_drone_ids:
             los_path = los_dir / f"Drone{drone_id + 1}_3d_{frame_id:04d}.txt"
             los_by_drone[drone_id] = _parse_los_frame(los_path)
-
-        # Load GT 3D
-        gt_path = gt_dir / f"3d_{frame_id:04d}.txt"
-        if not gt_path.is_file():
-            raise FileNotFoundError(f"Missing GT 3D file: {gt_path}")
-        gt_persons = _parse_gt_3d_frame(gt_path)
 
         for person_id, (position_id, _world_xyz) in gt_persons.items():
             vis = classify_frame_visibility(
