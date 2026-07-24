@@ -1,23 +1,21 @@
 # Current Status
 
-Updated: 2026-07-22
+Updated: 2026-07-24
 
 ## Latest Research Focus
 
 The current focus is the temporal boundary of useful support during D1 LoS
-occlusion. The `exp_20260722_001_matrix_occlusion_temporal_boundary_expansion`
-formal `0-999` run is complete, and
-`exp_20260722_002_matrix_temporal_boundary_matched_diagnostics` refined the
-decision gate without rerunning the tracker.
+occlusion. The latest completed experiment is
+`exp_20260724_001_matrix_early_frame_online_proxy_readiness`, which asks whether
+the `early_frame_gap_boundary` mechanism can be predicted from online-observable
+variables.
 
-The current refined decision is `early_frame_gap_boundary`. The measurement
-framework remains valid: Run A reproduction mismatches `0`, mask mismatch rows
-`0`, and no-effective-support nonzero gain rows `0`. `M4_delay_coverage_interaction`
-is stable over `M1_delay_only` (`0.277068` vs `0.416513` group-CV RMSE, R2
-`0.758755` vs `0.458015`, delay_x_coverage CI `[-0.959284, -0.846348]`), but
-matched diagnostics show that same-delay coverage buckets add little separation
-in the current data. The strongest mechanism is that early online publish frames
-miss usable support: 500ms to 1000ms early-frame gain drops by `0.704866`.
+The current decision is `online_proxy_weak`. Combined online proxies improve
+episode-level F1 over delay-only (`0.889655` vs `0.813600`) and have strong
+frame-level signal (`0.969113` AUC vs delay-only `0.830986`), but episode-level
+AUC improves only `0.003205` (`0.967811` vs `0.964606`). This is not enough to
+enter full policy learning. The next step is action-threshold calibration:
+compare M1 and M5 out-of-fold probabilities at matched harmful-accept rates.
 
 The original Backfill-centered OOSM direction has been tested and rejected in
 the controlled M3OT setup. The viable next direction is to evaluate MATRIX for
@@ -57,10 +55,12 @@ scripts/phase2_common.py
 scripts/phase2_matrix_occlusion_counterfactual_calibration.py
 scripts/analyze_occlusion_temporal_boundary.py
 scripts/analyze_occlusion_temporal_boundary_matched.py
+scripts/analyze_occlusion_online_proxy_readiness.py
 scripts/validate_matrix_dataset.py
 src/tracking/support_audit.py
 tests/test_matrix_gt.py
 tests/test_temporal_boundary_matched.py
+tests/test_online_proxy_readiness.py
 ```
 
 Concept notes:
@@ -191,6 +191,13 @@ threshold-stability experiments.
   (`0.277068` vs `0.416513` group-CV RMSE; CI `[-0.959284, -0.846348]`), but
   same-delay coverage spread is only `0.005815` and early-frame gain drops
   `0.704866` from 500ms to 1000ms.
+- MATRIX early-frame online proxy readiness completed by reusing the `0-999`
+  counterfactual episode/frame outputs. Decision is `online_proxy_weak`.
+  Episode-level M5 combined online proxy improves F1 (`0.889655` vs delay-only
+  `0.813600`) and recall is `0.879260`, but AUC improves only `0.003205`
+  (`0.967811` vs `0.964606`). Frame-level M5 has strong AUC (`0.969113`) over
+  delay-only (`0.830986`), so the signal is real but not yet sufficient for
+  full policy learning.
 - MATRIX server migration completed to
   `aiso-image@10.16.9.138:/mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/`
   using `migration_matrix_server_files.txt`. All manifest paths exist on the
@@ -227,10 +234,9 @@ identity/position update separation, rather than continue scalar v2 threshold
 sweeps.
 
 For the occlusion-support temporal boundary, accept `early_frame_gap_boundary`
-as the current refined mechanism. Do not use strict delay-rho cell count as a
-hard failure, but still report group sparsity as extrapolation risk. The next
-step is to convert early-frame availability into online proxy variables before
-policy learning.
+as the current refined mechanism. Online proxies are useful but weak at the
+episode action level. Do not enter full policy learning yet; first perform
+threshold-calibrated action-readiness using M1/M5 out-of-fold probabilities.
 
 ## Known Caveats
 
@@ -242,6 +248,9 @@ policy learning.
   delay-rho cell count, but sparsity remains an extrapolation risk. Do not claim
   a final numeric harm threshold; the accepted mechanism-level decision is
   `early_frame_gap_boundary`.
+- `online_proxy_weak` means the proxy is not useless. It improves threshold
+  behavior and frame-level prediction, but episode-level ranking is already
+  dominated by delay-only under current zero-noise fixed-delay controls.
 
 - Phase 2 used GT boxes plus ReID features to isolate OOSM timing; detector
   miss/false-positive behavior was not measured.
@@ -270,7 +279,63 @@ policy learning.
   not a strict causal counterfactual. Use it for Stage A boundary decisions and
   event-subset prioritization, not as a replacement for full MOT metrics.
 
-## Latest Session Update (2026-07-22 matched diagnostics)
+## Latest Session Update (2026-07-24 online proxy readiness)
+
+Changed files:
+
+```text
+scripts/analyze_occlusion_online_proxy_readiness.py
+tests/test_online_proxy_readiness.py
+summary_md/experiments/2026-7-24/exp_20260724_001_matrix_early_frame_online_proxy_readiness.md
+summary_md/experiments/2026-7-24/exp_20260724_001_matrix_early_frame_online_proxy_readiness_analysis.md
+mermaid/exp_20260724_001_matrix_early_frame_online_proxy_readiness/online_proxy_readiness_flow.mmd
+mermaid/overall_experiment_design_20260709.mmd
+summary_md/current_experiment_stage.md
+summary_md/current_status.md
+summary_md/experiments/INDEX.md
+GLOSSARY.md
+```
+
+Outputs created:
+
+```text
+outputs/20260724_matrix_early_frame_online_proxy_readiness_smoke/
+outputs/20260724_matrix_early_frame_online_proxy_readiness/
+```
+
+Verified results:
+
+- Decision: `online_proxy_weak`.
+- Episode rows: `2214`; frame rows: `45624`.
+- Episode M5 vs M1: AUC `0.967811` vs `0.964606`, F1 `0.889655` vs
+  `0.813600`, recall `0.879260`.
+- Frame M5 vs M1: AUC `0.969113` vs `0.830986`.
+- Interpretation: online proxy is useful for calibration and frame-level
+  prediction, but episode-level ranking gain is too small for full policy
+  learning.
+- GitHub tracking issue created:
+  `https://github.com/Judecoodingspace/matrix_async_comm_tracking/issues/3`.
+
+Commands run:
+
+```bash
+PYTHONPATH=src /usr/bin/python3 -m py_compile scripts/analyze_occlusion_online_proxy_readiness.py tests/test_online_proxy_readiness.py
+PYTHONPATH=src python -m pytest tests/test_online_proxy_readiness.py -q
+PYTHONPATH=src python -m pytest tests/ -q
+PYTHONPATH=src /usr/bin/python3 scripts/analyze_occlusion_online_proxy_readiness.py --input-dir outputs/20260722_matrix_occlusion_temporal_boundary_expansion --matched-dir outputs/20260722_matrix_temporal_boundary_matched_diagnostics --output-dir outputs/20260724_matrix_early_frame_online_proxy_readiness_smoke --max-episode-rows 400 --max-frame-rows 4000 --seed 7
+PYTHONPATH=src /usr/bin/python3 scripts/analyze_occlusion_online_proxy_readiness.py --input-dir outputs/20260722_matrix_occlusion_temporal_boundary_expansion --matched-dir outputs/20260722_matrix_temporal_boundary_matched_diagnostics --output-dir outputs/20260724_matrix_early_frame_online_proxy_readiness --seed 7
+```
+
+Failed attempts:
+
+```text
+The first formal run was interrupted because full frame-level standard-library
+logistic group-CV was too slow. The script now keeps full frame dataset output
+but uses a deterministic balanced frame sample for auxiliary frame-level model
+comparison.
+```
+
+## Previous Session Update (2026-07-22 matched diagnostics)
 
 Changed files:
 
@@ -570,16 +635,20 @@ git status --short failed because this directory is not a Git worktree.
 
 ## Next Command
 
-Run the online-proxy readiness experiment design next. The immediate coding
-starting point is to reuse the `exp_20260722_002` matched diagnostics outputs
-and build a predictor for whether an episode/frame has positive support value
-from online-observable variables.
+Design the threshold-calibrated action-readiness audit. It should reuse:
 
 ```bash
-PYTHONPATH=src /usr/bin/python3 scripts/analyze_occlusion_temporal_boundary_matched.py \
-  --input-dir outputs/20260722_matrix_occlusion_temporal_boundary_expansion \
-  --output-dir outputs/20260722_matrix_temporal_boundary_matched_diagnostics \
-  --seed 7
+outputs/20260724_matrix_early_frame_online_proxy_readiness/online_proxy_episode_dataset.csv
+outputs/20260724_matrix_early_frame_online_proxy_readiness/online_proxy_model_comparison.csv
+outputs/20260724_matrix_early_frame_online_proxy_readiness/online_proxy_group_cv.csv
+outputs/20260724_matrix_early_frame_online_proxy_readiness/online_proxy_error_diagnostics.csv
+```
+
+Target question:
+
+```text
+At the same harmful-accept rate, does M5 keep more helpful support than M1,
+especially in 1000ms and 1500ms delay groups?
 ```
 
 ```bash

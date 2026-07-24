@@ -1,28 +1,28 @@
 flowchart TD
-    TITLE["实验总设计速览<br>问题从 回填是否有效<br>收紧为 遮挡中迟到支撑观测何时有益 何时有害"]:::title
+    TITLE["实验总设计速览<br>从 回填是否有效 收紧为 遮挡中迟到支撑何时值得在线使用"]:::title
 
     TITLE --> S0
 
     subgraph G0["阶段0 旧路线证伪"]
-        S0["M3OT 回填路线关闭<br>回填不是主方法"]:::fail
-        E0["证据<br>全局回填 IDF1 0.557 小于丢弃 0.656<br>事件门控 0.628 仍小于丢弃 0.656<br>标准 高于丢弃且不增加 IDSW<br>收紧 放弃 M3OT 回填主线"]:::evidence
-        S0 -. 数据支撑 .-> E0
+        S0["M3OT 回填主线关闭"]:::fail
+        E0["证据<br>全局回填 0.557 小于丢弃 0.656<br>事件门控 0.628 仍小于丢弃"]:::evidence
+        S0 -.-> E0
     end
 
     S0 --> S1
 
     subgraph G1["阶段1 MATRIX 真值世界坐标机制"]
-        S1["数据切换完成<br>MATRIX 可用于机制实验"]:::pass
-        E1["证据<br>50 帧 2000 行 40 个稳定身份<br>身份字段缺失 0<br>平均 6.612 个可见视角<br>标准 身份 世界坐标 标定均可用<br>收紧 先排除检测器和外观特征噪声"]:::evidence
-        S1 -. 数据支撑 .-> E1
+        S1["MATRIX 数据可用"]:::pass
+        E1["标准<br>身份 世界坐标 标定 LoS 可用<br>收紧 排除检测器和外观噪声"]:::evidence
+        S1 -.-> E1
 
-        S2["异步时序机制成立<br>捕获时刻融合优于到达时刻融合"]:::pass
-        E2["证据<br>捕获时刻融合各延迟 IDF1 1.000 且 IDSW 0<br>到达时刻固定3帧 IDF1 0.373<br>到达时刻固定5帧 IDF1 0.325<br>标准 捕获时刻保持上界 到达时刻随延迟退化<br>收紧 通信延迟本身成为主压力源"]:::evidence
-        S2 -. 数据支撑 .-> E2
+        S2["异步时序机制成立"]:::pass
+        E2["证据<br>捕获时刻融合保持上界<br>到达时刻融合随延迟退化"]:::evidence
+        S2 -.-> E2
 
-        S3["2 帧有害阈值稳定<br>到达时刻融合开始低于安全基线"]:::pass
-        E3["证据<br>0 到 49 固定2帧 IDF1 0.115 小于丢弃 0.846<br>0 到 199 固定2帧 IDF1 0.0529 小于丢弃 0.3525<br>7 个窗口主阈值均为 2 帧<br>标准 多窗口阈值一致 捕获时刻检查通过<br>收紧 先固定当前真值坐标设置下的伤害阈值"]:::evidence
-        S3 -. 数据支撑 .-> E3
+        S3["2 帧有害阈值稳定"]:::pass
+        E3["证据<br>多个窗口均在 fixed_2 越过安全边界"]:::evidence
+        S3 -.-> E3
     end
 
     S1 --> S2
@@ -30,62 +30,77 @@ flowchart TD
     S3 --> S4
 
     subgraph G2["阶段A 几何门控边界"]
-        S4["加入时间和坐标不确定性<br>捕获时刻不是充分条件"]:::partial
-        E4["证据<br>固定2帧 加正负1帧抖动 加0.50m噪声<br>IDF1 0.0669 小于丢弃 0.3525<br>标准 中等不确定性下仍不低于丢弃<br>结果 未通过<br>收紧 下一步必须显式处理风险"]:::evidence
-        S4 -. 数据支撑 .-> E4
+        S4["时间戳不是充分条件"]:::partial
+        E4["证据<br>时间抖动和0.50m坐标噪声下<br>普通时间戳融合低于丢弃"]:::evidence
+        S4 -.-> E4
 
-        S5["几何门控有控害价值<br>但不能证明支撑观测净收益为正"]:::partial
-        E5["证据<br>第二版综合门控在0.50m噪声下 IDF1 0.1776<br>优于第一版 0.062 和普通不确定融合 0.077<br>但仍小于丢弃 0.3525<br>支撑观测净边际值为 -5615<br>标准 高于丢弃至少 0.05 且降低 IDSW<br>结论 Stage A 关闭为伤害边界"]:::evidence
-        S5 -. 数据支撑 .-> E5
+        S5["几何门控只能控害<br>不能证明净收益为正"]:::partial
+        E5["证据<br>v2c 优于 plain uncertain<br>但仍低于 drop-delayed<br>支撑净边际值为负"]:::evidence
+        S5 -.-> E5
     end
 
     S4 --> S5
     S5 --> S6
 
-    subgraph G3["阶段B前置 遮挡场景因果审计"]
-        S6["场景收窄到主视角遮挡<br>D1 不可见 支撑无人机可见"]:::pass
-        E6["理由<br>全局两阶段框架中支撑观测边际收益太弱<br>遮挡时主视角缺证据 支撑观测才可能明显有用<br>通信被定义为异步扰动和信息维度<br>不是带宽优化主线<br>收紧 只问遮挡中的支撑价值"]:::evidence
-        S6 -. 研究定位 .-> E6
+    subgraph G3["阶段B前置 遮挡支撑因果审计"]
+        S6["场景收窄到主视角遮挡"]:::pass
+        E6["理由<br>主视角缺证据时<br>support 才有明显边际价值"]:::evidence
+        S6 -.-> E6
 
-        S7["遮挡延迟比值审计<br>仅离线上界不足以说明在线边界"]:::partial
-        E7["证据<br>76 个评估遮挡片段<br>离线修正各延迟 IDF1 1.000<br>到达时刻遮挡 IDF1 从 500ms 的 0.990 降到 1000ms 的 0.197<br>标准 延迟和遮挡时长单元需足够密集<br>差距 这是描述性结果 不能直接宣称因果边界"]:::evidence
-        S7 -. 数据支撑 .-> E7
+        S7["遮挡 delay-ratio 描述审计"]:::partial
+        E7["结论<br>离线上界不足以说明在线边界<br>rho_episode 只能事后诊断"]:::evidence
+        S7 -.-> E7
 
-        S8["因果在线回放审计<br>在线价值存在 但边界仍未可辨识"]:::partial
-        E8["证据<br>因果在线遮挡 IDF1<br>500ms 为 0.990<br>1000ms 为 0.393<br>5000ms 为 0.184<br>离线修正始终 1.000<br>只有 10 个延迟和 rho 单元 n 至少 5<br>标准 单元覆盖足够才能拟合边界<br>收紧 仅比值边界已不够"]:::evidence
-        S8 -. 数据支撑 .-> E8
+        S8["因果在线回放审计"]:::partial
+        E8["结论<br>500ms 有强在线价值<br>1000ms 后快速下降"]:::evidence
+        S8 -.-> E8
+
+        S9["成对反事实测量校准"]:::pass
+        E9["标准<br>Run A 复现 mismatch 0<br>mask mismatch 0<br>不使用真值身份修轨迹"]:::evidence
+        S9 -.-> E9
     end
 
     S6 --> S7
     S7 --> S8
-    S8 --> CURRENT
+    S8 --> S9
+    S9 --> S10
 
-    subgraph G4["当前位置"]
-        CURRENT["当前阶段<br>遮挡支撑的因果测量校准<br>计划 exp_20260705_001"]:::current
-        EC["要解决的混淆<br>回放可能改变轨迹号<br>前一个遮挡片段会污染后一个片段的初始状态<br>通过标准<br>不使用真值身份参与融合<br>分叉 A 必须复现基准在线结果<br>同一初始状态下 A 减 B 得到支撑因果增益<br>收紧 先校准测量框架 再扩展数据"]:::currentEvidence
-        CURRENT -. 当前判据 .-> EC
+    subgraph G4["阶段B前置 时间边界解释"]
+        S10["0-999 时间边界扩展"]:::pass
+        E10["结论<br>M4 delay coverage interaction<br>优于 delay only<br>但旧 cell gate 过硬"]:::evidence
+        S10 -.-> E10
+
+        S11["matched diagnostics 完成"]:::pass
+        E11["结论<br>当前机制为 early-frame gap<br>早期发布帧缺 support 是主因"]:::evidence
+        S11 -.-> E11
+
+        CURRENT["当前位置<br>online proxy readiness 已执行<br>结论 online_proxy_weak"]:::current
+        EC["证据<br>M5 F1 提升 0.076<br>AUC 只提升 0.003<br>frame proxy 强但 episode ranking 增量不足"]:::currentEvidence
+        CURRENT -.-> EC
     end
 
+    S10 --> S11
+    S11 --> CURRENT
     CURRENT --> N1
 
-    subgraph G5["后续计划"]
-        N1["扩展到 0 到 999<br>让伤害边界可辨识"]:::plan
-        EN1["标准<br>多个延迟档和多个 rho 桶都有足够遮挡片段<br>可判断 仅绝对延迟 仅遮挡比值 或二者联合<br>差距 从 76 个片段扩展到更密集覆盖"]:::planEvidence
-        N1 -. 通过标准 .-> EN1
+    subgraph G5["下一步计划"]
+        N1["动作阈值校准审计"]:::plan
+        EN1["标准<br>同等 harmful accept 下<br>M5 保留更多 helpful support<br>重点 1000ms 和 1500ms"]:::planEvidence
+        N1 -.-> EN1
 
-        N2["加入线索新鲜度压力<br>坐标噪声 速度乘延迟 门控半径"]:::plan
-        EN2["标准<br>在已识别的边界附近仍能解释何时有益何时有害<br>差距 从零噪声时序效应扩展到空间陈旧"]:::planEvidence
-        N2 -. 通过标准 .-> EN2
+        N2["加入坐标噪声和空间陈旧"]:::plan
+        EN2["标准<br>验证 v delay 除以 gate radius<br>是否成为第三维边界"]:::planEvidence
+        N2 -.-> EN2
 
-        N3["多信息维度门控<br>坐标 方差 速度 框一致性 身份特征"]:::plan
-        EN3["标准<br>遮挡场景中高于丢弃迟到观测和到达时刻融合<br>关键子集 IDSW 明确下降<br>差距 从纯几何门控扩展到多线索决策"]:::planEvidence
-        N3 -. 通过标准 .-> EN3
+        N3["消息内容消融"]:::plan
+        EN3["标准<br>坐标 bbox pose 身份线索<br>作为信息维度贡献不同"]:::planEvidence
+        N3 -.-> EN3
     end
 
     N1 --> N2
     N2 --> N3
 
-    SUMMARY["一眼结论<br>已证实 迟到观测会影响身份跟踪<br>已证实 到达时刻融合在2帧附近稳定有害<br>已证实 遮挡中捕获时刻在线回放有价值<br>已证实 纯几何门控在噪声下不足<br>当前任务 修正遮挡因果测量 再拟合延迟边界"]:::summary
+    SUMMARY["一眼结论<br>已证实迟到观测影响身份跟踪<br>已证实遮挡中短延迟 support 有在线价值<br>已证实 episode rho 过粗<br>当前不直接进入 policy learning<br>下一步做动作阈值校准"]:::summary
 
     CURRENT --> SUMMARY
 

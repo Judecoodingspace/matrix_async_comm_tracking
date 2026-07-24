@@ -420,6 +420,22 @@ Group cross-validation。当前 temporal boundary 实验中的 group 是 `(delay
 
 ---
 
+### Online Proxy Readiness / 在线代理可行性
+
+> 就像你不能等比赛结束才判断天气好不好，而要看现场风向、温度和云量来决定下一步战术。
+
+检验实时可获得变量是否足以预测 support observation 的未来收益。当前候选 proxy 包括 `latest_support_age_ms`、`has_arrived_support`、`is_fresh_support`、`time_since_last_primary_seen` 和 early occlusion run length。`exp_20260724_001` 的结论是 `online_proxy_weak`：这些 proxy 改善 F1 和 frame-level 预测，但 episode-level AUC 相比 delay-only 增量不足。
+
+---
+
+### Action-Threshold Calibration / 动作阈值校准
+
+> 就像不是马上训练一个复杂司机，而是先决定红灯前多少米必须刹车、黄灯什么时候能过。
+
+在进入 policy learning 前，先用已有模型的 out-of-fold probability 扫描 action threshold，比较在同等 harmful accept 下能保留多少 helpful support。它回答的是“何时触发 discard、causal fusion 或 recovery-style action”，而不是直接学习完整策略。
+
+---
+
 ## 当前实验结论速查
 
 | 发现 | 通俗解释 |
@@ -434,7 +450,8 @@ Group cross-validation。当前 temporal boundary 实验中的 group 是 `(delay
 | 回填后需要重放下游关联 | 案卷第 5 页改了结论，第 6-10 页不能假装没看见——要么重写整卷（一致性），要么留着矛盾（但可能引入新的错误） |
 | 成对反事实测量通过但边界仍未定 | 同一张答卷的 A/B 对照证明提示确实有用，但题目数量还不够，不能画出稳定分数线 |
 | 当前时间边界判为早期帧缺口 | 支撑消息不是只要在遮挡结束前到就够；如果前几帧在线结果已经发布且身份断开，后到的支撑只能影响恢复期 |
+| 在线代理目前还弱 | 它能帮你调阈值，但还不能单独支撑一个复杂策略学习器 |
 
 ---
 
-*最后更新: 2026-07-22 | 当前术语数: 46*
+*最后更新: 2026-07-24 | 当前术语数: 48*

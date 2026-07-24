@@ -43,10 +43,14 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
   - `scripts/phase1_matrix_support_marginal_value_audit.py`
   - `scripts/phase2_matrix_occlusion_counterfactual_calibration.py`
   - `scripts/analyze_occlusion_temporal_boundary.py`
+  - `scripts/analyze_occlusion_temporal_boundary_matched.py`
+  - `scripts/analyze_occlusion_online_proxy_readiness.py`
 - Support audit helpers:
   `src/tracking/support_audit.py`
 - Tests:
-  `tests/test_matrix_gt.py`
+  - `tests/test_matrix_gt.py`
+  - `tests/test_temporal_boundary_matched.py`
+  - `tests/test_online_proxy_readiness.py`
 
 ## Latest Result
 
@@ -58,6 +62,7 @@ summary_md/experiments/2026-6-30/exp_20260630_003_matrix_causal_oosm_delay_ratio
 summary_md/experiments/2026-7-5/exp_20260705_001_matrix_occlusion_counterfactual_measurement_calibration.md
 summary_md/experiments/2026-7-22/exp_20260722_001_matrix_occlusion_temporal_boundary_expansion.md
 summary_md/experiments/2026-7-22/exp_20260722_002_matrix_temporal_boundary_matched_diagnostics.md
+summary_md/experiments/2026-7-24/exp_20260724_001_matrix_early_frame_online_proxy_readiness.md
 ```
 
 Latest causal/counterfactual result:
@@ -93,6 +98,11 @@ Latest causal/counterfactual result:
 - Matched diagnostics show the clearest mechanism is early online support gap,
   not simple coverage buckets. Same-delay coverage spread is only `0.005815`,
   while early-frame gain drops by `0.704866` from 500ms to 1000ms.
+- Online proxy readiness is complete. Current decision is `online_proxy_weak`:
+  `M5_combined_online_proxy` improves episode-level F1 from `0.813600` to
+  `0.889655`, but episode-level AUC improves only from `0.964606` to
+  `0.967811`. Frame-level M5 AUC is strong (`0.969113`), but this is not enough
+  to justify full policy learning yet.
 
 Previous Stage A result:
 
@@ -161,14 +171,13 @@ boundary reference**, not as a required IDF1 lower bound.
 
 Immediate next action:
 
-1. Design an online-proxy readiness experiment for the early-frame gap
-   mechanism. Candidate proxy variables: `latest_support_age_ms`,
-   `time_since_last_primary_seen`, `frames_since_support_arrived`, and
-   early occlusion run length.
-2. Keep `rho_episode` as a post-hoc diagnostic only; do not use it as an online
-   gate input because the true occlusion duration is unknown until the episode
-   ends.
-3. After online proxy readiness, add pose/world-coordinate noise and test
+1. Run a threshold-calibrated action-readiness audit using M1 and M5
+   out-of-fold probabilities. The question is whether M5 can keep more helpful
+   support at the same harmful-accept rate, especially around 1000ms and
+   1500ms.
+2. Keep `rho_episode` as a post-hoc diagnostic only; it is not an online gate
+   input.
+3. After action-threshold calibration, add pose/world-coordinate noise and test
    whether `v*delay/gate_radius` becomes a third boundary dimension.
 
 Deferred multi-cue mainline:

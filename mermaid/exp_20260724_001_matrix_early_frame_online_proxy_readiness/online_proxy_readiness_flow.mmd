@@ -1,0 +1,13 @@
+flowchart LR
+    A["输入<br>0-999 反事实输出"] --> B["构造标签"]
+    B --> C["Episode<br>during gain 是否大于 0.05"]
+    B --> D["Frame<br>frame gain 是否大于 0"]
+    C --> E["Delay only<br>最小在线基线"]
+    C --> F["Online proxy<br>新鲜度和早期遮挡状态"]
+    D --> G["Frame freshness<br>辅助诊断"]
+    E --> H{"Group CV<br>是否稳定优于 delay only"}
+    F --> H
+    G --> H
+    H -- "AUC 增量不足<br>F1 有提升" --> I["当前阶段<br>online proxy weak"]
+    I --> J["下一步<br>动作阈值校准"]
+    J --> K["之后<br>pose noise 或 message content"]
