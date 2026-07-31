@@ -6,15 +6,15 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
-import inspect
 import json
 import math
 import os
 import sys
 import time
 from collections import defaultdict
+from dataclasses import replace
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 
 import numpy as np
 import torch
@@ -112,6 +112,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--progress-every", type=int, default=25)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--finalize-only", action="store_true", help="Rebuild measurement/decision files from completed CSV outputs")
     parser.add_argument(
         "--reference-dir",
         type=Path,
@@ -178,6 +179,20 @@ class ProgressPrinter:
 def stable_identity_fold(person_id: int, *, seed: int, folds: int = 2) -> int:
     digest = hashlib.sha256(f"{int(seed)}:person:{int(person_id)}".encode("ascii")).digest()
     return int.from_bytes(digest[:8], "little") % int(folds)
+
+
+def identity_lookup_key_uses_person_id(
+    observations: Sequence[MatrixObservation],
+    *,
+    key_fn: Callable[[MatrixObservation], object] = observation_sensor_key,
+    sample_size: int = 100,
+) -> int:
+    """Behaviorally audit whether changing only GT identity changes a runtime key."""
+    for observation in observations[: max(int(sample_size), 1)]:
+        changed = replace(observation, person_id=int(observation.person_id) + 1_000_000)
+        if key_fn(observation) != key_fn(changed):
+            return 1
+    return 0
 
 
 def atomic_write_json(path: Path, payload: Mapping[str, object]) -> None:
@@ -673,8 +688,54 @@ def write_decision(path: Path, decision: Mapping[str, object], quality: Sequence
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def finalize_existing_outputs(output_dir: Path) -> dict[str, object]:
+    quality_rows = read_rows(output_dir / "real_embedding_quality_summary.csv")
+    transfer_rows = read_rows(output_dir / "real_embedding_transfer_summary.csv")
+    measurement_rows = read_rows(output_dir / "real_embedding_measurement_gate.csv")
+    if not quality_rows or not transfer_rows or len(measurement_rows) != 1:
+        raise RuntimeError(f"Incomplete formal outputs for finalization: {output_dir}")
+
+    measurement = dict(measurement_rows[0])
+    sample = MatrixObservation(
+        frame_id=0,
+        drone_id=0,
+        person_id=1,
+        position_id=1,
+        world_xyz=(0.0, 0.0, 0.0),
+        bbox_xyxy=(0, 0, 1, 1),
+        capture_time=0,
+        arrival_time=0,
+        delay=0,
+    )
+    identity_key_flag = identity_lookup_key_uses_person_id([sample])
+    coverage_rows = json.loads(str(measurement.get("coverage", "[]")))
+    expected = int(measurement["expected_condition_checkpoints"])
+    completed = int(measurement["completed_condition_checkpoints"])
+    measurement_valid = bool(
+        coverage_rows
+        and all(float(row["embedding_coverage"]) >= 0.95 for row in coverage_rows)
+        and int(measurement["embedding_norm_mismatches"]) == 0
+        and int(measurement["calibration_evaluation_fold_overlap"]) == 0
+        and identity_key_flag == 0
+        and int(measurement["primary_perturbation_mismatches"]) == 0
+        and int(measurement["reference_reproduction_mismatches"]) == 0
+        and completed == expected
+    )
+    measurement["identity_lookup_key_uses_person_id"] = identity_key_flag
+    measurement["measurement_valid"] = int(measurement_valid)
+    decision = decide(quality_rows, transfer_rows, measurement_valid=measurement_valid)
+    write_rows(output_dir / "real_embedding_measurement_gate.csv", [measurement])
+    write_decision(output_dir / "real_embedding_decision.md", decision, quality_rows, measurement)
+    return decision
+
+
 def main() -> None:
     args = parse_args()
+    output_dir = args.output_dir.expanduser().resolve()
+    if args.finalize_only:
+        decision = finalize_existing_outputs(output_dir)
+        print(f"[5/5][report] finalize-only complete decision={decision['decision']} output={output_dir}", flush=True)
+        return
     allowed_backends = {"m3ot_gem", "osnet_x0_25_msmt17"}
     unknown = set(args.embedding_backends) - allowed_backends
     if unknown:
@@ -684,7 +745,6 @@ def main() -> None:
     for delay_name in args.delay_profiles:
         fixed_delay_frames(delay_name)
 
-    output_dir = args.output_dir.expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     progress = ProgressPrinter(frame_start=args.frame_start, frame_end=args.frame_end, progress_every=args.progress_every)
     manifest = build_manifest(args)
@@ -1124,7 +1184,7 @@ def main() -> None:
         for fold in (0, 1)
     }
     fold_overlap = len(fold_people[0] & fold_people[1])
-    identity_lookup_uses_person_id = int("person_id" in inspect.getsource(observation_sensor_key))
+    identity_lookup_uses_person_id = identity_lookup_key_uses_person_id(los_observations)
     measurement_valid = bool(
         all(float(row["embedding_coverage"]) >= 0.95 for row in coverage_rows)
         and norm_mismatches == 0

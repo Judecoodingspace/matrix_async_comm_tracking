@@ -1,15 +1,16 @@
 # Current Status
 
-Updated: 2026-07-31
+Updated: 2026-08-01
 
 ## Latest Research Focus
 
-The current focus is transferring the simulated identity-cue result to frozen
-real CNN appearance evidence. `exp_20260731_002_matrix_real_embedding_quality_transfer`
-is implemented and pending a user-run smoke/formal. It uses MATRIX GT projected
-bboxes with LoS filtering, frozen M3OT-GeM and OSNet embeddings, person-disjoint
-two-fold candidate-conditioned threshold calibration, visible terminal progress,
-and per-condition checkpoint/resume.
+The real CNN appearance transfer formal is complete. The current decision is
+`tracking_transfer_supported` and `boundary_consistent`. M3OT-GeM has margin
+`0.032300`, below the simulated failure boundary, and does not improve tracking.
+OSNet has margin `0.124401`; with covariance it passes both transition delays:
+survival delta is `0.185434/0.090150` and IDSW delta is
+`-2.931694/-0.338798` at 1000/1500ms. The next focus is separating identity
+state updates from position-state authority, not training another ReID model.
 
 The current decision is `identity_dimension_supported`. At `0.25m` support
 world-coordinate noise, high useful-window `world_xy` fixed-lag remains harmful
@@ -967,4 +968,22 @@ finite normalized 512-D embedding; M3OT YOLO layer-15 + GeM produced a finite
 normalized 256-D embedding. A Python 3.8 checkpoint-key compatibility issue in
 `src/detection/osnet_reid.py` was fixed and covered by a regression test.
 
-Smoke and formal runs remain intentionally pending for manual execution.
+At this preflight checkpoint, smoke and formal runs were still pending; the
+subsequent formal result is recorded below.
+
+## Latest Formal Update (2026-08-01 real embedding transfer)
+
+Formal `0-999` completed with 50/50 condition checkpoints. The initial report
+incorrectly returned `measurement_invalid` because a source-string gate matched
+`person_id` inside the runtime-key function's docstring. The gate now changes
+only GT personID and checks whether the runtime key changes; it reports no
+identity leakage. Existing formal checkpoints were preserved and finalized via
+`--finalize-only`.
+
+Verified decision:
+
+```text
+tracking_transfer_supported
+boundary_consistent
+passing backend: osnet_x0_25_msmt17
+```

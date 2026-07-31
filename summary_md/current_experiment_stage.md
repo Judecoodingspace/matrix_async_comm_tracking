@@ -146,6 +146,12 @@ Latest causal/counterfactual result:
   fails at all five thresholds. The discrete boundary is therefore
   `(0.040019, 0.056747]` under the current simulated generator and MATRIX
   pressure setting.
+- Real embedding quality transfer formal is complete. Current decision is
+  `tracking_transfer_supported` and `boundary_consistent`. M3OT-GeM margin
+  `0.032300` is below the simulated boundary and fails. OSNet margin `0.124401`
+  is above it; covariance + appearance passes both 1000ms and 1500ms with
+  survival delta `0.185434/0.090150` and IDSW delta
+  `-2.931694/-0.338798`.
 
 Previous Stage A result:
 
@@ -214,12 +220,11 @@ boundary reference**, not as a required IDF1 lower bound.
 
 Immediate next action:
 
-1. Manually run the `exp_20260731_002` smoke command after installing the
-   user-local TorchReID/Ultralytics dependencies and OSNet checkpoint.
-2. If smoke measurement/caches complete, run formal `0-999` with `--resume`.
-3. Analyze whether M3OT-GeM or OSNet crosses the simulated margin target and
-   whether held-out `geometry + covariance + appearance` beats both drop and
-   covariance-only at `fixed_2/fixed_3 + 0.25m`.
+1. Design the identity-state / position-state update separation ablation.
+2. Compare position-only, identity-only, joint accept/reject and separated
+   update using the frozen OSNet backend.
+3. After the mechanism is isolated, replace noisy GT world XY with
+   bbox + camera pose/ray or reprojection-based geometry.
 
 Deferred multi-cue mainline:
 

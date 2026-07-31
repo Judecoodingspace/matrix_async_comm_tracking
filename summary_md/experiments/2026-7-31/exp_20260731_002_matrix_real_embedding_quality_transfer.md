@@ -104,6 +104,6 @@ outputs/20260731_matrix_real_embedding_quality_transfer/
 
 ## Status
 
-Implementation complete; manual smoke/formal pending.
+Formal complete. Decision: `tracking_transfer_supported`; measurement gates pass and all 50/50 checkpoints are complete. M3OT-GeM margin `0.032300` is below the simulated boundary and fails transfer. OSNet margin `0.124401` is above it; covariance + appearance passes at both 1000ms and 1500ms. Analysis: `summary_md/experiments/2026-7-31/exp_20260731_002_matrix_real_embedding_quality_transfer_analysis.md`.
 
 Flowchart: `mermaid/exp_20260731_002_matrix_real_embedding_quality_transfer/real_embedding_transfer_flow.mmd`.

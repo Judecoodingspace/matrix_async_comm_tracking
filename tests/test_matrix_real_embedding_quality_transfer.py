@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import json
 import sys
 from pathlib import Path
 
@@ -18,6 +20,8 @@ from phase2_matrix_real_embedding_quality_transfer import (  # noqa: E402
     ProgressPrinter,
     calibrate_thresholds,
     decide,
+    finalize_existing_outputs,
+    identity_lookup_key_uses_person_id,
     stable_identity_fold,
 )
 from detection.osnet_reid import strip_checkpoint_prefix  # noqa: E402
@@ -73,6 +77,14 @@ def test_image_path_and_runtime_key_do_not_depend_on_person_id(tmp_path: Path) -
     right = _observation(person=99)
     assert image_path_for_observation(tmp_path, left) == tmp_path / "image_subsets" / "D1" / "0000.png"
     assert observation_sensor_key(left) == observation_sensor_key(right)
+
+
+def test_identity_lookup_person_id_gate_is_behavioral() -> None:
+    observation = _observation(person=1)
+    assert identity_lookup_key_uses_person_id([observation]) == 0
+    assert identity_lookup_key_uses_person_id(
+        [observation], key_fn=lambda row: (row.person_id, row.capture_time)
+    ) == 1
 
 
 def test_embedding_cache_round_trip_excludes_identity(tmp_path: Path) -> None:
@@ -242,3 +254,49 @@ def test_decision_distinguishes_supported_and_boundary_contradiction() -> None:
     assert result["decision"] == "tracking_transfer_supported"
     below = decide([{**quality[0], "quality_relation": "below"}], transfer, measurement_valid=True)
     assert below["decision"] == "simulated_boundary_not_transferable"
+
+
+def test_finalize_only_rebuilds_behavioral_measurement_gate(tmp_path: Path) -> None:
+    def write(path: Path, rows: list[dict[str, object]]) -> None:
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+
+    quality = [{"backend": "model", "mean_similarity_margin": "0.10", "quality_relation": "above"}]
+    transfer = [
+        {
+            "backend": "model",
+            "delay_ms": delay,
+            "pipeline": "fixed_lag_world_xy_covariance_real_appearance",
+            "threshold_role": "selected",
+            "mean_survival_delta_vs_drop": "0.10",
+            "mean_window_idsw_delta_vs_drop": "-1.0",
+            "mean_survival_delta_vs_covariance": "0.08",
+            "survival_vs_covariance_ci_low": "0.02",
+        }
+        for delay in ("1000.000", "1500.000")
+    ]
+    measurement = [
+        {
+            "measurement_valid": 0,
+            "primary_perturbation_mismatches": 0,
+            "embedding_norm_mismatches": 0,
+            "identity_lookup_key_uses_person_id": 1,
+            "calibration_evaluation_fold_overlap": 0,
+            "reference_reproduction_status": "checked",
+            "reference_reproduction_mismatches": 0,
+            "expected_condition_checkpoints": 2,
+            "completed_condition_checkpoints": 2,
+            "coverage": json.dumps([{"embedding_coverage": "1.000000"}]),
+        }
+    ]
+    write(tmp_path / "real_embedding_quality_summary.csv", quality)
+    write(tmp_path / "real_embedding_transfer_summary.csv", transfer)
+    write(tmp_path / "real_embedding_measurement_gate.csv", measurement)
+
+    decision = finalize_existing_outputs(tmp_path)
+    updated = list(csv.DictReader((tmp_path / "real_embedding_measurement_gate.csv").open(encoding="utf-8")))[0]
+    assert decision["decision"] == "tracking_transfer_supported"
+    assert updated["measurement_valid"] == "1"
+    assert updated["identity_lookup_key_uses_person_id"] == "0"
