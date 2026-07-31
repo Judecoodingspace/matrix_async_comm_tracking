@@ -1,6 +1,6 @@
 # exp_20260731_002 MATRIX Real Embedding Quality Transfer
 
-GitHub tracking: [Issue #11](https://github.com/Judecoodingspace/matrix_async_comm_tracking/issues/11)
+GitHub tracking: [Issue #11](https://github.com/Judecoodingspace/matrix_async_comm_tracking/issues/11), [Draft PR #12](https://github.com/Judecoodingspace/matrix_async_comm_tracking/pull/12)
 
 ## Purpose
 
