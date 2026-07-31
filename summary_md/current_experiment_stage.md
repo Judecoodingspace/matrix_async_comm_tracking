@@ -45,12 +45,14 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
   - `scripts/analyze_occlusion_temporal_boundary.py`
   - `scripts/analyze_occlusion_temporal_boundary_matched.py`
   - `scripts/analyze_occlusion_online_proxy_readiness.py`
+  - `scripts/phase2_matrix_tracker_state_aware_reanchoring.py`
 - Support audit helpers:
   `src/tracking/support_audit.py`
 - Tests:
   - `tests/test_matrix_gt.py`
   - `tests/test_temporal_boundary_matched.py`
   - `tests/test_online_proxy_readiness.py`
+  - `tests/test_matrix_reanchoring.py`
 
 ## Latest Result
 
@@ -63,6 +65,10 @@ summary_md/experiments/2026-7-5/exp_20260705_001_matrix_occlusion_counterfactual
 summary_md/experiments/2026-7-22/exp_20260722_001_matrix_occlusion_temporal_boundary_expansion.md
 summary_md/experiments/2026-7-22/exp_20260722_002_matrix_temporal_boundary_matched_diagnostics.md
 summary_md/experiments/2026-7-24/exp_20260724_001_matrix_early_frame_online_proxy_readiness.md
+summary_md/experiments/2026-7-24/exp_20260724_002_matrix_tracker_state_aware_reanchoring.md
+summary_md/experiments/2026-7-26/exp_20260726_001_matrix_fixed_lag_useful_window_audit.md
+summary_md/experiments/2026-7-26/exp_20260726_002_matrix_fixed_lag_temporal_spatial_robustness.md
+summary_md/experiments/2026-7-26/exp_20260726_003_matrix_fixed_lag_simulated_identity_cue_ablation.md
 ```
 
 Latest causal/counterfactual result:
@@ -103,6 +109,32 @@ Latest causal/counterfactual result:
   `0.889655`, but episode-level AUC improves only from `0.964606` to
   `0.967811`. Frame-level M5 AUC is strong (`0.969113`), but this is not enough
   to justify full policy learning yet.
+- Tracker-state-aware delayed re-anchoring formal `0-999` is complete. Current
+  decision is `fixed_lag_sufficient`: at `1000ms`, state-aware and
+  `fixed_lag_oosm_lag2/3/5` all reach occlusion IDF1 `0.870100` / IDSW `829`,
+  versus drop-delayed IDF1 `0.052011` / IDSW `5084`; at `1500ms`, state-aware
+  and `fixed_lag_oosm_lag3/5` reach IDF1 `0.724058` / IDSW `2101`. The method
+  signal is strong, but the current state-aware rule does not exceed the best
+  fixed-lag ablation.
+- Fixed-lag useful support window audit is complete. Current decision is
+  `useful_window_modulated_fixed_lag`: eligible useful-window buckets have
+  survival delta spread `0.382940`, with `[0,0.25)` at `0.000000`,
+  `[0.5,0.75)` at `0.203212`, and `[0.75,1]` at `0.382940`. Therefore
+  `delay <= lag` is an eligibility condition, not a guarantee of gain.
+- Fixed-lag temporal-spatial robustness audit is complete. Current decision is
+  `temporal_spatial_boundary_identified`: high useful-window fixed-lag remains
+  useful at `0.10m` support world-coordinate noise (`fixed_2` occlusion IDF1
+  delta `0.107354`, `fixed_3` `0.094543`), but at `0.25m` survival delta turns
+  negative (`fixed_2` `-0.077936`, `fixed_3` `-0.078924`) and IDSW becomes
+  worse than drop-delayed.
+- Simulated identity cue ablation is complete. Current decision is
+  `identity_dimension_supported`: at `0.25m` support noise, high useful-window
+  `world_xy` fixed-lag remains harmful (`fixed_2` survival delta `-0.077936`,
+  `fixed_3` `-0.078924`), covariance-only is still insufficient, while
+  `world_xy + covariance + simulated identity` restores positive survival and
+  lowers IDSW below drop at both transition delays. Medium cue gives
+  `fixed_2` survival delta `0.289408` / IDSW delta `-4.327869` and `fixed_3`
+  `0.167618` / `-1.333333`.
 
 Previous Stage A result:
 
@@ -171,14 +203,16 @@ boundary reference**, not as a required IDF1 lower bound.
 
 Immediate next action:
 
-1. Run a threshold-calibrated action-readiness audit using M1 and M5
-   out-of-fold probabilities. The question is whether M5 can keep more helpful
-   support at the same harmful-accept rate, especially around 1000ms and
-   1500ms.
-2. Keep `rho_episode` as a post-hoc diagnostic only; it is not an online gate
-   input.
-3. After action-threshold calibration, add pose/world-coordinate noise and test
-   whether `v*delay/gate_radius` becomes a third boundary dimension.
+1. Add checkpoint/resume support to long formal runners before expanding the
+   message-content matrix. The simulated identity cue formal was slow enough
+   that future delay × noise × cue sweeps should checkpoint after each
+   condition.
+2. Run an identity cue quality boundary sweep. Vary embedding separation and
+   `identity_accept_threshold` to estimate what same/different similarity
+   margin a real ReID/CNN embedding must achieve to retain the `0.25m` gain.
+3. Replace simulated identity with calibrated/real appearance evidence:
+   compare appearance-only, geometry-only, geometry+appearance, and
+   geometry+appearance+covariance under `fixed_2/fixed_3 + 0.25m`.
 
 Deferred multi-cue mainline:
 

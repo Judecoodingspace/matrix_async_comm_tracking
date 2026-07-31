@@ -205,6 +205,112 @@
 
 ---
 
+### World-Coordinate Tracker Update / 世界坐标跟踪器更新
+
+> 就像不用看照片里人站在画面左边还是右边，而是把所有人先标到同一张地图上，再用地图距离更新轨迹。
+
+当前 `src/tracking/matrix_reanchoring.py` 中的 BEV/SORT-style tracker 使用 `MatrixObservation.world_xy` 更新状态。每条 track 的状态是：
+
+```text
+state = [x, y, vx, vy]
+```
+
+其中 `x, y` 是世界坐标平面位置，`vx, vy` 是速度。更新流程不是用 `person_id` 关联，而是用世界坐标距离、Hungarian assignment、nearest-track ranking、association margin 和 Kalman-style measurement update。
+
+ASCII 图解一：普通 frame update
+
+```text
+输入 observations:
+
+  primary obs:  D1 在当前帧看到的人
+  support obs:  D2-D8 已经可用的支撑观测
+  每条 obs 都有 world_xy = (x, y)
+
+当前 tracker state:
+
+  track 7: [x, y, vx, vy], covariance, miss_count, ...
+  track 8: [x, y, vx, vy], covariance, miss_count, ...
+
+每一帧:
+
+  1. predict_to(frame_id)
+
+       track state 按速度外推到当前帧
+
+       [x, y, vx, vy]  --->  [x + vx*dt, y + vy*dt, vx, vy]
+       covariance 增大
+
+  2. primary association
+
+       primary world_xy 和已有 track world_xy 计算距离矩阵
+
+                  track7     track8
+       obs A       0.3m       1.8m
+       obs B       1.5m       0.2m
+
+       Hungarian assignment + distance_threshold
+       距离 <= gate_radius 才更新，否则创建新 track
+
+  3. support association
+
+       support world_xy 找最近 track
+       residual = support_xy 到最近 track_xy 的距离
+       margin   = 第二近距离 - 最近距离
+
+       residual <= gate_radius 且 margin 足够大 -> update
+       否则 reject
+
+  4. Kalman-style update
+
+       innovation = observed_xy - predicted_xy
+       track state 向 observed_xy 拉近
+       covariance 下降
+       miss_count 清零
+```
+
+ASCII 图解二：fixed-lag delayed update 怎样使用 world-coordinate
+
+```text
+场景:
+  support 在 t1 拍到 world_xy=(4.2, 8.0)
+  通信延迟后在 t3 到达
+  lag = 3 frames, delay = 2 frames
+
+时间轴:
+
+  t0          t1          t2          t3
+  |-----------|-----------|-----------|
+              support拍到              support到达
+              capture=t1               arrival=t3
+
+fixed-lag 流程:
+
+  arrival at t3:
+
+    delay <= lag  ->  eligible
+
+    known_support_by_capture[t1].append(support_obs)
+
+    restore snapshot before t1
+            |
+            v
+    replay t1, t2, t3:
+
+      t1: primary(t1) + support(t1 world_xy) 更新 tracker
+      t2: primary(t2) + 已知 support 更新后的状态继续预测
+      t3: primary(t3) + 当前状态发布
+
+核心:
+  support 不是在 t3 当成当前位置使用
+  而是插回 t1 的 world-coordinate 状态里，再把 tracker 重放到 t3
+```
+
+这个过程解释了为什么[[#Support World-Coordinate Noise / 支撑世界坐标噪声]]会伤害 fixed-lag：如果 `support(t1).world_xy` 本身偏了，fixed-lag 会把这个偏差写进 t1 的历史状态，再一路传播到 t2/t3。
+
+相关术语：[[#Fixed-Lag OOSM Update / 固定窗口乱序更新]]、[[#Support World-Coordinate Noise / 支撑世界坐标噪声]]、[[#Temporal-Spatial Risk / 时间-空间联合风险]]。
+
+---
+
 ### GeM Pooling / 广义均值池化
 
 > 就像在多个评委的评分中选一个代表值——极端时取最大值（最亮眼），温和时取平均值（最平均）。
@@ -234,6 +340,27 @@ Generalized Mean Pooling，一种可学习的池化操作：`GeM(x) = (avg(x^p))
 > 就像快递如果迟到到已经可能送错人，就干脆不送这件迟到包裹，只保留现场可靠信息。
 
 一种安全基线：当 support UAV 的观测存在通信延迟时，融合端直接丢弃这些迟到 support 观测，只依赖主 UAV 或准时到达的信息维持轨迹。在当前 MATRIX GT 实验中，它不是性能上界，而是"不要被迟到观测污染"的安全参照。如果某个 delayed fusion 方法还不如 `drop-delayed`，说明该方法引入的身份污染或错误更新超过了 support 信息带来的收益。
+
+ASCII 图解：
+
+```text
+时间轴:        t0        t1        t2        t3
+主 UAV:       看到人     遮挡      遮挡      重新看到
+support UAV:           拍到人
+通信到达:                                support(t1) 到达
+
+drop_delayed:
+
+              t0        t1        t2        t3
+online 输出:  track A   预测A?    预测A?    用主UAV恢复
+support包:             [t1拍到] ---------> 到达后直接丢弃 X
+
+核心动作:
+  迟到 support 不进入 tracker state
+  不回放、不重连、不修正历史
+  优点: 不污染身份
+  缺点: 主视角遮挡期间 support 的正确信息也被浪费
+```
 
 ---
 
@@ -313,6 +440,77 @@ Generalized Mean Pooling，一种可学习的池化操作：`GeM(x) = (avg(x^p))
 > 就像你知道照片拍摄时间是对的，但拍摄地点或镜头朝向估错了一点，地图上的落点就会偏到隔壁人身上。
 
 由无人机位姿误差、位姿插值/外推误差、相机标定误差或重投影模型误差导致的世界坐标偏差。当前 MATRIX GT 实验用 support observation 的 world-XY 高斯扰动作为代理噪声，模拟这种误差对 capture-time association 的影响。结果显示，0.50m world-XY 噪声已经足以让 timestamped uncertain fusion 在 `fixed_2` 下低于 drop-delayed。
+
+---
+
+### Support World-Coordinate Noise / 支撑世界坐标噪声
+
+> 就像支援无人机没有认错拍摄时间，但把目标在地图上的落点标偏了几十厘米。
+
+本项目当前的 `support world-coordinate noise` 是一种受控代理变量：只对 support UAV 的 `world_xy` 坐标加高斯扰动，primary UAV 的观测保持干净。它模拟的是 support 侧位姿误差、重投影误差、标定误差或通信后姿态对齐误差，而不是 detector 漏检或 ReID 错误。
+
+形式上，本轮实验对每条 support observation 做：
+
+```text
+clean support world_xy = (x, y)
+
+noisy support world_xy =
+  (x + Gaussian(0, sigma),
+   y + Gaussian(0, sigma))
+```
+
+其中 `sigma = pose_xy_noise_m`，单位是米。
+
+0.10m、0.25m、0.50m 分别表示：
+
+```text
+0.10m noise:
+  support 的世界坐标 x/y 各自加入标准差约 10cm 的高斯误差
+  在本轮 high useful-window 中仍有正收益
+
+0.25m noise:
+  x/y 各自加入标准差约 25cm 的高斯误差
+  在本轮 high useful-window 中 survival delta 转负，IDSW 高于 drop
+
+0.50m noise:
+  x/y 各自加入标准差约 50cm 的高斯误差
+  fixed-lag 基本失去可用收益
+```
+
+ASCII 图解：
+
+```text
+真实目标位置:
+
+        A
+        |
+        |  clean world_xy = (10.00, 5.00)
+        v
+  ----- x --------------------------
+
+support 加 0.25m noise 后:
+
+        A
+        |
+        |  noisy world_xy 可能变成 (10.22, 4.86)
+        v
+  ----- x ---- o -------------------
+              ^
+              support 给 tracker 的位置
+
+如果旁边还有另一个 track:
+
+  track A predicted:      x
+  noisy support:          o
+  track B predicted:        x
+
+support 本来属于 A，但 noisy 落点可能更接近 B；
+fixed-lag 若接受它，就会把错误位置写回历史 tracker state。
+```
+
+本轮 `exp_20260726_002` 的关键结论是：在[[#Useful Support Window / 有效支撑窗口]]足够大的情况下，`0.10m` 仍可用，但 `0.25m` 已经开始破坏 fixed-lag identity continuity。因此失败不是“support 到太晚”，而是“support 到得够早但坐标不够准”。
+
+相关术语：[[#World-Coordinate Tracker Update / 世界坐标跟踪器更新]]、[[#Noise-to-Gate Ratio / 噪声-门半径比]]、[[#Temporal-Spatial Risk / 时间-空间联合风险]]。
 
 ---
 
@@ -436,6 +634,741 @@ Group cross-validation。当前 temporal boundary 实验中的 group 是 `(delay
 
 ---
 
+### Lag / 固定回看窗口
+
+> 就像监控室只允许改最近几秒钟的值班记录：刚刚迟到的证据还能补进去，太早的证据只能做事后参考，不能改已经对外发布的记录。
+
+`lag_frames` 是 tracker 允许回到过去修正状态的最大窗口长度。它不是消息本身的通信延迟，而是系统策略中的“可修改历史范围”。如果 support observation 的 `delay_frames <= lag_frames`，它仍在可回看窗口内，可以触发 fixed-lag delayed update；如果 `delay_frames > lag_frames`，遮挡期间已经发布的 online prediction 通常被冻结，只能用于 recovery-only stitching 或直接 reject。
+
+在 MATRIX 当前 2 FPS 设置下：
+
+```text
+1 frame = 500 ms
+
+lag1 = 最近 1 帧可回看 = 500 ms
+lag2 = 最近 2 帧可回看 = 1000 ms
+lag3 = 最近 3 帧可回看 = 1500 ms
+lag5 = 最近 5 帧可回看 = 2500 ms
+```
+
+ASCII 图解一：`lag` 是“能往回改多远”
+
+```text
+当前发布时刻: t5
+设置: lag = 3 frames
+
+时间轴:
+
+  t0        t1        t2        t3        t4        t5
+  |---------|---------|---------|---------|---------|
+  冻结历史   冻结历史   可回看    可回看    可回看    当前
+                      <--------- lag window -------->
+
+含义:
+  t2-t5: 还在固定回看窗口里，可以被迟到 support 修正
+  t0-t1: 已经太旧，不再改写 online 历史输出
+```
+
+ASCII 图解二：`delay` 和 `lag` 的关系
+
+```text
+情况 A: support(t3) 在 t5 到达
+
+  capture=t3                         arrival=t5
+       |----------------------------------|
+              delay = 2 frames
+
+  lag = 3 frames
+  delay <= lag  ->  允许回到 t3 做 fixed-lag update
+
+
+情况 B: support(t1) 在 t5 到达
+
+  capture=t1                         arrival=t5
+       |----------------------------------|
+              delay = 4 frames
+
+  lag = 3 frames
+  delay > lag   ->  太晚，不改 t1-t2 已发布输出
+                    只能 recovery-only 或 reject
+```
+
+一句话抓重点：
+
+```text
+delay = 消息迟到了多久
+lag   = tracker 愿意回头修正多久
+
+delay <= lag: 迟到但还来得及修正
+delay >  lag: 来得太晚，不能硬改遮挡期在线输出
+```
+
+重要边界：`delay <= lag` 只表示“这条 support 有资格进入 fixed-lag update”，不表示它一定产生正收益。收益还取决于遮挡长度、support 到达时遮挡还剩多久、遮挡早期 identity 是否已经断开、以及候选关联是否歧义。
+
+ASCII 图解三：同样 `delay <= lag`，短遮挡和长遮挡的收益可能不同
+
+```text
+设置:
+  delay = 3 frames
+  lag   = 3 frames
+
+短遮挡:
+
+  t1        t2        t3        t4
+  |---------|---------|---------|
+  遮挡开始   遮挡结束             support(t1)到达
+  support(t1)拍到
+
+  delay <= lag 成立
+  但到达时遮挡已经结束，t1/t2 online 输出可能已经发布
+  如果系统不允许改历史输出，during gain 会被压缩
+
+
+长遮挡:
+
+  t1        t2        t3        t4        t5        t6
+  |---------|---------|---------|---------|---------|
+  遮挡开始                       support(t1)到达       遮挡仍在继续
+  support(t1)拍到
+
+  delay <= lag 成立
+  且到达时仍处于遮挡早期/中期
+  support 可以修正早期状态，并影响后续遮挡期跟踪
+```
+
+一句话补充：
+
+```text
+lag 决定“能不能回头改”
+遮挡长度决定“改回来以后还剩多少在线窗口可以受益”
+```
+
+相关术语：[[#Fixed-Lag OOSM Update / 固定窗口乱序更新]]、[[#Useful Support Window / 有效支撑窗口]]、[[#Recovery-Only Stitching / 仅恢复重连接]]、[[#Causal Timestamped Replay / 因果时间戳重放]]。
+
+---
+
+### Useful Support Window / 有效支撑窗口
+
+> 就像救援队不是只要到场就有用，还要看它到场时事故还剩多少可救的时间。
+
+Support observation 真正能影响 online identity continuity 的时间窗口。它不是单个变量，而是由 `delay_frames`、`lag_frames`、遮挡长度、消息到达时刻和 tracker 状态共同决定。当前实验中的 fixed-lag 结果说明，短窗口 delayed update 能显著缓解遮挡早期身份断裂；但它没有证明“只要 support 在 lag 内到达就一定有收益”。
+
+概念拆分：
+
+```text
+delay_frames:
+  support 消息从 capture 到 arrival 晚了几帧
+
+lag_frames:
+  tracker 最多愿意回头修正几帧
+
+occlusion_duration:
+  主 UAV 看不见目标持续几帧
+
+useful support window:
+  support 到达后，仍能修正或影响的有效跟踪窗口
+```
+
+当前 fixed-lag audit 中使用的 episode-level 近似诊断量是：
+
+```text
+remaining_after_first_arrival_frames =
+  max(episode_length - delay_frames, 0)
+
+useful_window_fraction =
+  remaining_after_first_arrival_frames / episode_length
+
+effective_fixed_lag_window_fraction =
+  useful_window_fraction if delay_frames <= lag_frames else 0
+```
+
+注意：这是事后诊断变量，不是在线 tracker 的输入。它回答的是“这条 support 到达后，这段遮挡理论上还剩多少帧可能受它影响”，而不是直接告诉 tracker 应该接受还是拒绝。
+
+ASCII 图解：
+
+```text
+主 UAV 遮挡 episode:
+
+  t0        t1        t2        t3        t4        t5        t6
+  |---------|---------|---------|---------|---------|---------|
+  可见       遮挡开始   遮挡      遮挡      遮挡      遮挡结束   可见
+
+support(t1) 到达得早:
+
+  t0        t1        t2        t3        t4        t5        t6
+  |---------|---------|---------|---------|---------|---------|
+             拍到  ----> 到达
+                        <------- 仍有多帧遮挡可被影响 ------->
+
+  有效支撑窗口大:
+    可以修正早期遮挡状态
+    可以影响后续遮挡期预测
+    identity survival 更可能提升
+
+
+support(t1) 到达得晚:
+
+  t0        t1        t2        t3        t4        t5        t6
+  |---------|---------|---------|---------|---------|---------|
+             拍到  -------------------------------> 到达
+                                                     遮挡已结束
+
+  有效支撑窗口小:
+    遮挡期 online 输出大多已经发布
+    during gain 被压缩
+    support 更可能只进入 recovery-only 或 spillover
+```
+
+判断式不是：
+
+```text
+delay <= lag  -> 一定有用
+```
+
+而应理解为：
+
+```text
+support 有用的可能性增加 ≈
+  delay <= lag
+  AND 有足够早期/中期遮挡帧仍可被影响
+  AND tracker 身份线尚未不可逆断开
+  AND association 候选不歧义
+```
+
+相关术语：[[#Lag / 固定回看窗口]]、[[#Online Support Coverage / 在线支撑覆盖率]]、[[#Early-Frame Gap Boundary / 早期帧缺口边界]]、[[#Spillover Gain / 遮挡后溢出增益]]。
+
+---
+
+### Fixed-Lag OOSM Update / 固定窗口乱序更新
+
+> 就像医院只允许修改最近几页病历：刚刚迟到的化验单还能补进去，太早的旧单子就不能再改已经发出的诊断。
+
+一种 bounded delayed update 机制。迟到 support observation 若在固定窗口 `lag_frames` 内到达，则允许回到 capture time 附近重放并修正 tracker state；若超过窗口，则不再改写遮挡期间已经发布的 online output。`exp_20260724_002` 显示，固定窗口是当前最强的遮挡支撑缓解机制：1000ms 对应 `lag2`，1500ms 对应 `lag3`。
+
+---
+
+### Tracker-State-Aware Re-anchoring / 跟踪器状态感知重锚定
+
+> 就像导航软件不只看新消息晚了多久，还看你现在是不是已经偏航、定位是否发散、前方路口是否容易走错。
+
+根据 tracker 当前状态决定 delayed support 的处理方式：短窗口内可做 fixed-lag update，超过窗口后可尝试 recovery-style re-anchoring，高歧义或低风险场景则 reject。状态变量包括 `miss_count`、`time_since_primary_seen`、协方差、速度不确定性、association margin、track age 等。当前结果显示，第一版规则没有超过最佳固定窗口，因此不能直接作为最终 proposed method。
+
+ASCII 图解：
+
+```text
+同一个 support(t1) 在 t3 到达时，先看 tracker 状态:
+
+                         support(t1) 到达
+                                |
+                                v
+                  +-------------+-------------+
+                  |                           |
+             track 状态危险?              track 状态稳定?
+        miss_count高 / 协方差大 /          主UAV刚看到 /
+        遮挡中 / margin清楚                候选歧义高
+                  |                           |
+                  v                           v
+          delay 是否在 lag 内?              reject
+             |           |
+             |是         |否
+             v           v
+       fixed-lag回放   recovery-only重连接
+
+核心动作:
+  不是只问“消息晚了多久”
+  还问“当前轨迹状态是否需要这条迟到信息”
+  当前实验结果: 第一版 state-aware 与最佳 fixed-lag 打平，没有额外胜出
+```
+
+---
+
+### Recovery-Only Stitching / 仅恢复重连接
+
+> 就像迟到的证人来得太晚，不能改庭审现场记录，但可以帮助确认庭审之后谁和谁是同一条线索。
+
+一种 late-support 策略：support 到得太晚时，不强行修改遮挡期间已经发布的 online prediction，而是用于遮挡后重连接 pre-occlusion tracklet、support tracklet 和 post-occlusion primary tracklet。当前 world-coordinate-only 实验中它单独使用较弱，说明只做恢复不能替代遮挡期间的 identity maintenance。
+
+ASCII 图解：
+
+```text
+时间轴:        t0        t1        t2        t3        t4
+主 UAV:       看到人     遮挡      遮挡      重新看到   继续跟踪
+support UAV:           拍到人
+通信到达:                                support(t1) 到达
+
+recovery-only:
+
+              t0        t1        t2        t3        t4
+online 输出:  track A   不改      不改      track B?   尝试把B接回A
+support包:             [t1拍到] ---------> 不改遮挡期，只辅助恢复
+
+核心动作:
+  遮挡期间已经发布的 t1/t2 输出不重写
+  support 只帮助 post-occlusion 的 tracklet stitching
+  优点: 不篡改 online 历史输出
+  缺点: 如果身份在遮挡早期已经断开，恢复期再接可能太晚
+```
+
+#### Drop-delayed、State-aware、Recovery-only 总对照
+
+```text
+场景:
+  D1 在 t1-t2 遮挡
+  support 在 t1 拍到目标
+  support(t1) 到 t3 才到达融合端
+
+时间轴:
+
+  t0             t1             t2             t3             t4
+  |--------------|--------------|--------------|--------------|
+  D1可见         D1遮挡         D1遮挡         D1恢复可见      后续跟踪
+                 support拍到                   support到达
+
+方法一: drop_delayed
+
+  t0             t1             t2             t3             t4
+  track A ------ 预测/丢失 ----- 预测/丢失 ----- 主UAV恢复 ---- 后续
+                 support(t1) ----------------> 到达后丢弃 X
+
+  作用位置:
+    不作用于 t1/t2
+    不作用于 t3/t4
+  研究含义:
+    安全基线。宁愿不用 support，也不让迟到信息污染身份。
+
+
+方法二: recovery-only
+
+  t0             t1             t2             t3             t4
+  track A ------ 已发布不改 ---- 已发布不改 ---- track B? ----- B接回A?
+                 support(t1) ----------------> 只用于恢复期重连接
+
+  作用位置:
+    不改 t1/t2 遮挡期 online 输出
+    只影响 t3 之后的恢复和重连接
+  研究含义:
+    适合“来得太晚”的 support，但不能维持遮挡期间 identity。
+
+
+方法三: state-aware reanchoring
+
+  t0             t1             t2             t3             t4
+  track A ------ 可能回放修正 -- 可能回放修正 -- 根据状态分流 -- 后续
+                 support(t1) ----------------> 到达后先看 tracker state
+
+  到达 t3 后:
+
+        +-- delay <= lag 且轨迹高风险且候选清楚 --> 回到 t1/t2 做 fixed-lag update
+        |
+  t3 ---+-- delay > lag 但需要恢复 ----------------> recovery-only stitching
+        |
+        +-- 轨迹稳定或候选歧义高 ------------------> reject
+
+  作用位置:
+    可能影响短窗口内的 recent tracker state
+    可能只影响恢复期
+    也可能拒绝 support
+  研究含义:
+    目标是比固定窗口更聪明；但当前第一版还只是打平最佳 fixed-lag。
+```
+
+---
+
+### Noise-to-Gate Ratio / 噪声-门半径比
+
+> 就像地图定位误差已经接近门口宽度的一半：即使导航方向没错，也很容易把人带到隔壁门。
+
+`noise_to_gate_ratio = pose_xy_noise_m / gate_radius`。它衡量 support world-coordinate 噪声相对关联门半径有多大。当前 fixed-lag robustness 实验使用 `gate_radius=1.0m`，因此 `0.10m` 噪声对应 `0.10`，`0.25m` 噪声对应 `0.25`，`0.50m` 噪声对应 `0.50`。
+
+本轮结论显示：高 [[#Useful Support Window / 有效支撑窗口]] 下，`0.10m` 仍有正收益，但 `0.25m` 时 fixed-lag 的 survival delta 已转负。这说明 support 不是来得太晚，而是来得足够早却不够准。
+
+---
+
+### Temporal-Spatial Risk / 时间-空间联合风险
+
+> 就像一张迟到的路况图不仅旧，而且定位也偏；旧一点和偏一点叠加后，可能比不用它更糟。
+
+当前诊断量：
+
+```text
+spatial_staleness_m = motion_m_per_frame * delay_frames
+noise_to_gate_ratio = pose_xy_noise_m / gate_radius
+temporal_spatial_risk = (spatial_staleness_m + pose_xy_noise_m) / gate_radius
+```
+
+它把两种风险放在同一个尺度上：
+
+```text
+时间风险:
+  人在 delay 期间移动了多远
+
+空间风险:
+  support world-coordinate 本身有多大噪声
+
+联合风险:
+  迟到造成的位置陈旧 + 坐标噪声
+  相对 tracker 关联门半径有多大
+```
+
+ASCII 图解：
+
+```text
+capture 时刻 support 看到的位置:
+
+  t1: 真实人 A 在 x=0.0
+      support noisy 坐标落在 x=0.25
+
+arrival / replay 时考虑的风险:
+
+  人在 delay 内移动:        0.8m
+  support 坐标噪声:         0.25m
+  gate radius:              1.0m
+
+  temporal_spatial_risk = (0.8 + 0.25) / 1.0 = 1.05
+
+含义:
+  即使 delay <= lag，回放观测也可能落到错误候选附近
+```
+
+相关术语：[[#Lag / 固定回看窗口]]、[[#Fixed-Lag OOSM Update / 固定窗口乱序更新]]、[[#Pose / Reprojection Noise / 位姿-重投影噪声]]。
+
+---
+
+### Simulated Identity Cue / 模拟身份线索
+
+> 就像给每个人临时发一张有噪声的会员卡：卡不是照片本身，但能模拟“这个人看起来像谁”的外观证据。
+
+一种受控的身份信息代理，用来回答“身份维度本身是否能补几何噪声边界”。在 `exp_20260726_003` 中，实验用 GT `person_id` 生成隐藏身份原型，再给每条 observation 生成带噪声的 embedding。**运行时 tracker 不读取 `person_id` 做关联**，只通过 `observation_sensor_key = (capture_time, drone_id, position_id, bbox)` 查到对应 embedding。
+
+ASCII 图解：
+
+```text
+离线生成阶段:
+
+  GT person_id A  ---> hidden prototype A ---> noisy embedding obs_1
+  GT person_id B  ---> hidden prototype B ---> noisy embedding obs_2
+
+运行时 tracker 看到的是:
+
+  obs_1 key + embedding vector
+  obs_2 key + embedding vector
+
+  不看到:
+    person_id A/B
+```
+
+它不是最终 ReID 方法，而是一个机制探针：如果模拟身份线索都救不回 0.25m 几何噪声边界，就不值得急着上真实 ReID；如果能救回，下一步才有理由替换为 CNN/ReID embedding。
+
+---
+
+### Embedding Separation / 嵌入分离度
+
+> 就像两个人的证件照相似不相似：同一个人的多张照片应该彼此更像，不同人的照片应该明显不像。
+
+在 appearance / identity cue 中，每个观测会有一个 embedding vector。嵌入分离度衡量的是：**同一身份的 embedding 相似度是否显著高于不同身份的 embedding 相似度**。分离度越大，tracker 越容易用身份线索纠正 noisy geometry；分离度越小，身份线索越接近随机噪声。
+
+常用计算：
+
+```text
+same_similarity      = mean(cosine(同一个人的 embedding 对))
+different_similarity = mean(cosine(不同人的 embedding 对))
+embedding_separation = same_similarity - different_similarity
+```
+
+ASCII 图解：
+
+```text
+好 embedding:
+
+  person A:  A1 ------ A2 ------ A3          same similarity 高
+
+  person B:                         B1 --- B2
+
+  A 和 B 之间距离远                  different similarity 低
+
+
+差 embedding:
+
+  A1 --- B1 --- A2 --- B2 --- A3
+
+  同人和异人混在一起
+  tracker 很难靠 appearance 判断谁是谁
+```
+
+在 `exp_20260726_003` 中，模拟 identity cue 的分离度为：
+
+```text
+strong:  same 0.754159, different -0.008598, margin 0.762758
+medium:  same 0.251248, different  0.004039, margin 0.247209
+weak:    same 0.076330, different  0.006376, margin 0.069954
+```
+
+下一轮 cue quality sweep 的核心问题就是：真实 ReID/CNN embedding 至少要达到多大的分离度，才能复现 `medium` simulated identity cue 的收益。
+
+相关术语：[[#Simulated Identity Cue / 模拟身份线索]]、[[#Same/Different Similarity Margin / 同人-异人相似度间隔]]、[[#Identity Accept Threshold / 身份接受阈值]]。
+
+---
+
+### Same/Different Similarity Margin / 同人-异人相似度间隔
+
+> 就像你看两组照片：如果“同一个人”的相似程度只比“不同人”高一点点，判断就很悬；如果高很多，判断就可靠。
+
+同人-异人相似度间隔是 [[#Embedding Separation / 嵌入分离度]] 的具体报告形式：
+
+```text
+margin = mean_same_similarity - mean_different_similarity
+```
+
+它回答的是身份线索是否有足够判别力：
+
+```text
+margin 大:
+  same pairs      similarity 高
+  different pairs similarity 低
+  identity gate 有可靠依据
+
+margin 小:
+  same 和 different 混在一起
+  identity gate 容易误拒或误接
+```
+
+ASCII 图解：
+
+```text
+相似度轴:  -1.0 -------------------- 0.0 -------------------- 1.0
+
+margin 大:
+  different pairs:  [----]
+  same pairs:                                  [----]
+                    <--------- margin -------->
+
+margin 小:
+  different pairs:             [---------]
+  same pairs:                    [---------]
+                                overlap 很大
+```
+
+论文中它适合作为“身份线索质量”的可解释横轴，而不是作为在线 tracker 直接可见的真值指标。在线系统能看到的是具体 message 与候选 track 的 similarity，不能提前知道全数据集的 same/different margin。
+
+---
+
+### Identity Accept Threshold / 身份接受阈值
+
+> 就像查证件照时设一条线：相似度超过这条线才放行，低于这条线就不让它改记录。
+
+identity accept threshold 是 [[#Identity Gate / 身份门控]] 使用的阈值。support observation 与候选 track 的 appearance embedding 计算 cosine similarity 后，只有满足：
+
+```text
+cosine_similarity(support_embedding, track_embedding) >= identity_accept_threshold
+```
+
+该 support 才能参与后续 fixed-lag update、identity-only update 或 recovery。
+
+阈值太低和太高都会出问题：
+
+```text
+threshold 太低:
+  很多不像的 support 也被接受
+  identity cue 失去过滤作用
+  IDSW 可能上升
+
+threshold 太高:
+  本来有用的 support 被拒绝
+  survival gain 被压缩
+  更像 drop_delayed
+```
+
+ASCII 图解：
+
+```text
+similarity:
+
+  0.05  0.12  0.24 | 0.31  0.48  0.70
+                   ^
+                   identity_accept_threshold = 0.25
+
+  左边: reject
+  右边: accept
+```
+
+下一轮 threshold sweep 要回答的是：在 `0.25m` support noise 下，什么阈值能同时保持 survival delta 为正、IDSW delta 不高于 drop-delayed。
+
+相关术语：[[#Embedding Separation / 嵌入分离度]]、[[#Identity Gate / 身份门控]]。
+
+---
+
+### Cue Quality Boundary / 线索质量边界
+
+> 就像问“照片要清楚到什么程度，才足够用来认人”：不是有照片就行，而是照片质量必须越过某条线。
+
+cue quality boundary 是下一轮计划要估计的边界：appearance / identity cue 的质量达到什么程度，才能让 `geometry + covariance + identity` 在 `fixed_2/fixed_3 + 0.25m` 下保持正收益。
+
+它通常由三类量共同描述：
+
+```text
+embedding_separation:
+  同人 embedding 和异人 embedding 分得开吗？
+
+identity_accept_threshold:
+  tracker 接受 identity match 的门槛设在哪里？
+
+tracking outcome:
+  survival delta 是否 > 0
+  IDSW delta 是否 <= 0
+  fragmentation 是否下降
+```
+
+ASCII 图解：
+
+```text
+identity cue 质量从差到好:
+
+  weak -------- medium -------- strong
+    |              |              |
+    |              |              +-- 通常可救回 0.25m 边界
+    |              +----------------- 需要确认真实 ReID 能否达到
+    +-------------------------------- 可能只带来噪声，不能作为方法支柱
+
+目标:
+  找到 minimum useful cue quality
+```
+
+这个边界比“用了 ReID”更适合写进论文，因为它回答的是机制问题：身份维度需要多可靠，才足以补几何异步更新的噪声边界。
+
+---
+
+### Identity Gate / 身份门控
+
+> 就像快递地址有点偏时，再看收件人照片是否像本人；如果照片完全不像，就不要因为地图距离近而交出去。
+
+在 support observation 与候选 track 关联时，除了世界坐标距离，还比较 support embedding 与 track appearance embedding 的 cosine similarity。只有相似度超过阈值，support 才能参与几何更新或身份维度更新。
+
+```text
+support obs 到达:
+
+  geometry ranking:
+    track 5: residual 0.4m
+    track 8: residual 0.7m
+
+  identity similarity:
+    track 5: 0.05   不像
+    track 8: 0.62   像
+
+  结果:
+    不盲目选最近的 track 5
+    允许选择更像的 track 8，或拒绝更新
+```
+
+相关术语：[[#Simulated Identity Cue / 模拟身份线索]]、[[#Ambiguity Margin / 歧义间隔]]。
+
+---
+
+### Covariance-Aware Support Update / 协方差感知支撑更新
+
+> 就像一张地图标注了“这个位置可能误差 25 厘米”，你就不会让它一票否决现场最新记录。
+
+在 Kalman-style tracker update 中，support observation 的 measurement noise 越大，更新位置状态的权威越低。当前 `world_xy + covariance` 变体使用 support pose/world-coordinate noise 作为 measurement noise proxy，让 noisy support 少改 `[x, y, vx, vy]`。
+
+ASCII 图解：
+
+```text
+同一条 support world_xy:
+
+  low noise:
+    support 位置可信
+    tracker state 被明显拉向 support
+
+  high noise:
+    support 位置不太可信
+    tracker state 只被轻微拉动
+
+  作用:
+    降低 noisy coordinate 写回历史状态的破坏力
+```
+
+本轮结论：covariance-only 可以减轻伤害，但不足以跨过 0.25m 边界；它需要和 [[#Identity Gate / 身份门控]] 联合使用。
+
+---
+
+### Identity-Only Update / 只更新身份线索
+
+> 就像你确认“这确实是张三的消息”，但不把消息里的位置直接写进地图，因为位置可能偏了。
+
+当 support observation 的身份相似度通过，但几何 residual 太大、不适合移动 track 位置时，可以只更新 track 的 appearance/last-support 状态，而不改写 `[x, y]`。它用于把“身份证据”和“位置证据”分开。
+
+```text
+support obs:
+  identity similarity 高
+  geometry residual 大
+
+普通 world_xy update:
+  直接把 noisy 坐标写入 track 位置  -> 风险高
+
+identity-only update:
+  更新 appearance / support_seen
+  不移动 track 的 x,y
+```
+
+它是身份/位置分离的一步小实现，不等价于完整 ReID tracklet stitching。
+
+---
+
+### Track Fragmentation / 轨迹碎片化
+
+> 就像同一个人的档案被拆成了好几个文件夹，虽然每个文件夹里都有几页对的材料，但整体身份线断了。
+
+同一 GT identity 在一个 episode 或窗口内被分配到多个 `pred_id` 的程度。它和 IDSW 相关但不完全相同：IDSW 关注连续帧之间的身份切换次数，fragmentation 更关注一个目标被拆成多少段轨迹。在遮挡恢复实验中，它用于衡量 re-anchoring 是否减少了 tracklet 断裂。
+
+---
+
+### GitHub CLI Experiment Management / 用 GitHub CLI 管理实验进度
+
+> 就像给每轮实验开一张工单：代码、命令、结果、结论都挂在同一个编号下面，之后回看时不会迷路。
+
+GitHub CLI (`gh`) 适合管理实验推进的“过程记录”和“协作状态”，但不适合直接管理大体积 raw outputs。当前项目里应该用 Git/GitHub 管理：
+
+```text
+应该提交:
+  src/                         实验代码
+  scripts/                     正式 runner / analysis CLI
+  tests/                       回归测试
+  summary_md/                  实验卡、分析报告、当前状态
+  mermaid/                     路线图和实验流程图
+  GLOSSARY.md                  术语定义
+
+不应该提交:
+  outputs/                     大量生成 CSV / 中间输出
+  data/                        数据集
+  weights/                     权重
+  runs/                        临时运行产物
+```
+
+推荐节奏：
+
+```text
+1. 开实验 issue:
+   gh issue create --title "exp_YYYYMMDD_NNN: ..." --label experiment
+
+2. 开分支:
+   git switch -c exp/YYYYMMDD-NNN-short-name
+
+3. 提交实验实现:
+   code + tests + experiment card
+
+4. 跑 smoke / formal:
+   outputs 留在本地或服务器
+
+5. 提交 durable conclusion:
+   summary_md analysis + INDEX/current_status + mermaid/GLOSSARY
+
+6. push / PR:
+   gh pr create 或直接 git push
+```
+
+核心原则：GitHub 记录“你为什么这样做、怎么做、结论是什么”；`outputs/` 保存“原始证据”，但通常不进 GitHub。
+
+---
+
 ## 当前实验结论速查
 
 | 发现 | 通俗解释 |
@@ -451,7 +1384,12 @@ Group cross-validation。当前 temporal boundary 实验中的 group 是 `(delay
 | 成对反事实测量通过但边界仍未定 | 同一张答卷的 A/B 对照证明提示确实有用，但题目数量还不够，不能画出稳定分数线 |
 | 当前时间边界判为早期帧缺口 | 支撑消息不是只要在遮挡结束前到就够；如果前几帧在线结果已经发布且身份断开，后到的支撑只能影响恢复期 |
 | 在线代理目前还弱 | 它能帮你调阈值，但还不能单独支撑一个复杂策略学习器 |
+| 固定窗口 OOSM 是当前最强缓解机制 | 迟到消息如果还在短窗口内，就补进最近几步；太晚的消息不要硬改已经发布的遮挡期结果 |
+| 固定窗口收益受有效支撑窗口调节 | `delay <= lag` 只是入场资格；如果到达时遮挡期已经快结束或身份线已断，收益仍会被压缩 |
+| 固定窗口存在时间-空间联合边界 | support 来得够早但坐标不准时，fixed-lag 会把噪声写回历史状态；0.10m 仍有收益，0.25m 开始不可靠 |
+| 身份维度能补 0.25m 几何噪声边界 | `world_xy` 和 `covariance-only` 仍不够；`world_xy + covariance + simulated identity` 同时提高 survival 并降低 IDSW |
+| GitHub CLI 应管理实验脉络而非大输出 | issue/branch/PR 管实验进度，summary_md 管 durable conclusion，outputs 只作本地证据 |
 
 ---
 
-*最后更新: 2026-07-24 | 当前术语数: 48*
+*最后更新: 2026-07-31 | 当前术语数: 67*

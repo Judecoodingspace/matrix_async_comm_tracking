@@ -1,0 +1,44 @@
+flowchart TD
+    A["上一轮<br>online proxy weak"]:::prev
+    B["本轮问题<br>用持续跟踪机制缓解异步支撑伤害"]:::current
+    C["输入<br>MATRIX 0-999<br>D1遮挡 D2-D8支撑<br>GT世界坐标 zero-noise"]:::data
+
+    A --> B
+    B --> C
+
+    C --> D1["baseline<br>drop delayed"]:::base
+    C --> D2["baseline<br>arrival time fusion"]:::base
+    C --> D3["diagnostic upper<br>full causal replay"]:::base
+    C --> M1["method ablation<br>fixed-lag update"]:::method
+    C --> M2["method ablation<br>recovery-only stitching"]:::method
+    C --> M3["proposed rule<br>state-aware reanchoring"]:::method
+
+    D1 --> E["指标<br>occlusion IDF1 IDSW<br>survival reacquisition fragmentation"]:::metric
+    D2 --> E
+    D3 --> E
+    M1 --> E
+    M2 --> E
+    M3 --> E
+
+    E --> G1{"1000ms/1500ms<br>是否超过 drop"}:::gate
+    G1 -->|是| G2{"是否低于 arrival IDSW"}:::gate
+    G2 -->|是| G3{"是否优于 fixed-lag/recovery"}:::gate
+
+    G3 -->|否 打平 fixed-lag| R["结论<br>fixed-lag sufficient"]:::result
+    G3 -->|是| S["结论<br>state-aware supported"]:::pass
+    G1 -->|否| F["结论<br>world-coordinate only 不足"]:::fail
+    G2 -->|否| F
+
+    R --> N["下一步<br>围绕 fixed-lag 做噪声和窗口边界实验<br>再决定是否加入状态规则"]:::next
+
+    classDef prev fill:#f3f3f3,stroke:#777,color:#111
+    classDef current fill:#ffe6cc,stroke:#cc5500,stroke-width:3px,color:#241000
+    classDef data fill:#eef5ff,stroke:#4f78a8,color:#172536
+    classDef base fill:#fff7e8,stroke:#b77a22,color:#332100
+    classDef method fill:#eef8ed,stroke:#4f8a54,color:#143018
+    classDef metric fill:#ffffff,stroke:#999,color:#222
+    classDef gate fill:#f8f8ff,stroke:#6060a8,color:#202044
+    classDef result fill:#fff4df,stroke:#b77a22,stroke-width:3px,color:#332100
+    classDef pass fill:#e9f8ef,stroke:#2f8a54,stroke-width:3px,color:#143018
+    classDef fail fill:#fff1f1,stroke:#b65757,stroke-width:3px,color:#351616
+    classDef next fill:#eef5ff,stroke:#4f78a8,stroke-width:2px,color:#172536

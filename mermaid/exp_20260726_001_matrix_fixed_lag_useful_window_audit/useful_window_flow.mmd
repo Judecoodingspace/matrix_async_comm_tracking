@@ -1,0 +1,35 @@
+flowchart TD
+    A["上一轮结论<br>fixed-lag 是强缓解机制"]:::prev
+    B["本轮问题<br>收益只由 delay <= lag 决定吗"]:::current
+    C["输入<br>reanchoring episode metrics<br>temporal boundary episode gain"]:::data
+
+    A --> B
+    B --> C
+
+    C --> D1["计算<br>lag eligible"]:::calc
+    C --> D2["计算<br>useful window fraction"]:::calc
+    C --> D3["对齐<br>同一 episode 的 drop baseline"]:::calc
+
+    D1 --> E["episode delta<br>survival fragmentation IDSW"]:::metric
+    D2 --> E
+    D3 --> E
+
+    E --> G1{"eligible bucket 内<br>useful window 是否改变 gain"}:::gate
+    G1 -->|差异 >= 0.05| R1["结论<br>useful-window modulated fixed-lag"]:::result
+    G1 -->|差异 < 0.05| R2["结论<br>lag-only sufficient"]:::alt
+
+    E --> G2{"best lag 是否随条件变化<br>且更大 lag 有污染代价"}:::gate
+    G2 -->|是| R3["结论<br>adaptive lag needed"]:::alt
+    G2 -->|否| R1
+
+    R1 --> N["下一步<br>fixed-lag 结果需按 useful window 分层<br>再加入坐标噪声"]:::next
+
+    classDef prev fill:#f3f3f3,stroke:#777,color:#111
+    classDef current fill:#ffe6cc,stroke:#cc5500,stroke-width:3px,color:#241000
+    classDef data fill:#eef5ff,stroke:#4f78a8,color:#172536
+    classDef calc fill:#ffffff,stroke:#999,color:#222
+    classDef metric fill:#fff7e8,stroke:#b77a22,color:#332100
+    classDef gate fill:#f8f8ff,stroke:#6060a8,color:#202044
+    classDef result fill:#eef8ed,stroke:#4f8a54,stroke-width:3px,color:#143018
+    classDef alt fill:#fff4df,stroke:#b77a22,stroke-width:2px,color:#332100
+    classDef next fill:#eef5ff,stroke:#4f78a8,stroke-width:2px,color:#172536
