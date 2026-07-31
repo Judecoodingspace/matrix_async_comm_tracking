@@ -214,14 +214,12 @@ boundary reference**, not as a required IDF1 lower bound.
 
 Immediate next action:
 
-1. Extract real or semi-real appearance embeddings from MATRIX bbox crops and
-   measure cross-view / cross-time similarity under the same occlusion keys.
-2. Calibrate identity thresholds on the geometry-shortlisted candidate set,
-   not on global identity pairs. The global calibration selected `0.10` at the
-   boundary quality, while tracking required `0.20`.
-3. Replace simulated identity with calibrated/real appearance evidence:
-   compare appearance-only, geometry-only, geometry+appearance, and
-   geometry+appearance+covariance under `fixed_2/fixed_3 + 0.25m`.
+1. Manually run the `exp_20260731_002` smoke command after installing the
+   user-local TorchReID/Ultralytics dependencies and OSNet checkpoint.
+2. If smoke measurement/caches complete, run formal `0-999` with `--resume`.
+3. Analyze whether M3OT-GeM or OSNet crosses the simulated margin target and
+   whether held-out `geometry + covariance + appearance` beats both drop and
+   covariance-only at `fixed_2/fixed_3 + 0.25m`.
 
 Deferred multi-cue mainline:
 

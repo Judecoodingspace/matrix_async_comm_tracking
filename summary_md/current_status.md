@@ -1,14 +1,15 @@
 # Current Status
 
-Updated: 2026-07-26
+Updated: 2026-07-31
 
 ## Latest Research Focus
 
-The current focus is tracker-mechanism mitigation for asynchronous support
-during D1 LoS occlusion. The latest completed experiment is
-`exp_20260726_003_matrix_fixed_lag_simulated_identity_cue_ablation`, a formal
-Step 1 message-content ablation that adds simulated identity cue to noisy
-fixed-lag delayed update.
+The current focus is transferring the simulated identity-cue result to frozen
+real CNN appearance evidence. `exp_20260731_002_matrix_real_embedding_quality_transfer`
+is implemented and pending a user-run smoke/formal. It uses MATRIX GT projected
+bboxes with LoS filtering, frozen M3OT-GeM and OSNet embeddings, person-disjoint
+two-fold candidate-conditioned threshold calibration, visible terminal progress,
+and per-condition checkpoint/resume.
 
 The current decision is `identity_dimension_supported`. At `0.25m` support
 world-coordinate noise, high useful-window `world_xy` fixed-lag remains harmful
@@ -932,3 +933,19 @@ Before the next formal, run:
 ```bash
 PYTHONPATH=src python -m pytest tests/ -q
 ```
+
+## Latest Documentation Update (2026-07-31 idea mainline curation)
+
+Changed files:
+
+```text
+ascii_diagrams/07_current_idea_mainline.md
+ascii_diagrams/README.md
+summary_md/current_status.md
+```
+
+The new overview selects the current problem, failure, mechanism, and evidence
+terms from `GLOSSARY.md`; links the existing six ASCII explainers; separates
+rejected historical branches from the current fixed-lag + geometry +
+covariance + identity story; and records that the real-embedding runner is
+implemented but not yet experimentally validated.

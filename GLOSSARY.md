@@ -1268,6 +1268,44 @@ candidate-conditioned calibration:
 
 ---
 
+### GT-Box Real Appearance Experiment / GT 框真实外观实验
+
+> 就像先由人工准确圈出照片里的人，再只检查“认人特征”是否可靠；暂时不考察机器能不能把人圈出来。
+
+使用数据集提供的真实图像和 GT 投影 bbox 裁剪行人，再由冻结 CNN 提取 embedding。图像证据是真实的，但检测框是 oracle，因此它隔离测量 appearance/re-identification，不包含 detector 的漏检、误检和框偏移。
+
+```text
+MATRIX image + GT bbox
+          |
+          v
+     person crop ----> frozen CNN ----> real embedding
+
+包含: 视角差异、分辨率、遮挡外观、CNN 域偏移
+不含: detector 漏检、误检、bbox 定位噪声
+```
+
+相关术语：[[#Candidate-Conditioned Identity Calibration / 候选条件化身份校准]]、[[#Identity Gate / 身份门控]]。
+
+---
+
+### Cross-Fitted Identity Threshold / 交叉拟合身份阈值
+
+> 就像用甲组学生的答卷定及格线，再到乙组学生上检验；然后交换一次，避免拿同一批答卷既定线又证明自己正确。
+
+将目标身份稳定划分为两个互斥 fold。每次只用一个 fold 的候选 similarity 标签选择阈值，并只评价另一个 fold 的遮挡 episode；交换后合并 held-out 结果。阈值在一次 tracker run 内仍是全局常数，运行时不读取目标属于哪个 fold。
+
+```text
+Fold A pairs ----> calibrate T_A ----> tracker run ----> evaluate Fold B
+Fold B pairs ----> calibrate T_B ----> tracker run ----> evaluate Fold A
+                                                   |
+                                                   v
+                                      combine held-out metrics
+```
+
+这防止 `identity_accept_threshold` 直接针对 formal evaluation identities 调参，但不会把 fold 身份传给关联算法。
+
+---
+
 ### Identity Gate / 身份门控
 
 > 就像快递地址有点偏时，再看收件人照片是否像本人；如果照片完全不像，就不要因为地图距离近而交出去。
@@ -1424,4 +1462,4 @@ GitHub CLI (`gh`) 适合管理实验推进的“过程记录”和“协作状�
 
 ---
 
-*最后更新: 2026-07-31 | 当前术语数: 68*
+*最后更新: 2026-07-31 | 当前术语数: 70*

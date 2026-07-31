@@ -6,7 +6,7 @@ import math
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 
 import numpy as np
 from scipy.optimize import linear_sum_assignment
@@ -747,6 +747,8 @@ def _run_sequential_sort(
     support_allow_new: bool,
     support_margin_threshold: float,
     occlusion_keys: set[tuple[int, int]] | None = None,
+    progress_callback: Callable[[int], None] | None = None,
+    progress_every: int = 25,
 ) -> ReanchoringRun:
     start = time.perf_counter()
     tracker = WorldSortTracker(distance_threshold=distance_threshold)
@@ -829,6 +831,13 @@ def _run_sequential_sort(
                         }
                     )
 
+        if progress_callback is not None and (
+            frame_id == int(frame_start)
+            or frame_id == int(frame_end)
+            or (frame_id - int(frame_start) + 1) % max(int(progress_every), 1) == 0
+        ):
+            progress_callback(int(frame_id))
+
     return _make_run(
         pipeline=pipeline,
         delay_profile=delay_profile,
@@ -864,6 +873,8 @@ def _run_lag_or_state_aware(
     identity_accept_threshold: float = 0.25,
     identity_only_distance_threshold: float | None = None,
     support_measurement_noise: float | None = None,
+    progress_callback: Callable[[int], None] | None = None,
+    progress_every: int = 25,
 ) -> ReanchoringRun:
     start = time.perf_counter()
     tracker = WorldSortTracker(distance_threshold=distance_threshold)
@@ -951,6 +962,13 @@ def _run_lag_or_state_aware(
         )
         predictions.extend(frame_predictions)
 
+        if progress_callback is not None and (
+            current_frame == int(frame_start)
+            or current_frame == int(frame_end)
+            or (current_frame - int(frame_start) + 1) % max(int(progress_every), 1) == 0
+        ):
+            progress_callback(int(current_frame))
+
     notes = f"state-aware lag={lag_frames}" if state_aware else f"fixed lag={lag_frames}"
     return _make_run(
         pipeline=pipeline,
@@ -993,6 +1011,8 @@ def run_primary_only_sort(
     frame_end: int,
     distance_threshold: float,
     primary_drone_id: int,
+    progress_callback: Callable[[int], None] | None = None,
+    progress_every: int = 25,
 ) -> ReanchoringRun:
     return _run_sequential_sort(
         pipeline="primary_only_sort",
@@ -1008,6 +1028,8 @@ def run_primary_only_sort(
         support_policy="none",
         support_allow_new=False,
         support_margin_threshold=0.50,
+        progress_callback=progress_callback,
+        progress_every=progress_every,
     )
 
 
@@ -1022,6 +1044,8 @@ def run_drop_delayed_sort(
     frame_end: int,
     distance_threshold: float,
     primary_drone_id: int,
+    progress_callback: Callable[[int], None] | None = None,
+    progress_every: int = 25,
 ) -> ReanchoringRun:
     return _run_sequential_sort(
         pipeline="drop_delayed_sort",
@@ -1037,6 +1061,8 @@ def run_drop_delayed_sort(
         support_policy="drop_delayed",
         support_allow_new=True,
         support_margin_threshold=0.50,
+        progress_callback=progress_callback,
+        progress_every=progress_every,
     )
 
 
@@ -1151,6 +1177,8 @@ def run_fixed_lag_multicue_update(
     identity_accept_threshold: float = 0.25,
     identity_only_distance_threshold: float | None = None,
     support_measurement_noise: float | None = None,
+    progress_callback: Callable[[int], None] | None = None,
+    progress_every: int = 25,
 ) -> ReanchoringRun:
     return _run_lag_or_state_aware(
         pipeline=pipeline,
@@ -1172,6 +1200,8 @@ def run_fixed_lag_multicue_update(
         identity_accept_threshold=identity_accept_threshold,
         identity_only_distance_threshold=identity_only_distance_threshold,
         support_measurement_noise=support_measurement_noise,
+        progress_callback=progress_callback,
+        progress_every=progress_every,
     )
 
 
