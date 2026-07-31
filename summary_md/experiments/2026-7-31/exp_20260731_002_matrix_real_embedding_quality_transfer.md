@@ -38,12 +38,25 @@ fixed_lag_world_xy_covariance_real_appearance
 
 The runner prints extraction and tracking progress with `flush=True`. `--progress-every 25` reports model, UAV/frame, observations, fold, delay, threshold, pipeline, elapsed time and ETA. `--resume` loads embedding caches and skips completed JSON condition checkpoints.
 
+## Environment Readiness
+
+Dependency and model preflight completed on 2026-07-31:
+
+- Python `3.8.10`, PyTorch `2.4.1+cu118`, TorchVision `0.19.1+cu118`
+- Ultralytics `8.4.113`, TorchReID source `1.4.0`, OpenCV `4.11.0`
+- CUDA available with `NVIDIA GeForce RTX 3090`
+- TorchReID is loaded from the ignored user-space path `.venvs/deep-person-reid`; its optional Cython rank evaluator is not required by embedding extraction
+- OSNet MSMT17 checkpoint: `weights/osnet_x0_25_msmt17.pth`
+- Single-crop OSNet preflight: finite normalized `512`-D embedding
+- Single-image M3OT layer-15 + GeM preflight: `(1,64,64,80)` feature map and finite normalized `256`-D embedding
+
 ## Manual Commands
 
 CUDA preflight:
 
 ```bash
-PYTHONPATH=src python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+YOLO_CONFIG_DIR=/tmp PYTHONPATH=src:.venvs/deep-person-reid /usr/bin/python3 \
+  -c "import torch, ultralytics, torchreid; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
 ```
 
 Smoke:
@@ -55,7 +68,7 @@ PYTHONPATH=src /usr/bin/python3 scripts/phase2_matrix_real_embedding_quality_tra
   --embedding-backends m3ot_gem osnet_x0_25_msmt17 \
   --m3ot-detector weights/m3ot_detector_best.pt \
   --m3ot-reid-head weights/gem_proj_head_l15.pt \
-  --torchreid-path "$HOME/.local/opt/deep-person-reid" \
+  --torchreid-path "$PWD/.venvs/deep-person-reid" \
   --osnet-checkpoint weights/osnet_x0_25_msmt17.pth \
   --delay-profiles fixed_2 fixed_3 --lag-frames 2 3 \
   --pose-noise-m 0.25 --device cuda:0 \

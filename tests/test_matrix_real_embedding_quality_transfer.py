@@ -20,6 +20,7 @@ from phase2_matrix_real_embedding_quality_transfer import (  # noqa: E402
     decide,
     stable_identity_fold,
 )
+from detection.osnet_reid import strip_checkpoint_prefix  # noqa: E402
 from tracking.matrix_gt import MatrixObservation  # noqa: E402
 from tracking.matrix_identity_cue import observation_sensor_key  # noqa: E402
 from tracking.matrix_real_appearance import (  # noqa: E402
@@ -60,6 +61,11 @@ def _observation(
 def test_clip_bbox_rejects_outside_and_clips_partial() -> None:
     assert clip_bbox((20, 1, 30, 10), image_width=16, image_height=16) is None
     assert clip_bbox((-2, -3, 8, 9), image_width=16, image_height=16) == (0, 0, 8, 9)
+
+
+def test_checkpoint_prefix_stripping_is_python38_compatible() -> None:
+    assert strip_checkpoint_prefix("module.model.conv.weight") == "conv.weight"
+    assert strip_checkpoint_prefix("conv.weight") == "conv.weight"
 
 
 def test_image_path_and_runtime_key_do_not_depend_on_person_id(tmp_path: Path) -> None:

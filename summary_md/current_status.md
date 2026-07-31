@@ -949,3 +949,22 @@ terms from `GLOSSARY.md`; links the existing six ASCII explainers; separates
 rejected historical branches from the current fixed-lag + geometry +
 covariance + identity story; and records that the real-embedding runner is
 implemented but not yet experimentally validated.
+
+## Latest Environment Update (2026-07-31 real embedding preflight)
+
+Prepared the local runtime without system-wide installation:
+
+```text
+ultralytics 8.4.113
+gdown 5.2.2
+torchreid 1.4.0 from .venvs/deep-person-reid
+OSNet x0.25 MSMT17 checkpoint in weights/osnet_x0_25_msmt17.pth
+CUDA device: NVIDIA GeForce RTX 3090
+```
+
+Both real embedding backends passed a GPU forward preflight. OSNet produced a
+finite normalized 512-D embedding; M3OT YOLO layer-15 + GeM produced a finite
+normalized 256-D embedding. A Python 3.8 checkpoint-key compatibility issue in
+`src/detection/osnet_reid.py` was fixed and covered by a regression test.
+
+Smoke and formal runs remain intentionally pending for manual execution.
