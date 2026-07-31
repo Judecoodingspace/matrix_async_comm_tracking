@@ -881,30 +881,53 @@ The result supports identity as an information dimension, not real ReID
 deployment readiness.
 ```
 
+## Latest Session Update (2026-07-31 identity cue quality boundary)
+
+Changed files:
+
+```text
+scripts/phase2_matrix_identity_cue_quality_boundary.py
+tests/test_matrix_identity_cue_quality_boundary.py
+summary_md/experiments/2026-7-31/exp_20260731_001_matrix_identity_cue_quality_boundary.md
+summary_md/experiments/2026-7-31/exp_20260731_001_matrix_identity_cue_quality_boundary_analysis.md
+mermaid/exp_20260731_001_matrix_identity_cue_quality_boundary/identity_quality_boundary_flow.mmd
+```
+
+Outputs:
+
+```text
+outputs/20260731_matrix_identity_cue_quality_boundary_smoke_calibrated/
+outputs/20260731_matrix_identity_cue_quality_boundary/
+```
+
+Verified result:
+
+```text
+Decision: quality_boundary_identified
+Measurement valid: 1
+Condition checkpoints: 30 / 30
+Medium reference reproduction mismatches: 0
+Minimum passing tested margin: 0.056747 at threshold 0.20
+Largest fully tested failing margin: 0.040019
+Boundary interval: (0.040019, 0.056747]
+```
+
+The initial global pair calibration selected threshold `0.10` at margin
+`0.056747`, but tracking passed only at `0.20`. This establishes the next
+methodological requirement: real ReID threshold calibration must use the
+geometry-shortlisted candidate distribution.
+
 ## Next Command
 
-Add checkpoint/resume support, then run identity cue quality boundary or real
-appearance message-content ablation.
-
-Target question:
+Design the real/semi-real appearance readiness audit:
 
 ```text
-What same/different appearance separation and identity gate threshold are
-needed for real ReID/CNN embeddings to reproduce the simulated identity cue
-gain at fixed_2/fixed_3 + 0.25m support noise?
+MATRIX bbox crops -> ReID/CNN embedding -> geometry candidate shortlist
+-> candidate-conditioned same/different similarity
+-> calibrated identity threshold -> fixed-lag tracker evaluation
 ```
 
-Recommended starting point:
-
-```text
-Reuse src/tracking/matrix_reanchoring.py and
-scripts/phase2_matrix_fixed_lag_simulated_identity_cue_ablation.py.
-First add per-condition checkpoint/resume.
-Then sweep identity_accept_threshold and simulated cue noise_sigma/view_bias.
-Keep fixed_2/fixed_3, 0.25m support noise, and high useful-window reporting.
-Report high useful-window survival delta, window IDSW delta, fragmentation, and
-mode/reject diagnostics.
-```
+Before the next formal, run:
 
 ```bash
 PYTHONPATH=src python -m pytest tests/ -q

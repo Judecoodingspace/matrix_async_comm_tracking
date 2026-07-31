@@ -46,6 +46,7 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
   - `scripts/analyze_occlusion_temporal_boundary_matched.py`
   - `scripts/analyze_occlusion_online_proxy_readiness.py`
   - `scripts/phase2_matrix_tracker_state_aware_reanchoring.py`
+  - `scripts/phase2_matrix_identity_cue_quality_boundary.py`
 - Support audit helpers:
   `src/tracking/support_audit.py`
 - Tests:
@@ -53,6 +54,7 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
   - `tests/test_temporal_boundary_matched.py`
   - `tests/test_online_proxy_readiness.py`
   - `tests/test_matrix_reanchoring.py`
+  - `tests/test_matrix_identity_cue_quality_boundary.py`
 
 ## Latest Result
 
@@ -69,6 +71,7 @@ summary_md/experiments/2026-7-24/exp_20260724_002_matrix_tracker_state_aware_rea
 summary_md/experiments/2026-7-26/exp_20260726_001_matrix_fixed_lag_useful_window_audit.md
 summary_md/experiments/2026-7-26/exp_20260726_002_matrix_fixed_lag_temporal_spatial_robustness.md
 summary_md/experiments/2026-7-26/exp_20260726_003_matrix_fixed_lag_simulated_identity_cue_ablation.md
+summary_md/experiments/2026-7-31/exp_20260731_001_matrix_identity_cue_quality_boundary.md
 ```
 
 Latest causal/counterfactual result:
@@ -135,6 +138,14 @@ Latest causal/counterfactual result:
   lowers IDSW below drop at both transition delays. Medium cue gives
   `fixed_2` survival delta `0.289408` / IDSW delta `-4.327869` and `fixed_3`
   `0.167618` / `-1.333333`.
+- Identity cue quality boundary formal is complete. Current decision is
+  `quality_boundary_identified`. All measurement gates pass, all `30/30`
+  condition checkpoints are complete, and the previous medium condition is
+  reproduced exactly. The minimum passing tested mean same/different margin is
+  `0.056747` at threshold `0.20`; the next lower fully tested margin `0.040019`
+  fails at all five thresholds. The discrete boundary is therefore
+  `(0.040019, 0.056747]` under the current simulated generator and MATRIX
+  pressure setting.
 
 Previous Stage A result:
 
@@ -203,13 +214,11 @@ boundary reference**, not as a required IDF1 lower bound.
 
 Immediate next action:
 
-1. Add checkpoint/resume support to long formal runners before expanding the
-   message-content matrix. The simulated identity cue formal was slow enough
-   that future delay × noise × cue sweeps should checkpoint after each
-   condition.
-2. Run an identity cue quality boundary sweep. Vary embedding separation and
-   `identity_accept_threshold` to estimate what same/different similarity
-   margin a real ReID/CNN embedding must achieve to retain the `0.25m` gain.
+1. Extract real or semi-real appearance embeddings from MATRIX bbox crops and
+   measure cross-view / cross-time similarity under the same occlusion keys.
+2. Calibrate identity thresholds on the geometry-shortlisted candidate set,
+   not on global identity pairs. The global calibration selected `0.10` at the
+   boundary quality, while tracking required `0.20`.
 3. Replace simulated identity with calibrated/real appearance evidence:
    compare appearance-only, geometry-only, geometry+appearance, and
    geometry+appearance+covariance under `fixed_2/fixed_3 + 0.25m`.

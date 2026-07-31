@@ -1191,7 +1191,7 @@ similarity:
   右边: accept
 ```
 
-下一轮 threshold sweep 要回答的是：在 `0.25m` support noise 下，什么阈值能同时保持 survival delta 为正、IDSW delta 不高于 drop-delayed。
+`exp_20260731_001` 表明 threshold 不能只按全局 embedding pair 分布选择。`margin=0.056747` 时，全局校准偏向 `0.10`，但 tracking 真正通过的是 `0.20`。原因是 tracker 只在 geometry shortlist 中比较候选，而全局 pair 分布包含大量运行时不会同时竞争的身份。
 
 相关术语：[[#Embedding Separation / 嵌入分离度]]、[[#Identity Gate / 身份门控]]。
 
@@ -1201,7 +1201,7 @@ similarity:
 
 > 就像问“照片要清楚到什么程度，才足够用来认人”：不是有照片就行，而是照片质量必须越过某条线。
 
-cue quality boundary 是下一轮计划要估计的边界：appearance / identity cue 的质量达到什么程度，才能让 `geometry + covariance + identity` 在 `fixed_2/fixed_3 + 0.25m` 下保持正收益。
+cue quality boundary 描述 appearance / identity cue 的质量达到什么程度，才能让 `geometry + covariance + identity` 在 `fixed_2/fixed_3 + 0.25m` 下保持正收益。
 
 它通常由三类量共同描述：
 
@@ -1233,7 +1233,38 @@ identity cue 质量从差到好:
   找到 minimum useful cue quality
 ```
 
+`exp_20260731_001` 的离散结果是：
+
+```text
+minimum passing tested margin:       0.056747, threshold 0.20
+largest fully-tested failing margin: 0.040019
+boundary interval:                   (0.040019, 0.056747]
+```
+
+该数值只适用于当前 simulated generator、MATRIX `0-999` 和固定压力设置。真实 ReID 应把它当作待验证目标，而不是通用常数。更关键的是同时报告候选条件下的 same accept rate 和 different accept rate。
+
 这个边界比“用了 ReID”更适合写进论文，因为它回答的是机制问题：身份维度需要多可靠，才足以补几何异步更新的噪声边界。
+
+---
+
+### Candidate-Conditioned Identity Calibration / 候选条件化身份校准
+
+> 就像不是拿一张照片和全城所有人比较，而是先按地点筛出附近几个人，再在这几个人中校准认人门槛。
+
+先用 geometry/covariance gate 得到 tracker 运行时真正会竞争的候选轨迹，再只在这些候选上统计同人和异人 similarity，并选择 `identity_accept_threshold`。它与全局 pair calibration 的区别是：全局统计包含大量永远不会同时进入关联候选集的人，可能高估或低估阈值的实际 tracking 代价。
+
+```text
+global calibration:
+  support embedding vs 全数据身份对
+  -> 分布容易统计，但不等于运行时竞争关系
+
+candidate-conditioned calibration:
+  world_xy + covariance -> candidate tracks
+  support embedding vs candidate tracks
+  -> threshold 直接对应误关联与拒绝风险
+```
+
+本轮发现：全局校准在边界质量选择 `0.10`，但 tracking 通过阈值是 `0.20`。因此真实 ReID readiness 必须优先使用候选条件化校准。
 
 ---
 
@@ -1388,8 +1419,9 @@ GitHub CLI (`gh`) 适合管理实验推进的“过程记录”和“协作状�
 | 固定窗口收益受有效支撑窗口调节 | `delay <= lag` 只是入场资格；如果到达时遮挡期已经快结束或身份线已断，收益仍会被压缩 |
 | 固定窗口存在时间-空间联合边界 | support 来得够早但坐标不准时，fixed-lag 会把噪声写回历史状态；0.10m 仍有收益，0.25m 开始不可靠 |
 | 身份维度能补 0.25m 几何噪声边界 | `world_xy` 和 `covariance-only` 仍不够；`world_xy + covariance + simulated identity` 同时提高 survival 并降低 IDSW |
+| 模拟身份线索存在可测质量边界 | 当前离散边界为 `(0.040019, 0.056747]`，但阈值必须在几何候选内校准 |
 | GitHub CLI 应管理实验脉络而非大输出 | issue/branch/PR 管实验进度，summary_md 管 durable conclusion，outputs 只作本地证据 |
 
 ---
 
-*最后更新: 2026-07-31 | 当前术语数: 67*
+*最后更新: 2026-07-31 | 当前术语数: 68*
