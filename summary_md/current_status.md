@@ -1,21 +1,24 @@
 # Current Status
 
-Updated: 2026-07-24
+Updated: 2026-07-26
 
 ## Latest Research Focus
 
-The current focus is the temporal boundary of useful support during D1 LoS
-occlusion. The latest completed experiment is
-`exp_20260724_001_matrix_early_frame_online_proxy_readiness`, which asks whether
-the `early_frame_gap_boundary` mechanism can be predicted from online-observable
-variables.
+The current focus is tracker-mechanism mitigation for asynchronous support
+during D1 LoS occlusion. The latest completed experiment is
+`exp_20260726_003_matrix_fixed_lag_simulated_identity_cue_ablation`, a formal
+Step 1 message-content ablation that adds simulated identity cue to noisy
+fixed-lag delayed update.
 
-The current decision is `online_proxy_weak`. Combined online proxies improve
-episode-level F1 over delay-only (`0.889655` vs `0.813600`) and have strong
-frame-level signal (`0.969113` AUC vs delay-only `0.830986`), but episode-level
-AUC improves only `0.003205` (`0.967811` vs `0.964606`). This is not enough to
-enter full policy learning. The next step is action-threshold calibration:
-compare M1 and M5 out-of-fold probabilities at matched harmful-accept rates.
+The current decision is `identity_dimension_supported`. At `0.25m` support
+world-coordinate noise, high useful-window `world_xy` fixed-lag remains harmful
+(`fixed_2` survival delta `-0.077936`, `fixed_3` `-0.078924`), and
+covariance-only is still insufficient. `world_xy + covariance + simulated
+identity` restores positive survival and reduces IDSW below drop-delayed at
+both transition delays: medium cue gives `fixed_2` survival delta `0.289408`
+/ IDSW delta `-4.327869` and `fixed_3` `0.167618` / `-1.333333`. The next
+step is cue-quality boundary / real appearance message-content ablation, with
+checkpoint/resume added before larger formal matrices.
 
 The original Backfill-centered OOSM direction has been tested and rejected in
 the controlled M3OT setup. The viable next direction is to evaluate MATRIX for
@@ -56,11 +59,21 @@ scripts/phase2_matrix_occlusion_counterfactual_calibration.py
 scripts/analyze_occlusion_temporal_boundary.py
 scripts/analyze_occlusion_temporal_boundary_matched.py
 scripts/analyze_occlusion_online_proxy_readiness.py
+scripts/phase2_matrix_tracker_state_aware_reanchoring.py
+scripts/analyze_matrix_fixed_lag_useful_window.py
+scripts/phase2_matrix_fixed_lag_temporal_spatial_robustness.py
+scripts/phase2_matrix_fixed_lag_simulated_identity_cue_ablation.py
 scripts/validate_matrix_dataset.py
 src/tracking/support_audit.py
+src/tracking/matrix_reanchoring.py
+src/tracking/matrix_identity_cue.py
 tests/test_matrix_gt.py
 tests/test_temporal_boundary_matched.py
 tests/test_online_proxy_readiness.py
+tests/test_matrix_reanchoring.py
+tests/test_fixed_lag_useful_window.py
+tests/test_fixed_lag_temporal_spatial_robustness.py
+tests/test_matrix_simulated_identity_cue.py
 ```
 
 Concept notes:
@@ -198,6 +211,74 @@ threshold-stability experiments.
   (`0.967811` vs `0.964606`). Frame-level M5 has strong AUC (`0.969113`) over
   delay-only (`0.830986`), so the signal is real but not yet sufficient for
   full policy learning.
+- MATRIX tracker-state-aware re-anchoring formal completed on frames `0-999`.
+  Decision is `fixed_lag_sufficient`. In the transition zone, fixed-lag delayed
+  update is very strong: at `1000ms`, `fixed_lag_oosm_lag2/3/5` and
+  `state_aware_reanchoring` have occlusion IDF1 `0.870100` / IDSW `829`, versus
+  drop-delayed `0.052011` / `5084` and arrival-time `0.155521` / `3988`. At
+  `1500ms`, `fixed_lag_oosm_lag3/5` and state-aware have IDF1 `0.724058` /
+  IDSW `2101`. Current state-aware ties, but does not beat, the best fixed-lag
+  ablation.
+- MATRIX fixed-lag useful support window audit completed by reusing the
+  `0-999` formal outputs. Decision is `useful_window_modulated_fixed_lag`.
+  `delay <= lag` is an eligibility condition, not a guarantee of gain:
+  eligible useful-window bucket survival spread is `0.382940`. State-aware
+  lag3 at `2500ms` has occlusion IDF1 `0.078017`, while fixed-lag lag5 has
+  `0.516013`, confirming that useful correction window size is still a
+  controlling factor.
+- MATRIX fixed-lag temporal-spatial robustness formal completed on frames
+  `0-999`. Measurement gates pass: primary-only invariant mismatch `0`,
+  drop-delayed invariant mismatch `0`, primary perturbation mismatches `0`,
+  and pose0 prior reproduction mismatch `0`. Decision is
+  `temporal_spatial_boundary_identified`: high useful-window fixed-lag remains
+  useful at `0.10m` noise (`fixed_2` IDF1 delta `0.107354`, `fixed_3`
+  `0.094543`), but at `0.25m` survival delta turns negative (`fixed_2`
+  `-0.077936`, `fixed_3` `-0.078924`) and IDSW exceeds drop-delayed.
+- MATRIX simulated identity cue ablation formal completed on frames `0-999`.
+  Measurement gate passes: primary perturbation mismatches `0`, identity lookup
+  key uses no `person_id`, and clean truth is used under noisy support.
+  Decision is `identity_dimension_supported`. In high useful-window episodes,
+  `fixed_lag_world_xy` remains harmful at `0.25m` noise, but medium
+  `fixed_lag_world_xy_covariance_identity` gives survival delta `0.289408` /
+  IDSW delta `-4.327869` at 1000ms and `0.167618` / `-1.333333` at 1500ms.
+
+## Recent Commands
+
+```bash
+PYTHONPATH=src /usr/bin/python3 scripts/phase2_matrix_fixed_lag_temporal_spatial_robustness.py \
+  --matrix-root MATRIX/MATRIX_30x30 \
+  --frame-start 0 --frame-end 999 \
+  --fps 2 \
+  --primary-drone-id 0 \
+  --support-drone-ids 1 2 3 4 5 6 7 \
+  --delay-profiles fixed_0 fixed_1 fixed_2 fixed_3 fixed_5 \
+  --lag-frames 1 2 3 5 \
+  --pose-noise-levels 0.00 0.10 0.25 0.50 \
+  --seed 7 \
+  --output-dir outputs/20260726_matrix_fixed_lag_temporal_spatial_robustness
+
+PYTHONPATH=src python -m pytest tests/ -q
+
+PYTHONPATH=src /usr/bin/python3 scripts/phase2_matrix_fixed_lag_simulated_identity_cue_ablation.py \
+  --matrix-root MATRIX/MATRIX_30x30 \
+  --frame-start 0 --frame-end 999 \
+  --fps 2 \
+  --primary-drone-id 0 \
+  --support-drone-ids 1 2 3 4 5 6 7 \
+  --delay-profiles fixed_2 fixed_3 \
+  --lag-frames 2 3 \
+  --pose-noise-m 0.25 \
+  --identity-strengths strong medium weak \
+  --seed 7 \
+  --output-dir outputs/20260726_matrix_fixed_lag_simulated_identity_cue_ablation
+
+PYTHONPATH=src python -m pytest tests/ -q
+```
+
+Notes: noisy `arrival_time_sort` and nonzero-noise `fixed_0` sanity are skipped
+by default in this runner because they are computationally expensive and not
+part of the main fixed-lag robustness decision. Future long formal runners
+should write per-combination checkpoints to support resume.
 - MATRIX server migration completed to
   `aiso-image@10.16.9.138:/mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/`
   using `migration_matrix_server_files.txt`. All manifest paths exist on the
@@ -235,8 +316,10 @@ sweeps.
 
 For the occlusion-support temporal boundary, accept `early_frame_gap_boundary`
 as the current refined mechanism. Online proxies are useful but weak at the
-episode action level. Do not enter full policy learning yet; first perform
-threshold-calibrated action-readiness using M1/M5 out-of-fold probabilities.
+episode action level, and the next tracker-mechanism experiment shows bounded
+fixed-lag delayed update is the strongest current mitigation. Do not enter full
+policy learning yet. First test whether fixed-lag OOSM remains robust under
+pose/world-coordinate noise and spatial staleness.
 
 ## Known Caveats
 
@@ -633,22 +716,194 @@ Failed attempts:
 git status --short failed because this directory is not a Git worktree.
 ```
 
-## Next Command
+## Latest Session Update (2026-07-24 tracker-state-aware re-anchoring)
 
-Design the threshold-calibrated action-readiness audit. It should reuse:
+Changed files:
+
+```text
+src/tracking/matrix_reanchoring.py
+scripts/phase2_matrix_tracker_state_aware_reanchoring.py
+tests/test_matrix_reanchoring.py
+summary_md/experiments/2026-7-24/exp_20260724_002_matrix_tracker_state_aware_reanchoring.md
+summary_md/experiments/2026-7-24/exp_20260724_002_matrix_tracker_state_aware_reanchoring_analysis.md
+mermaid/exp_20260724_002_matrix_tracker_state_aware_reanchoring/reanchoring_flow.mmd
+summary_md/current_experiment_stage.md
+summary_md/current_status.md
+summary_md/experiments/INDEX.md
+GLOSSARY.md
+mermaid/overall_experiment_design_20260709.mmd
+```
+
+Outputs created:
+
+```text
+outputs/20260724_matrix_tracker_state_aware_reanchoring_smoke/
+outputs/20260724_matrix_tracker_state_aware_reanchoring/
+```
+
+Commands run:
 
 ```bash
-outputs/20260724_matrix_early_frame_online_proxy_readiness/online_proxy_episode_dataset.csv
-outputs/20260724_matrix_early_frame_online_proxy_readiness/online_proxy_model_comparison.csv
-outputs/20260724_matrix_early_frame_online_proxy_readiness/online_proxy_group_cv.csv
-outputs/20260724_matrix_early_frame_online_proxy_readiness/online_proxy_error_diagnostics.csv
+PYTHONPATH=src python -m pytest tests/test_matrix_reanchoring.py -q
+PYTHONPATH=src python -m pytest tests/ -q
+PYTHONPATH=src /usr/bin/python3 -m py_compile src/tracking/matrix_reanchoring.py scripts/phase2_matrix_tracker_state_aware_reanchoring.py tests/test_matrix_reanchoring.py
+PYTHONPATH=src /usr/bin/python3 scripts/phase2_matrix_tracker_state_aware_reanchoring.py --matrix-root MATRIX/MATRIX_30x30 --frame-start 0 --frame-end 49 --fps 2 --primary-drone-id 0 --support-drone-ids 1 2 3 4 5 6 7 --delay-profiles fixed_0 fixed_2 fixed_3 --lag-frames 1 2 3 --seed 7 --output-dir outputs/20260724_matrix_tracker_state_aware_reanchoring_smoke
+PYTHONPATH=src /usr/bin/python3 scripts/phase2_matrix_tracker_state_aware_reanchoring.py --matrix-root MATRIX/MATRIX_30x30 --frame-start 0 --frame-end 999 --fps 2 --primary-drone-id 0 --support-drone-ids 1 2 3 4 5 6 7 --delay-profiles fixed_0 fixed_1 fixed_2 fixed_3 fixed_5 fixed_10 --lag-frames 1 2 3 5 --seed 7 --output-dir outputs/20260724_matrix_tracker_state_aware_reanchoring
 ```
+
+Verified result:
+
+```text
+Decision: fixed_lag_sufficient
+1000ms: fixed_lag/state-aware occlusion IDF1 0.870100, IDSW 829
+1500ms: fixed_lag/state-aware occlusion IDF1 0.724058, IDSW 2101
+state-aware ties but does not beat best fixed-lag
+```
+
+Failed or corrected attempts:
+
+```text
+Initial decision logic incorrectly accepted a tie with fixed-lag as state-aware
+trade-off success. The rule was corrected so state-aware must strictly beat the
+best fixed-lag/recovery competitor. The formal decision was refreshed from
+existing CSVs without rerunning tracker outputs.
+```
+
+## Latest Session Update (2026-07-26 fixed-lag temporal-spatial robustness)
+
+Changed files:
+
+```text
+src/tracking/matrix_reanchoring.py
+scripts/phase2_matrix_fixed_lag_temporal_spatial_robustness.py
+tests/test_fixed_lag_temporal_spatial_robustness.py
+summary_md/experiments/2026-7-26/exp_20260726_002_matrix_fixed_lag_temporal_spatial_robustness.md
+summary_md/experiments/2026-7-26/exp_20260726_002_matrix_fixed_lag_temporal_spatial_robustness_analysis.md
+mermaid/exp_20260726_002_matrix_fixed_lag_temporal_spatial_robustness/temporal_spatial_flow.mmd
+summary_md/current_experiment_stage.md
+summary_md/current_status.md
+summary_md/experiments/INDEX.md
+GLOSSARY.md
+mermaid/overall_experiment_design_20260709.mmd
+```
+
+Outputs created:
+
+```text
+outputs/20260726_matrix_fixed_lag_temporal_spatial_robustness_smoke/
+outputs/20260726_matrix_fixed_lag_temporal_spatial_robustness/
+```
+
+Commands run:
+
+```bash
+PYTHONPATH=src python -m pytest tests/test_fixed_lag_temporal_spatial_robustness.py -q
+PYTHONPATH=src python -m pytest tests/ -q
+PYTHONPATH=src /usr/bin/python3 -m py_compile src/tracking/matrix_reanchoring.py scripts/phase2_matrix_fixed_lag_temporal_spatial_robustness.py
+PYTHONPATH=src /usr/bin/python3 scripts/phase2_matrix_fixed_lag_temporal_spatial_robustness.py --matrix-root MATRIX/MATRIX_30x30 --frame-start 0 --frame-end 49 --fps 2 --primary-drone-id 0 --support-drone-ids 1 2 3 4 5 6 7 --delay-profiles fixed_1 fixed_2 --lag-frames 1 2 3 --pose-noise-levels 0.00 0.25 --seed 7 --output-dir outputs/20260726_matrix_fixed_lag_temporal_spatial_robustness_smoke
+PYTHONPATH=src /usr/bin/python3 scripts/phase2_matrix_fixed_lag_temporal_spatial_robustness.py --matrix-root MATRIX/MATRIX_30x30 --frame-start 0 --frame-end 999 --fps 2 --primary-drone-id 0 --support-drone-ids 1 2 3 4 5 6 7 --delay-profiles fixed_0 fixed_1 fixed_2 fixed_3 fixed_5 --lag-frames 1 2 3 5 --pose-noise-levels 0.00 0.10 0.25 0.50 --seed 7 --output-dir outputs/20260726_matrix_fixed_lag_temporal_spatial_robustness
+```
+
+Verified result:
+
+```text
+Decision: temporal_spatial_boundary_identified
+Measurement gates: all pass
+0.10m high-window: fixed2 IDF1 delta 0.107354, fixed3 0.094543
+0.25m high-window: fixed2 survival delta -0.077936, fixed3 -0.078924
+Full tests: 113 passed
+```
+
+Implementation notes:
+
+```text
+Noisy arrival_time_sort is disabled by default in the robustness runner because
+it creates many stale support tracks and is not part of the main fixed-lag
+decision. Nonzero-noise fixed_0 sanity is also skipped by default; fixed_0
+noise=0.00 still reproduces prior results.
+```
+
+## Latest Session Update (2026-07-26 simulated identity cue ablation)
+
+Changed files:
+
+```text
+src/tracking/matrix_identity_cue.py
+src/tracking/matrix_reanchoring.py
+scripts/phase2_matrix_fixed_lag_simulated_identity_cue_ablation.py
+tests/test_matrix_simulated_identity_cue.py
+summary_md/experiments/2026-7-26/exp_20260726_003_matrix_fixed_lag_simulated_identity_cue_ablation.md
+summary_md/experiments/2026-7-26/exp_20260726_003_matrix_fixed_lag_simulated_identity_cue_ablation_analysis.md
+mermaid/exp_20260726_003_matrix_fixed_lag_simulated_identity_cue_ablation/sim_identity_flow.mmd
+summary_md/current_experiment_stage.md
+summary_md/current_status.md
+summary_md/experiments/INDEX.md
+GLOSSARY.md
+mermaid/overall_experiment_design_20260709.mmd
+```
+
+Outputs created:
+
+```text
+outputs/20260726_matrix_fixed_lag_simulated_identity_cue_ablation_smoke/
+outputs/20260726_matrix_fixed_lag_simulated_identity_cue_ablation/
+```
+
+Commands run:
+
+```bash
+PYTHONPATH=src python -m pytest tests/test_matrix_simulated_identity_cue.py tests/test_matrix_reanchoring.py -q
+PYTHONPATH=src /usr/bin/python3 -m py_compile src/tracking/matrix_identity_cue.py src/tracking/matrix_reanchoring.py scripts/phase2_matrix_fixed_lag_simulated_identity_cue_ablation.py
+PYTHONPATH=src /usr/bin/python3 scripts/phase2_matrix_fixed_lag_simulated_identity_cue_ablation.py --matrix-root MATRIX/MATRIX_30x30 --frame-start 0 --frame-end 49 --fps 2 --primary-drone-id 0 --support-drone-ids 1 2 3 4 5 6 7 --delay-profiles fixed_2 fixed_3 --lag-frames 2 3 --pose-noise-m 0.25 --identity-strengths strong medium --seed 7 --output-dir outputs/20260726_matrix_fixed_lag_simulated_identity_cue_ablation_smoke
+PYTHONPATH=src /usr/bin/python3 scripts/phase2_matrix_fixed_lag_simulated_identity_cue_ablation.py --matrix-root MATRIX/MATRIX_30x30 --frame-start 0 --frame-end 999 --fps 2 --primary-drone-id 0 --support-drone-ids 1 2 3 4 5 6 7 --delay-profiles fixed_2 fixed_3 --lag-frames 2 3 --pose-noise-m 0.25 --identity-strengths strong medium weak --seed 7 --output-dir outputs/20260726_matrix_fixed_lag_simulated_identity_cue_ablation
+PYTHONPATH=src python -m pytest tests/ -q
+```
+
+Verified result:
+
+```text
+Decision: identity_dimension_supported
+Measurement gates: all pass
+1000ms high-window: world_xy survival delta -0.077936, cov+identity medium 0.289408
+1000ms high-window: world_xy IDSW delta 2.259563, cov+identity medium -4.327869
+1500ms high-window: world_xy survival delta -0.078924, cov+identity medium 0.167618
+1500ms high-window: world_xy IDSW delta 2.915301, cov+identity medium -1.333333
+Full tests: 117 passed
+```
+
+Implementation notes:
+
+```text
+Simulated identity cue uses GT person_id only to generate hidden sensor-side
+embedding prototypes. Runtime association uses observation_sensor_key
+(capture_time, drone_id, position_id, bbox) and does not read person_id.
+The result supports identity as an information dimension, not real ReID
+deployment readiness.
+```
+
+## Next Command
+
+Add checkpoint/resume support, then run identity cue quality boundary or real
+appearance message-content ablation.
 
 Target question:
 
 ```text
-At the same harmful-accept rate, does M5 keep more helpful support than M1,
-especially in 1000ms and 1500ms delay groups?
+What same/different appearance separation and identity gate threshold are
+needed for real ReID/CNN embeddings to reproduce the simulated identity cue
+gain at fixed_2/fixed_3 + 0.25m support noise?
+```
+
+Recommended starting point:
+
+```text
+Reuse src/tracking/matrix_reanchoring.py and
+scripts/phase2_matrix_fixed_lag_simulated_identity_cue_ablation.py.
+First add per-condition checkpoint/resume.
+Then sweep identity_accept_threshold and simulated cue noise_sigma/view_bias.
+Keep fixed_2/fixed_3, 0.25m support noise, and high useful-window reporting.
+Report high useful-window survival delta, window IDSW delta, fragmentation, and
+mode/reject diagnostics.
 ```
 
 ```bash

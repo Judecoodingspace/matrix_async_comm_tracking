@@ -74,33 +74,56 @@ flowchart TD
         E11["结论<br>当前机制为 early-frame gap<br>早期发布帧缺 support 是主因"]:::evidence
         S11 -.-> E11
 
-        CURRENT["当前位置<br>online proxy readiness 已执行<br>结论 online_proxy_weak"]:::current
-        EC["证据<br>M5 F1 提升 0.076<br>AUC 只提升 0.003<br>frame proxy 强但 episode ranking 增量不足"]:::currentEvidence
-        CURRENT -.-> EC
+        S12["online proxy readiness 完成"]:::partial
+        E12["结论<br>online_proxy_weak<br>proxy 可校准阈值<br>但不足以直接进入 policy learning"]:::evidence
+        S12 -.-> E12
     end
 
     S10 --> S11
-    S11 --> CURRENT
+    S11 --> S12
+    S12 --> T1
+
+    subgraph G5["阶段C 跟踪机制缓解"]
+        T1["tracker-state-aware reanchoring 已执行<br>结论 fixed_lag_sufficient"]:::pass
+        ET1["证据<br>1000ms fixed-lag/state-aware IDF1 0.870 IDSW 829<br>1500ms IDF1 0.724 IDSW 2101<br>state-aware 与最佳 fixed-lag 打平"]:::evidence
+        T1 -.-> ET1
+
+        T2["fixed-lag useful-window audit 已执行<br>结论 useful_window_modulated_fixed_lag"]:::pass
+        ET2["证据<br>eligible bucket survival spread 0.383<br>delay 小于等于 lag 只是资格<br>不是收益保证"]:::evidence
+        T2 -.-> ET2
+
+        T3["fixed-lag 加坐标噪声 已执行<br>结论 temporal_spatial_boundary_identified"]:::pass
+        ET3["证据<br>0.10m 仍有正收益<br>0.25m survival delta 转负<br>说明窗口足够也会被坐标噪声污染"]:::evidence
+        T3 -.-> ET3
+
+        CURRENT["当前位置<br>模拟身份线索消融 已执行<br>结论 identity_dimension_supported"]:::current
+        EC["证据<br>world_xy 在0.25m仍为负<br>covariance加identity 转正<br>并降低 IDSW"]:::currentEvidence
+        CURRENT -.-> EC
+    end
+
+    T1 --> T2
+    T2 --> T3
+    T3 --> CURRENT
     CURRENT --> N1
 
-    subgraph G5["下一步计划"]
-        N1["动作阈值校准审计"]:::plan
-        EN1["标准<br>同等 harmful accept 下<br>M5 保留更多 helpful support<br>重点 1000ms 和 1500ms"]:::planEvidence
+    subgraph G6["下一步计划"]
+        N1["identity cue 质量边界"]:::plan
+        EN1["标准<br>fixed2 fixed3 + 0.25m<br>恢复 high-window survival delta<br>且 IDSW 不高于 drop"]:::planEvidence
         N1 -.-> EN1
 
-        N2["加入坐标噪声和空间陈旧"]:::plan
-        EN2["标准<br>验证 v delay 除以 gate radius<br>是否成为第三维边界"]:::planEvidence
+        N2["真实或半真实外观线索"]:::plan
+        EN2["标准<br>替换 simulated identity<br>仍保持 survival 正收益<br>且 IDSW 下降"]:::planEvidence
         N2 -.-> EN2
 
-        N3["消息内容消融"]:::plan
-        EN3["标准<br>坐标 bbox pose 身份线索<br>作为信息维度贡献不同"]:::planEvidence
+        N3["长 formal 工程改进"]:::plan
+        EN3["标准<br>按 delay noise 组合增量落盘<br>支持 checkpoint resume"]:::planEvidence
         N3 -.-> EN3
     end
 
     N1 --> N2
     N2 --> N3
 
-    SUMMARY["一眼结论<br>已证实迟到观测影响身份跟踪<br>已证实遮挡中短延迟 support 有在线价值<br>已证实 episode rho 过粗<br>当前不直接进入 policy learning<br>下一步做动作阈值校准"]:::summary
+    SUMMARY["一眼结论<br>已证实迟到观测影响身份跟踪<br>已证实遮挡中短延迟 support 有在线价值<br>已证实 episode rho 过粗<br>已证实 fixed-lag 是强缓解机制<br>已证实收益受 useful-window 调节<br>已证实 fixed-lag 存在时间-空间联合边界<br>已证实身份维度可补0.25m边界<br>下一步转向真实外观线索和质量边界"]:::summary
 
     CURRENT --> SUMMARY
 

@@ -36,6 +36,10 @@ Status labels:
 | `exp_20260722_001_matrix_occlusion_temporal_boundary_expansion` | 2026-07-22 | 遮挡时间边界扩展 | MATRIX `0-999` | 成对反事实 + publish-time support freshness + delay/coverage 模型比较 | `outputs/20260722_matrix_occlusion_temporal_boundary_expansion/` | mainline | Formal 完成：385 episodes × 6 delays，Run A mismatch 0、mask mismatch 0。M4 delay×coverage interaction 明显优于 M1 delay-only：group-CV RMSE `0.277068` vs `0.416513`，R2 `0.758755` vs `0.458015`。 | `measurement_valid_boundary_still_sparse`；joint temporal boundary 信号成立，但 strict coverage gate 仍未通过，不能宣称最终数值阈值。Analysis: `summary_md/experiments/2026-7-22/exp_20260722_001_matrix_occlusion_temporal_boundary_expansion_analysis.md` |
 | `exp_20260722_002_matrix_temporal_boundary_matched_diagnostics` | 2026-07-22 | 时间边界 gate 修正与匹配诊断 | MATRIX `0-999` | 复用上一轮 formal 输出；group-CV/R2/CI 模型稳定性 gate；same-rho delay、same-delay coverage、early-frame、spillover 诊断 | `outputs/20260722_matrix_temporal_boundary_matched_diagnostics/` | mainline | 测量 gate 继续通过：mismatch 0、mask mismatch 0、no-effective-support nonzero gain 0。M4 继续稳定优于 M1，delay_x_coverage CI `[-0.959284,-0.846348]` 不跨 0；same-delay coverage spread 仅 `0.005815`，early-frame gain drop `0.704866`。 | `early_frame_gap_boundary`；strict cell count 降级为外推风险，当前最可解释机制是遮挡早期在线发布帧缺少可用 support。Analysis: `summary_md/experiments/2026-7-22/exp_20260722_002_matrix_temporal_boundary_matched_diagnostics_analysis.md` |
 | `exp_20260724_001_matrix_early_frame_online_proxy_readiness` | 2026-07-24 | 早期帧缺口在线代理可行性 | MATRIX `0-999` | 复用反事实 episode/frame 表；比较 delay-only、rho oracle、online freshness、early occlusion proxy、combined online proxy 的 group-CV 分类能力 | `outputs/20260724_matrix_early_frame_online_proxy_readiness/` | mainline | Episode-level M5 相比 M1：AUC `0.967811` vs `0.964606`，只提升 `0.003205`；F1 `0.889655` vs `0.813600`，提升 `0.076055`；recall `0.879260`，关键系数方向合理。Frame-level M5 AUC `0.969113` 明显高于 delay-only `0.830986`。 | `online_proxy_weak`；在线 proxy 有阈值校准和 frame-level 信号，但 episode-level ranking 增量不足，不直接进入 policy learning。Analysis: `summary_md/experiments/2026-7-24/exp_20260724_001_matrix_early_frame_online_proxy_readiness_analysis.md` |
+| `exp_20260724_002_matrix_tracker_state_aware_reanchoring` | 2026-07-24 | Tracker-state-aware delayed re-anchoring | MATRIX `0-999` | BEV/SORT-style tracker；比较 drop、arrival、causal、fixed-lag、recovery-only、state-aware reanchoring | `outputs/20260724_matrix_tracker_state_aware_reanchoring/` | mainline | 1000ms: state-aware / fixed-lag lag2 occlusion IDF1 `0.870100`, IDSW `829`, vs drop `0.052011` / `5084`。1500ms: state-aware / fixed-lag lag3 IDF1 `0.724058`, IDSW `2101`, vs drop `0.052011` / `5084`。State-aware 与 best fixed-lag 打平。 | `fixed_lag_sufficient`；短窗口 delayed update 是强缓解机制，但当前 state-aware 规则没有超过固定窗口。Analysis: `summary_md/experiments/2026-7-24/exp_20260724_002_matrix_tracker_state_aware_reanchoring_analysis.md` |
+| `exp_20260726_001_matrix_fixed_lag_useful_window_audit` | 2026-07-26 | Fixed-lag useful support window audit | MATRIX `0-999` | 复用 reanchoring 与 temporal-boundary formal 输出；按 episode 对齐 fixed-lag 与 drop，计算 `lag_eligible`、`useful_window_fraction` 和 delta | `outputs/20260726_matrix_fixed_lag_useful_window_audit/` | mainline | Eligible useful-window bucket survival spread `0.382940`；`[0,0.25)` bucket delta `0.000000`，`[0.5,0.75)` delta `0.203212`，`[0.75,1]` delta `0.382940`；2500ms lag5 比 state-aware lag3 IDF1 高 `0.437996`。 | `useful_window_modulated_fixed_lag`；`delay <= lag` 是资格条件，不是收益保证。下一轮 fixed-lag+noise 必须保留 useful-window 分层。Analysis: `summary_md/experiments/2026-7-26/exp_20260726_001_matrix_fixed_lag_useful_window_audit_analysis.md` |
+| `exp_20260726_002_matrix_fixed_lag_temporal_spatial_robustness` | 2026-07-26 | Fixed-lag temporal-spatial robustness audit | MATRIX `0-999` | 重新跑 tracker；fixed-lag/drop/primary under support world-coordinate noise；high useful-window 分层和 temporal-spatial risk 诊断 | `outputs/20260726_matrix_fixed_lag_temporal_spatial_robustness/` | mainline | Measurement gates 全通过。High useful-window 中，0.10m 仍有正收益：fixed2 occ IDF1 delta `0.107354`，fixed3 `0.094543`；0.25m 时 survival delta 转负：fixed2 `-0.077936`，fixed3 `-0.078924`，且 IDSW 高于 drop。 | `temporal_spatial_boundary_identified`；fixed-lag 是强缓解机制但不具备足够坐标噪声鲁棒性。下一步进入 message-content / identity-cue ablation 或 noise-aware fixed-lag update。Analysis: `summary_md/experiments/2026-7-26/exp_20260726_002_matrix_fixed_lag_temporal_spatial_robustness_analysis.md` |
+| `exp_20260726_003_matrix_fixed_lag_simulated_identity_cue_ablation` | 2026-07-26 | Simulated identity cue message-content ablation | MATRIX `0-999` | fixed_2/fixed_3 + 0.25m support noise；比较 world_xy、world_xy+covariance、world_xy+simulated identity、world_xy+covariance+simulated identity | `outputs/20260726_matrix_fixed_lag_simulated_identity_cue_ablation/` | mainline | Measurement gate 通过。High useful-window 中，world_xy 仍为负收益：1000ms survival delta `-0.077936`，1500ms `-0.078924`；medium `covariance+identity` 转为正收益：1000ms `0.289408` / IDSW delta `-4.327869`，1500ms `0.167618` / `-1.333333`。 | `identity_dimension_supported`；身份维度能补 0.25m geometry-only 边界，但需要与 covariance/authority control 联合使用。Analysis: `summary_md/experiments/2026-7-26/exp_20260726_003_matrix_fixed_lag_simulated_identity_cue_ablation_analysis.md` |
 
 ## Current Mainline Chain
 
@@ -74,5 +78,29 @@ Status labels:
     current data.
 11. Online proxy readiness is complete. Combined online proxies improve
     episode-level F1 and frame-level prediction, but add almost no episode-level
-    AUC over delay-only. Current decision is `online_proxy_weak`; next step is
-    action-threshold calibration, not full policy learning.
+    AUC over delay-only. Current decision is `online_proxy_weak`; do not enter
+    full policy learning from this signal alone.
+12. Tracker-state-aware re-anchoring is complete. Bounded fixed-lag delayed
+    update is the strongest current mitigation mechanism: it dramatically
+    improves 1000ms/1500ms occlusion IDF1 and IDSW, but the current state-aware
+    rule only ties the best fixed-lag ablation. Current decision is
+    `fixed_lag_sufficient`; next test fixed-lag robustness under
+    pose/world-coordinate noise.
+13. Fixed-lag useful support window audit is complete. The decision is
+    `useful_window_modulated_fixed_lag`: `delay <= lag` is an eligibility
+    condition, not a gain guarantee. Eligible useful-window buckets have
+    survival delta spread `0.382940`, so future fixed-lag noise results must be
+    stratified by useful-window bucket.
+14. Fixed-lag temporal-spatial robustness audit is complete. The current
+    decision is `temporal_spatial_boundary_identified`: high useful-window
+    fixed-lag still works at `0.10m` support world-coordinate noise, but at
+    `0.25m` survival delta turns negative and IDSW rises above drop. Next move
+    from pure world-coordinate support toward message-content / identity-cue
+    ablation or noise-aware fixed-lag update.
+15. Simulated identity cue ablation is complete. The current decision is
+    `identity_dimension_supported`: under `0.25m` support noise,
+    world-coordinate-only fixed-lag remains harmful, covariance-only is not
+    enough, and `world_xy + covariance + simulated identity` restores positive
+    high-window survival while reducing IDSW below drop at both 1000ms and
+    1500ms. Next replace simulated identity with calibrated/real appearance
+    evidence and add checkpoint/resume for larger matrices.

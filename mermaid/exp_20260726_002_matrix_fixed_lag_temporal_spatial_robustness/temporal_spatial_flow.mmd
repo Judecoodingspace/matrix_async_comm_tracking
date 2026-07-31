@@ -1,0 +1,31 @@
+flowchart TD
+    A["输入<br>上一轮 fixed-lag useful-window 结论"]:::prev
+    A --> B["本轮变量<br>support world-coordinate noise<br>0.00 / 0.10 / 0.25 / 0.50m"]:::current
+    B --> C["测量门<br>primary clean<br>drop invariant<br>truth clean<br>pose0 reproduces prior"]:::gate
+    C --> D{"通过?"}:::gate
+    D -->|否| X["inconclusive<br>不解释指标"]:::fail
+    D -->|是| E["只看 high useful-window<br>窗口足够时再看噪声"]:::current
+
+    E --> F["0.00m<br>fixed2 delta 0.818<br>fixed3 delta 0.672"]:::pass
+    E --> G["0.10m<br>fixed2 delta 0.107<br>fixed3 delta 0.095"]:::pass
+    E --> H["0.25m<br>survival delta 转负<br>IDSW 高于 drop"]:::partial
+    E --> I["0.50m<br>基本没有可用收益"]:::fail
+
+    F --> J["结论<br>temporal_spatial_boundary_identified"]:::decision
+    G --> J
+    H --> J
+    I --> J
+
+    J --> K["含义<br>时间窗口足够仍可能失败<br>因为坐标噪声污染回放更新"]:::summary
+    K --> L["下一步<br>message content / identity cue ablation"]:::next
+    K --> M["工程改进<br>formal runner 需要 checkpoint/resume"]:::next
+
+    classDef prev fill:#f5f5f5,stroke:#777,color:#111
+    classDef current fill:#eef5ff,stroke:#4f78a8,color:#172536
+    classDef gate fill:#fff8e8,stroke:#b77a22,color:#332100
+    classDef pass fill:#eef8ed,stroke:#4f8a54,color:#143018
+    classDef partial fill:#fff4df,stroke:#b77a22,color:#332100
+    classDef fail fill:#fff1f1,stroke:#b65757,color:#351616
+    classDef decision fill:#ffe6cc,stroke:#cc5500,stroke-width:3px,color:#241000
+    classDef summary fill:#f2f2f2,stroke:#555,color:#111
+    classDef next fill:#f7fbff,stroke:#6f91b8,color:#172536
