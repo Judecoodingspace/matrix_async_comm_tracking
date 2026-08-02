@@ -54,27 +54,27 @@ upsert_issue \
 upsert_issue \
   "exp_20260801_002: incremental local-tracklet update foundation" \
   "$ROOT/summary_md/github/20260801_incremental_tracklet_stage_issue.md" \
-  experiment analysis current-stage
+  experiment analysis completed
 
 upsert_issue \
   "exp_20260802_001: mobile-camera local tracklet readiness" \
   "$ROOT/summary_md/github/20260802_mobile_camera_local_tracklet_readiness_issue.md" \
-  experiment analysis current-stage
+  experiment analysis completed
 
 upsert_issue \
   "exp_20260802_002: BoT-SORT candidate gate repair" \
   "$ROOT/summary_md/github/20260802_botsort_candidate_gate_repair_issue.md" \
-  experiment analysis current-stage
+  experiment analysis completed
 
 upsert_issue \
   "exp_20260802_003: OC-SORT motion representation audit" \
   "$ROOT/summary_md/github/20260802_ocsort_motion_representation_audit_issue.md" \
-  experiment analysis current-stage
+  experiment analysis completed
 
 upsert_issue \
   "exp_20260802_004: local-tracklet lifecycle-stratified readiness" \
   "$ROOT/summary_md/github/20260802_local_tracklet_lifecycle_stratified_issue.md" \
-  experiment analysis current-stage
+  experiment analysis completed
 
 upsert_issue \
   "exp_20260803_001: MDMT local tracklet readiness" \
