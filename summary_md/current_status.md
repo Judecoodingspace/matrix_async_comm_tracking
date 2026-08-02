@@ -1,14 +1,16 @@
 # Current Status
 
-Updated: 2026-07-26
+Updated: 2026-08-01
 
 ## Latest Research Focus
 
-The current focus is tracker-mechanism mitigation for asynchronous support
-during D1 LoS occlusion. The latest completed experiment is
-`exp_20260726_003_matrix_fixed_lag_simulated_identity_cue_ablation`, a formal
-Step 1 message-content ablation that adds simulated identity cue to noisy
-fixed-lag delayed update.
+The real CNN appearance transfer formal is complete. The current decision is
+`tracking_transfer_supported` and `boundary_consistent`. M3OT-GeM has margin
+`0.032300`, below the simulated failure boundary, and does not improve tracking.
+OSNet has margin `0.124401`; with covariance it passes both transition delays:
+survival delta is `0.185434/0.090150` and IDSW delta is
+`-2.931694/-0.338798` at 1000/1500ms. The next focus is separating identity
+state updates from position-state authority, not training another ReID model.
 
 The current decision is `identity_dimension_supported`. At `0.25m` support
 world-coordinate noise, high useful-window `world_xy` fixed-lag remains harmful
@@ -931,4 +933,57 @@ Before the next formal, run:
 
 ```bash
 PYTHONPATH=src python -m pytest tests/ -q
+```
+
+## Latest Documentation Update (2026-07-31 idea mainline curation)
+
+Changed files:
+
+```text
+ascii_diagrams/07_current_idea_mainline.md
+ascii_diagrams/README.md
+summary_md/current_status.md
+```
+
+The new overview selects the current problem, failure, mechanism, and evidence
+terms from `GLOSSARY.md`; links the existing six ASCII explainers; separates
+rejected historical branches from the current fixed-lag + geometry +
+covariance + identity story; and records that the real-embedding runner is
+implemented but not yet experimentally validated.
+
+## Latest Environment Update (2026-07-31 real embedding preflight)
+
+Prepared the local runtime without system-wide installation:
+
+```text
+ultralytics 8.4.113
+gdown 5.2.2
+torchreid 1.4.0 from .venvs/deep-person-reid
+OSNet x0.25 MSMT17 checkpoint in weights/osnet_x0_25_msmt17.pth
+CUDA device: NVIDIA GeForce RTX 3090
+```
+
+Both real embedding backends passed a GPU forward preflight. OSNet produced a
+finite normalized 512-D embedding; M3OT YOLO layer-15 + GeM produced a finite
+normalized 256-D embedding. A Python 3.8 checkpoint-key compatibility issue in
+`src/detection/osnet_reid.py` was fixed and covered by a regression test.
+
+At this preflight checkpoint, smoke and formal runs were still pending; the
+subsequent formal result is recorded below.
+
+## Latest Formal Update (2026-08-01 real embedding transfer)
+
+Formal `0-999` completed with 50/50 condition checkpoints. The initial report
+incorrectly returned `measurement_invalid` because a source-string gate matched
+`person_id` inside the runtime-key function's docstring. The gate now changes
+only GT personID and checks whether the runtime key changes; it reports no
+identity leakage. Existing formal checkpoints were preserved and finalized via
+`--finalize-only`.
+
+Verified decision:
+
+```text
+tracking_transfer_supported
+boundary_consistent
+passing backend: osnet_x0_25_msmt17
 ```

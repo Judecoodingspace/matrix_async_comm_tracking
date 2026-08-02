@@ -146,6 +146,12 @@ Latest causal/counterfactual result:
   fails at all five thresholds. The discrete boundary is therefore
   `(0.040019, 0.056747]` under the current simulated generator and MATRIX
   pressure setting.
+- Real embedding quality transfer formal is complete. Current decision is
+  `tracking_transfer_supported` and `boundary_consistent`. M3OT-GeM margin
+  `0.032300` is below the simulated boundary and fails. OSNet margin `0.124401`
+  is above it; covariance + appearance passes both 1000ms and 1500ms with
+  survival delta `0.185434/0.090150` and IDSW delta
+  `-2.931694/-0.338798`.
 
 Previous Stage A result:
 
@@ -214,14 +220,11 @@ boundary reference**, not as a required IDF1 lower bound.
 
 Immediate next action:
 
-1. Extract real or semi-real appearance embeddings from MATRIX bbox crops and
-   measure cross-view / cross-time similarity under the same occlusion keys.
-2. Calibrate identity thresholds on the geometry-shortlisted candidate set,
-   not on global identity pairs. The global calibration selected `0.10` at the
-   boundary quality, while tracking required `0.20`.
-3. Replace simulated identity with calibrated/real appearance evidence:
-   compare appearance-only, geometry-only, geometry+appearance, and
-   geometry+appearance+covariance under `fixed_2/fixed_3 + 0.25m`.
+1. Design the identity-state / position-state update separation ablation.
+2. Compare position-only, identity-only, joint accept/reject and separated
+   update using the frozen OSNet backend.
+3. After the mechanism is isolated, replace noisy GT world XY with
+   bbox + camera pose/ray or reprojection-based geometry.
 
 Deferred multi-cue mainline:
 
