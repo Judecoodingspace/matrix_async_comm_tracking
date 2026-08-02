@@ -25,22 +25,24 @@ upsert_issue() {
       | head -n 1
   )"
 
-  local label_args=()
+  local edit_label_args=()
+  local create_label_args=()
   local label
   for label in "$@"; do
-    label_args+=(--add-label "$label")
+    edit_label_args+=(--add-label "$label")
+    create_label_args+=(--label "$label")
   done
 
   if [[ -n "$number" ]]; then
     gh issue edit "$number" --repo "$REPO" \
       --body-file "$body_file" \
-      "${label_args[@]}" >/dev/null
+      "${edit_label_args[@]}" >/dev/null
     echo "updated: $(gh issue view "$number" --repo "$REPO" --json url --jq .url)"
   else
     gh issue create --repo "$REPO" \
       --title "$title" \
       --body-file "$body_file" \
-      "${label_args[@]}"
+      "${create_label_args[@]}"
   fi
 }
 
