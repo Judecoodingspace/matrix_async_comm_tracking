@@ -144,17 +144,17 @@ flowchart TD
         EN_MOBILE["clean world active IDF1 0.936<br>最佳图像方法 0.373<br>537 个长 gap 均有支撑桥"]:::evidence
         N_MOBILE -.-> EN_MOBILE
 
-        N_TRACKER["当前位置 A<br>公开移动相机 tracker 对照"]:::current
-        EN_TRACKER["按 active run 评价<br>IDF1 0.80 purity 0.95"]:::currentEvidence
-        N_TRACKER -.-> EN_TRACKER
+        N_MDMT["切换 MDMT 行人局部轨迹"]:::pass
+        EN_MDMT["bbox SORT test IDF1 0.997<br>purity 0.998<br>本地轨迹不再阻塞"]:::evidence
+        N_MDMT -.-> EN_MDMT
 
-        N_STITCH["当前位置 B<br>最小全局拼接审计"]:::current
-        EN_STITCH["clean-world local tracklet 加 OSNet<br>外观 对比 支撑历史 对比 时空外观"]:::currentEvidence
-        N_STITCH -.-> EN_STITCH
-
-        N3["两条基础线通过后<br>进入异步增量轨迹融合"]:::plan
-        EN3["单帧包 对比增量轨迹包<br>随后加入 detector 与通信预算"]:::planEvidence
+        N3["当前位置<br>MDMT 异步增量轨迹融合"]:::current
+        EN3["单帧 latest 对比 pooled 增量消息<br>arrival 对比 timestamped<br>fixed-lag 对比 late recovery"]:::currentEvidence
         N3 -.-> EN3
+
+        N4["通过后<br>检测误差与通信预算"]:::plan
+        EN4["真实 detector<br>等字节消息内容消融"]:::planEvidence
+        N4 -.-> EN4
     end
 
     CURRENT --> N1
@@ -163,14 +163,13 @@ flowchart TD
     N_READY --> N2
     N2 --> N_OC
     N_OC --> N_MOBILE
-    N_MOBILE --> N_TRACKER
-    N_MOBILE --> N_STITCH
-    N_TRACKER --> N3
-    N_STITCH --> N3
+    N_MOBILE --> N_MDMT
+    N_MDMT --> N3
+    N3 --> N4
 
-    SUMMARY["一眼结论<br>长 gap 曾混杂局部评价<br>修正后图像局部 tracker 仍未就绪<br>但所有长 gap 都有跨视角证据<br>当前位置并行补局部基础和全局拼接"]:::summary
+    SUMMARY["一眼结论<br>MATRIX 单帧观测已给出时间与风险边界<br>MDMT 已解决行人本地轨迹基础<br>当前位置验证 history 大于1 是否真有跨视角增量"]:::summary
 
-    N_MOBILE --> SUMMARY
+    N3 --> SUMMARY
 
     classDef title fill:#f2f2f2,stroke:#222222,stroke-width:2px,color:#111111
     classDef pass fill:#eef8ed,stroke:#4f8a54,stroke-width:1px,color:#143018

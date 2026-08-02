@@ -1936,6 +1936,52 @@ XML ID 只能用于单视角评价，不能作为 global stitching 的同人真�
 相关术语：[[#Incremental Tracklet Update / 增量式轨迹片段更新]]、
 [[#MDMT Dataset / 双无人机多目标跟踪数据集]]。
 
+### Global Fusion Wire Packet / 全局融合线缆消息
+
+> 就像快递箱过安检后只允许保留一张照片和一张固定格式的运单；仓库内部档案再丰富，也不能偷偷塞进箱子。
+
+`IncrementalTrackletUpdate` 是 local tracker 的内部状态，其中可以同时存在 latest 和
+pooled embedding；wire packet 是真正允许跨 UAV 发送的投影。本轮每包严格包含一个
+embedding，避免 history>1 方法靠发送更多向量获得不公平优势：
+
+```text
+history1 packet:    latest embedding + history_length=1 + 无稳定支撑轨迹身份
+incremental packet: pooled embedding + history_length>1 + 稳定 support local track ID
+共同约束:           每个 active support track 每帧一包，每包一个 float32 向量
+禁止字段:           XML ID、official ID、GT 遮挡标签、world XY
+```
+
+相关术语：[[#Dataset-Neutral Tracklet Packet / 数据集无关轨迹消息]]、
+[[#History-1 Message Equivalence / 单历史消息等价性]]。
+
+### Latest vs Pooled Appearance / 单帧外观与历史聚合外观
+
+> 就像用今天的一张证件照认人，和用过去多张照片合成一份档案认人；后者信息更稳定，但也可能积累早期错误。
+
+`latest appearance` 是 capture frame 当前检测框的 OSNet embedding；`pooled appearance`
+是同一 local tracklet 截至 capture frame 的多个归一化 embedding 均值再归一化。二者都只
+发送一个向量，因此 pooled 的潜在收益来自历史聚合和稳定 local track ID，不来自更高字节
+预算。`has_measurement=false` 的预测帧不得刷新外观证据。
+
+### Primary ReID Stitching / 主视角同视角重连接
+
+> 就像主摄像头自己翻旧相册，把重新出现的人接回旧档案；这件事不需要另一架无人机帮忙。
+
+当主视角 local tracklet 在长 gap 后终止并产生新 local ID 时，只使用主视角冻结 OSNet
+gallery 尝试恢复旧 global ID。它是异步跨视角实验的强基线：只有 support 方法超过它，
+收益才能归因于跨视角信息，而不是普通长期 ReID。
+
+### Published Online ID vs Corrected Internal State / 已发布身份与内部修正状态
+
+> 就像直播字幕已经播出，后台可以修正后续讲稿，但不能假装观众没看过前面的错误字幕。
+
+`published online ID` 是每个 frame 对外输出后不可修改的主视角 global ID；
+`corrected internal state` 是迟到消息按 capture time 重放后得到的内部映射，可改变当前及
+未来输出。完整或 fixed-lag replay 都必须满足 `published_history_rewrites=0`。超过 lag 的
+late recovery 只能从 arrival frame 开始影响后续重连接，不能回写 gap 内已经发布的 ID。
+
+相关术语：[[#Track Replay / 关联重放]]、[[#Fixed-Lag OOSM Update / 固定窗口乱序更新]]。
+
 ### Cross-View Identity Mapping / 跨视角身份映射
 
 > 就像两家医院各有自己的病历号；号码相同不代表是同一个人，必须有经过核验的对照表。
@@ -2019,7 +2065,8 @@ AAS_frame = TA / (GA + FA + MA)
 | 生命周期分层修正了评价但未修好 tracker | clean world-XY active-run IDF1 达到 0.936，但最佳图像 tracker 仍只有 0.373；长 gap 混杂与局部关联失败同时存在 |
 | 跨视角支撑桥不等于拼接成功 | 537 个长 gap 都有完整其他视角覆盖，只证明信息存在；还需单独验证全局时空与外观拼接 |
 | GitHub CLI 应管理实验脉络而非大输出 | issue/branch/PR 管实验进度，summary_md 管 durable conclusion，outputs 只作本地证据 |
+| MDMT 下一阶段比较单帧与增量轨迹消息 | 同发送频率、每包一个向量；只改变稳定 local ID 与历史聚合外观，并以主视角 ReID 作为强基线 |
 
 ---
 
-*最后更新: 2026-08-02 | 当前术语数: 96*
+*最后更新: 2026-08-02 | 当前术语数: 100*

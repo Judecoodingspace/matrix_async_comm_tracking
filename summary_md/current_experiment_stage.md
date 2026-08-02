@@ -71,6 +71,13 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
   the active task is a minimum person-only asynchronous incremental-tracklet
   fusion audit. Cross-view category-conflict sensitivity remains a required
   evaluation gate.
+- `exp_20260803_002_mdmt_async_incremental_tracklet_fusion` is now implemented.
+  The current stage is **full val threshold calibration pending**, not Formal.
+  The experiment compares identical history-1 packets at arrival/capture time
+  against stable-ID pooled incremental tracklets, fixed-lag, and future-only
+  recovery. A val-22 double-direction smoke completed all 14 implementation gates;
+  one-sequence primary-ReID calibration was intentionally insufficient. Run the
+  complete val Pilot before authorizing official-test Formal.
 
 ## Current Data
 

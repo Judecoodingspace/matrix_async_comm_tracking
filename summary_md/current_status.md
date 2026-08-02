@@ -4,6 +4,29 @@ Updated: 2026-08-02
 
 ## Latest Research Focus
 
+`exp_20260803_002_mdmt_async_incremental_tracklet_fusion` is implemented on the
+stacked branch `exp/20260803-002-mdmt-async-tracklet-fusion`. It adds a
+dataset-neutral one-embedding wire packet, separate primary/support appearance
+galleries, arrival-time fusion, capture-time replay, fixed-lag update, and
+future-only late recovery. Published online global IDs are immutable.
+
+The MDMT val-22 double-direction smoke completed end to end. All 14
+implementation measurement checks are zero/pass and embedding coverage is
+`1.0`. Its final `measurement_invalid` is expected for this reduced smoke:
+V1-primary same-view ReID has only one positive calibration pair and precision
+`0.333`, while all four cross-view thresholds and the reverse primary threshold
+pass `0.95` precision. The exact next action is the full val Pilot command in
+the experiment card; Formal remains unauthorized until
+`selected_config.json.formal_allowed=true`.
+
+Verification:
+
+```text
+PYTHONPATH=src python -m pytest tests/ -q -> 194 passed, 2 skipped
+py_compile MDMT dataset/message/fusion/CLI modules -> passed
+git diff --check -> passed
+```
+
 `exp_20260803_001_mdmt_local_tracklet_readiness` Formal is complete. The scope is
 MDMT person-only tracking with GT bbox and active-visible-run evaluation. All
 measurement gates pass, including zero runtime GT/world-XY reads, deterministic
