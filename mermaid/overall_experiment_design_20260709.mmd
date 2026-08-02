@@ -55,7 +55,7 @@ flowchart TD
         E8["结论<br>500ms 有强在线价值<br>1000ms 后快速下降"]:::evidence
         S8 -.-> E8
 
-        S9["成对反事实测量校准"]:::pass
+        S9["成对反事实测量校准"]:::passbriefing:
         E9["标准<br>Run A 复现 mismatch 0<br>mask mismatch 0<br>不使用真值身份修轨迹"]:::evidence
         S9 -.-> E9
     end
@@ -100,37 +100,77 @@ flowchart TD
         ET4["证据<br>world_xy 在0.25m仍为负<br>covariance加identity 转正<br>并降低 IDSW"]:::evidence
         T4 -.-> ET4
 
-        CURRENT["当前位置<br>identity cue 质量边界 已完成"]:::current
-        EC["证据<br>最低通过 margin 0.0567<br>完整失败 margin 0.0400<br>边界为 (0.0400, 0.0567]"]:::currentEvidence
+        T5["身份质量边界 已完成<br>边界 (0.0400, 0.0567]"]:::pass
+        ET5["证据<br>最低通过 margin 0.0567<br>完整失败 margin 0.0400"]:::evidence
+        T5 -.-> ET5
+
+        T6["真实外观迁移 已完成"]:::pass
+        ET6["证据<br>M3OT 低于边界并失败<br>OSNet 高于边界并通过<br>covariance 加 appearance 两个延迟均有效"]:::evidence
+        T6 -.-> ET6
+
+        CURRENT["身份位置生命周期审计完成<br>身份门控位置更新最佳"]:::pass
+        EC["证据<br>OSNet IDF1 0.387 / 0.306<br>模拟身份恢复 72% / 68% 性能空间<br>生命周期效应为零"]:::evidence
         CURRENT -.-> EC
     end
 
     T1 --> T2
     T2 --> T3
     T3 --> T4
-    T4 --> CURRENT
-    CURRENT --> N1
-
-    subgraph G6["下一步计划"]
-        N1["真实或半真实外观线索"]:::plan
-        EN1["标准<br>候选条件化 margin 可校准<br>fixed2 fixed3 + 0.25m<br>仍超过 drop"]:::planEvidence
+    T4 --> T5
+    T5 --> T6
+    T6 --> CURRENT
+    subgraph G6["阶段D 增量式本地轨迹更新"]
+        N1["增量消息接口已通过<br>local tracklet 质量未通过"]:::partial
+        EN1["history=1 零差异<br>bbox-only 串人<br>bbox+OSNet 严重碎片化"]:::evidence
         N1 -.-> EN1
 
-        N2["候选条件化身份阈值"]:::plan
-        EN2["标准<br>离线阈值能命中 tracking 通过区<br>不依赖最终指标反向调参"]:::planEvidence
+        N_FIX["成熟局部跟踪适配已实现"]:::partial
+        EN_FIX["BoT-SORT 生命周期<br>GMC 与 OSNet 消融"]:::evidence
+        N_FIX -.-> EN_FIX
+
+        N_READY["首轮 Pilot 未通过<br>暂缓 Formal"]:::partial
+        EN_READY["GMC 有效但不足<br>默认候选门挡住多数正确对"]:::evidence
+        N_READY -.-> EN_READY
+
+        N2["最小候选修复仍未就绪"]:::partial
+        EN2["p 0.1 改善但 IDF1 仅 0.138<br>p 0.3 高纯度但过碎"]:::evidence
         N2 -.-> EN2
 
-        N3["真实 message-content 消融"]:::plan
-        EN3["标准<br>appearance geometry covariance<br>联合优于单一信息维度"]:::planEvidence
+        N_OC["OC-SORT 审计完成<br>当前配置仍未就绪"]:::partial
+        EN_OC["世界运动与候选召回通过<br>软外观串人 硬外观过碎"]:::evidence
+        N_OC -.-> EN_OC
+
+        N_MOBILE["生命周期分层审计完成<br>局部方法仍未就绪"]:::partial
+        EN_MOBILE["clean world active IDF1 0.936<br>最佳图像方法 0.373<br>537 个长 gap 均有支撑桥"]:::evidence
+        N_MOBILE -.-> EN_MOBILE
+
+        N_TRACKER["当前位置 A<br>公开移动相机 tracker 对照"]:::current
+        EN_TRACKER["按 active run 评价<br>IDF1 0.80 purity 0.95"]:::currentEvidence
+        N_TRACKER -.-> EN_TRACKER
+
+        N_STITCH["当前位置 B<br>最小全局拼接审计"]:::current
+        EN_STITCH["clean-world local tracklet 加 OSNet<br>外观 对比 支撑历史 对比 时空外观"]:::currentEvidence
+        N_STITCH -.-> EN_STITCH
+
+        N3["两条基础线通过后<br>进入异步增量轨迹融合"]:::plan
+        EN3["单帧包 对比增量轨迹包<br>随后加入 detector 与通信预算"]:::planEvidence
         N3 -.-> EN3
     end
 
-    N1 --> N2
-    N2 --> N3
+    CURRENT --> N1
+    N1 --> N_FIX
+    N_FIX --> N_READY
+    N_READY --> N2
+    N2 --> N_OC
+    N_OC --> N_MOBILE
+    N_MOBILE --> N_TRACKER
+    N_MOBILE --> N_STITCH
+    N_TRACKER --> N3
+    N_STITCH --> N3
 
-    SUMMARY["一眼结论<br>已证实迟到观测影响身份跟踪<br>已证实遮挡中短延迟 support 有在线价值<br>已证实 fixed-lag 是强缓解机制<br>已证实收益受 useful-window 调节<br>已证实 fixed-lag 存在时间-空间联合边界<br>已证实身份维度可补0.25m边界<br>已量化模拟身份质量边界<br>下一步转向真实外观和候选条件化校准"]:::summary
+    SUMMARY["一眼结论<br>长 gap 曾混杂局部评价<br>修正后图像局部 tracker 仍未就绪<br>但所有长 gap 都有跨视角证据<br>当前位置并行补局部基础和全局拼接"]:::summary
 
-    CURRENT --> SUMMARY
+    N_MOBILE --> SUMMARY
 
     classDef title fill:#f2f2f2,stroke:#222222,stroke-width:2px,color:#111111
     classDef pass fill:#eef8ed,stroke:#4f8a54,stroke-width:1px,color:#143018
