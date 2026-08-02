@@ -1,0 +1,15 @@
+flowchart LR
+    A[MDMT val GT bbox] --> B[逐视角本地跟踪]
+    B --> C[连续活跃可见段评价]
+    C --> D{Readiness 通过?}
+    D -- 否 --> E[更换移动相机 tracker]
+    D -- 是 --> F[锁定配置]
+    F --> G[官方 test Formal]
+    G --> H{test 仍通过?}
+    H -- 否 --> I[记录域偏移]
+    H -- 是 --> J[进入异步 global tracklet fusion]
+
+    K[当前: Formal 已通过] -.-> J
+
+    classDef current fill:#fff3cd,stroke:#8a6d3b,color:#222;
+    class K current;

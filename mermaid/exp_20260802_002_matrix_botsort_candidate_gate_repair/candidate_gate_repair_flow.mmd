@@ -1,0 +1,24 @@
+flowchart LR
+    A[上一轮失败<br>候选召回不足] --> B[固定 GMC]
+    B --> C[扫描候选门<br>0.1 0.3 0.5]
+    C --> D[软外观代价]
+    C --> E[OSNet 硬拒绝]
+
+    D --> F[最佳连续性<br>p 0.1]
+    E --> G[最佳纯度折中<br>p 0.1]
+    E -.-> H[旁证<br>p 0.3 高纯度但过碎]
+
+    F --> I{局部就绪门}
+    G --> I
+    I -->|未通过 当前| J[Formal 暂缓]
+    J --> K[下一步<br>OC-SORT 最小对照]
+    I -->|通过| L[200-999 Formal]
+
+    classDef current fill:#ffe6cc,stroke:#cc5500,stroke-width:3px,color:#241000
+    classDef fail fill:#fff1f1,stroke:#b65757,stroke-width:2px,color:#351616
+    classDef plan fill:#eef5ff,stroke:#4f78a8,stroke-width:2px,color:#172536
+    classDef evidence fill:#ffffff,stroke:#999999,stroke-width:1px,color:#222222
+    class G current
+    class H evidence
+    class I,J fail
+    class K plan

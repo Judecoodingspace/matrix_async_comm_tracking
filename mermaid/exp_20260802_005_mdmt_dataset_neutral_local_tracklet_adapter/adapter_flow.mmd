@@ -1,0 +1,14 @@
+flowchart LR
+    A[MDMT 图像与 XML bbox] --> B[数据集适配器]
+    B --> C[运行时检测键\n无身份真值]
+    C --> D[逐视角本地跟踪器]
+    D --> E[固定大小增量轨迹消息]
+    B -. 仅离线评价 .-> F[视角内 XML identity]
+    D -. 逐视角评分 .-> F
+    G[官方 test MDA GT] --> H{帧和 bbox 回连通过?}
+    H -- 否 --> I[阻塞 global stitching 身份评分]
+    H -- 是: 当前 --> J[异步跨视角轨迹融合评价]
+    J --> K[报告 3.47% 类别冲突敏感性]
+
+    classDef current fill:#fff3cd,stroke:#8a6d3b,color:#222;
+    class J current;

@@ -18,6 +18,59 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
   margin is the best geometry-only variant, but support marginal value remains
   negative under noisy world-coordinate support. The geometry-only Stage A
   condition is now closed as a harm-boundary result.
+- Scope transition on 2026-08-01: the completed line is explicitly classified
+  as observation-level asynchronous fusion. The active next stage is
+  **incremental local-tracklet update**: every UAV independently maintains a
+  causal local tracklet and emits its current state every frame. It does not
+  wait for tracklet termination.
+- Incremental-tracklet foundation smoke is implemented. Gate A exactly
+  reproduces the observation-level reference, and no-GT/causality checks pass.
+  Gate B is currently blocked: bbox-only local tracking merges identities
+  (IDF1/purity `0.248/0.329`), while bbox+OSNet is pure but highly fragmented
+  (IDF1/purity `0.074/0.959`). The active task is therefore mobile-camera
+  local-tracker repair, not global asynchronous tracklet fusion.
+- The first repair experiment is implemented as
+  `exp_20260802_001_matrix_mobile_camera_local_tracklet_readiness`. It compares
+  mature BoT-SORT lifecycle with GMC and frozen OSNet in a 2x2 ablation. Pilot
+  Pilot is complete and all measurement gates pass, but no mature configuration
+  reaches the purity gate. GMC improves IDF1/coverage strongly; OSNet adds
+  almost nothing because the default `IoU>=0.5` proximity mask excludes about
+  `74.3%` of same-person consecutive pairs before appearance comparison.
+  The candidate-generation repair `exp_20260802_002` is now also complete.
+  `IoU>=0.1 + OSNet hard veto` improves IDF1/purity to `0.137546/0.946417`,
+  but no configuration passes readiness. `IoU>=0.3 + hard veto` confirms the
+  precision-recall failure: purity `0.973078`, IDF1 only `0.077409`.
+  The OC-SORT motion/state representation Pilot is complete. World CV error
+  p90 is `0.269m` and GMC+CV IoU>=0.1 candidate recall is `0.826`, so neither
+  non-linear pedestrian motion nor candidate reachability alone explains the
+  failure. Deep OC-SORT soft raises IDF1 to `0.337` but purity falls to `0.479`;
+  hard veto restores purity and severe fragmentation. Clean world-XY reaches
+  purity `0.996` but only IDF1 `0.548`, because the current readiness gate also
+  penalizes local-ID termination across LoS gaps longer than `track_buffer=5`.
+  Lifecycle-stratified readiness is now complete. Clean world-XY active-run
+  IDF1 is `0.935778`, confirming that the old full-sequence gate mixed local
+  continuity with long-gap identity recovery. No image tracker passes the
+  corrected active-run gate: the best continuity variant reaches IDF1
+  `0.373450` with purity `0.433254`, while high-purity variants remain severely
+  fragmented. All `537` long gaps have complete support-view evidence, but no
+  global stitching method has been implemented yet.
+  **Current position: current local Formal remains blocked. Compare one public
+  mobile-camera tracker under the corrected gate and, in parallel, start a
+  minimum asynchronous global-stitching audit.**
+- MDMT transition Gate 0 is now implemented. `tracklet_packets.py` defines a
+  dataset-neutral fixed-size message, and the MDMT adapter runs paired views
+  without runtime identity/world-XY access. Official MDA GT was located for all
+  14 test pairs and imported under `data/MDMT_official_mda_gt/`. Current decision
+  is `adapter_ready_official_mapping_available`. Test global evaluation is
+  authorized, with the 3.47% cross-view class-conflict rate reported as label noise.
+- MDMT person local-tracklet readiness `exp_20260803_001` has completed Pilot and
+  locked official-test Formal. All measurement gates pass. On `124824` visible
+  person detections and `912` active runs, `bbox_sort` reaches IDF1 `0.997229`,
+  purity `0.997500`, IDSW `22`, and fragmentation `20`. Current decision is
+  `person_local_tracklet_ready`. Local tracking no longer blocks the mainline;
+  the active task is a minimum person-only asynchronous incremental-tracklet
+  fusion audit. Cross-view category-conflict sensitivity remains a required
+  evaluation gate.
 
 ## Current Data
 
@@ -47,6 +100,13 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
   - `scripts/analyze_occlusion_online_proxy_readiness.py`
   - `scripts/phase2_matrix_tracker_state_aware_reanchoring.py`
   - `scripts/phase2_matrix_identity_cue_quality_boundary.py`
+  - `scripts/phase2_matrix_identity_position_update_separation.py`
+  - `scripts/prepare_matrix_local_tracklet_osnet_cache.py`
+  - `scripts/phase3_matrix_incremental_tracklet_foundation.py`
+  - `scripts/phase3_matrix_mobile_camera_local_tracklet_readiness.py`
+  - `scripts/phase3_matrix_botsort_candidate_gate_repair.py`
+  - `scripts/phase3_matrix_ocsort_motion_representation_audit.py`
+  - `scripts/analyze_matrix_local_tracklet_lifecycle_stratified.py`
 - Support audit helpers:
   `src/tracking/support_audit.py`
 - Tests:
@@ -55,6 +115,10 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
   - `tests/test_online_proxy_readiness.py`
   - `tests/test_matrix_reanchoring.py`
   - `tests/test_matrix_identity_cue_quality_boundary.py`
+  - `tests/test_matrix_incremental_tracklet.py`
+  - `tests/test_matrix_mobile_camera_local_tracklet.py`
+  - `tests/test_matrix_ocsort_motion_representation.py`
+  - `tests/test_matrix_local_tracklet_lifecycle_stratified.py`
 
 ## Latest Result
 
@@ -72,6 +136,10 @@ summary_md/experiments/2026-7-26/exp_20260726_001_matrix_fixed_lag_useful_window
 summary_md/experiments/2026-7-26/exp_20260726_002_matrix_fixed_lag_temporal_spatial_robustness.md
 summary_md/experiments/2026-7-26/exp_20260726_003_matrix_fixed_lag_simulated_identity_cue_ablation.md
 summary_md/experiments/2026-7-31/exp_20260731_001_matrix_identity_cue_quality_boundary.md
+summary_md/experiments/2026-8-2/exp_20260802_001_matrix_mobile_camera_local_tracklet_readiness.md
+summary_md/experiments/2026-8-2/exp_20260802_002_matrix_botsort_candidate_gate_repair.md
+summary_md/experiments/2026-8-2/exp_20260802_003_matrix_ocsort_motion_representation_audit.md
+summary_md/experiments/2026-8-2/exp_20260802_004_matrix_local_tracklet_lifecycle_stratified_readiness.md
 ```
 
 Latest causal/counterfactual result:
@@ -152,6 +220,14 @@ Latest causal/counterfactual result:
   is above it; covariance + appearance passes both 1000ms and 1500ms with
   survival delta `0.185434/0.090150` and IDSW delta
   `-2.931694/-0.338798`.
+- Identity/position/lifecycle update separation formal is complete. Decision is
+  `identity_gate_only_supported`; all `34/34` checkpoints and measurement gates
+  pass. `identity_gated_position_only` is best: OSNet occlusion IDF1 is
+  `0.386625/0.305918`, and simulated-medium is `0.638227/0.509608` at
+  `fixed_2/fixed_3`. Separated update has no stable gain, lifecycle-only has
+  exactly zero effect, and simulated-medium recovers `71.66%/68.09%` of the
+  zero-noise headroom. The current evidence points to identity candidate
+  selection and support-template authority, not lifecycle bookkeeping.
 
 Previous Stage A result:
 
@@ -220,11 +296,12 @@ boundary reference**, not as a required IDF1 lower bound.
 
 Immediate next action:
 
-1. Design the identity-state / position-state update separation ablation.
-2. Compare position-only, identity-only, joint accept/reject and separated
-   update using the frozen OSNet backend.
-3. After the mechanism is isolated, replace noisy GT world XY with
-   bbox + camera pose/ray or reprojection-based geometry.
+1. Keep GMC fixed and audit `proximity_thresh={0.1,0.3,0.5}` candidate recall.
+2. Compare standard BoT-SORT soft appearance cost with an explicit OSNet hard veto.
+3. Rerun the `0-199` Pilot; do not use the fallback config as a passing config.
+4. Only after at least one mature variant passes all four readiness thresholds,
+   compare history-1 observation packets with history>1 incremental tracklet
+   packets in asynchronous global fusion.
 
 Deferred multi-cue mainline:
 

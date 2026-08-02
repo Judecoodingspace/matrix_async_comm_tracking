@@ -1,16 +1,184 @@
 # Current Status
 
-Updated: 2026-08-01
+Updated: 2026-08-02
 
 ## Latest Research Focus
 
-The real CNN appearance transfer formal is complete. The current decision is
+`exp_20260803_001_mdmt_local_tracklet_readiness` Formal is complete. The scope is
+MDMT person-only tracking with GT bbox and active-visible-run evaluation. All
+measurement gates pass, including zero runtime GT/world-XY reads, deterministic
+replay, 100% embedding coverage, and exact reconciliation of all `600923`
+official GT rows. Across `124824` visible person detections and `912` active
+runs, `bbox_sort` is the strongest baseline: IDF1 `0.997229`, purity `0.997500`,
+IDSW `22`, fragmentation `20`, and packet coverage `1.0`. The durable decision
+is `person_local_tracklet_ready`; local tracking no longer blocks the mainline.
+The next experiment is person-only asynchronous incremental-tracklet fusion,
+with a category-consistent official cross-view evaluation subset.
+
+The dataset-neutral packet and MDMT local-tracklet adapter are now implemented.
+Runtime packets expose neither XML identity nor world XY. Official paired MDA GT
+was located in the upstream repository for all 14 test sequences and downloaded
+to ignored local storage at `data/MDMT_official_mda_gt/`. Test-26 reconciles all
+`51,900` official rows to XML with zero unmatched rows and zero mapping conflicts.
+The full 14-pair audit then reconciled all `600,923` official rows with zero
+unmatched rows and zero mapping conflicts; every file follows XML ID plus one.
+The corrected decision is `adapter_ready_official_mapping_available`. New code:
+`src/tracking/tracklet_packets.py`, `src/datasets/mdmt.py`,
+`scripts/phase3_mdmt_local_tracklet_adapter_readiness.py`, and
+`scripts/prepare_mdmt_official_mda_gt.py`. MATRIX compatibility is preserved
+through `tracking.matrix_local_tracklet` re-exports. The complete regression
+suite passes (`203 passed`).
+
+Cross-view scoring is available on the official test protocol: `mango_eval.py`
+uses equal IDs in paired official GT as the ground-truth association, and those
+IDs equal XML IDs plus one. The original `31,888` full-dataset class conflicts
+therefore indicate annotation inconsistency, not absence of an ID convention.
+Within official test pairs the conflict rate is `6,538/188,500 = 3.47%`; formal
+reports must include an annotation-noise sensitivity result.
+
+MDMT has been placed at
+`/mnt/data/yzm/datasets/Multi-Drone-Multi-Object-Detection-and-Tracking/` and a
+read-only preflight is complete. The package contains all `44` paired sequences
+and `39,678` images, so local-tracklet adapter work may begin. Cross-view global
+evaluation is not yet authorized: same-number XML IDs produce `31,888`
+same-frame class conflicts across views, so an authoritative cross-view identity
+mapping must be located or validated first. No calibration, pose, timestamp, or
+FPS metadata was found. Durable note:
+`summary_md/codex_notes/20260802_mdmt_dataset_preflight.md`.
+
+The next stage is now formally defined as **incremental local-tracklet update**.
+Each UAV will independently maintain a causal local tracklet and send its
+current state every capture frame; the system will not wait for a completed
+tracklet. The completed observation-level experiments remain controlled
+mechanism evidence and become the history-length-1 reference.
+
+The latest experiment is
+`exp_20260802_004_matrix_local_tracklet_lifecycle_stratified_readiness`. The
+analysis-only `0-199` audit is complete. It separates active visible-run local
+tracking from long-gap termination, reacquisition, and global-stitching demand.
+All measurement gates pass. The decision is
+`readiness_metric_recalibrated_local_tracker_still_blocked`.
+
+Clean world-XY active-run IDF1 is `0.935778`, versus `0.548384` under the old
+full-sequence metric, so the previous readiness gate was materially confounded
+by long gaps. No image tracker passes the corrected gate: Deep OC-SORT soft has
+the best active-run IDF1 (`0.373450`) but purity is only `0.433254`; high-purity
+hard-gate methods remain highly fragmented. Across `537` long gaps, every
+missing frame has the target visible in at least one other UAV. This establishes
+global-stitching headroom, not stitching success. Current local Formal remains
+blocked; the next two tasks are a public mobile-camera tracker comparison and a
+minimum global-stitching audit.
+
+Implementation and `0-49` smoke are complete. History-1 reproduces all four
+legacy delay/fold conditions with zero prediction, track-ID, action, and metric
+mismatch. The message schema has no GT identity, and future-read, local-to-global
+ID reuse, and determinism mismatches are all zero. The previous OSNet cache was
+found to cover only `25.59%` of the all-view local stream; a missing-crop cache
+preparation CLI now raises this to `100%` and the experiment hard-fails below
+`95%` coverage.
+
+The previous BoT-SORT decision was `hard_veto_tradeoff_only`. On that Pilot,
+`IoU>=0.1 + hard veto` is the best purity/continuity trade-off with IDF1
+`0.137546`, purity `0.946417`, minimum-view IDF1 `0.116761`, and occlusion
+support coverage `0.997379`. The planned `IoU>=0.3 + hard veto` reaches purity
+`0.973078` but only IDF1 `0.077409`, because its offline hard-gate same-pair
+recall is only `0.429553`. Formal and asynchronous global tracklet fusion remain
+blocked; the OC-SORT comparison has now been completed.
+
+The OC-SORT Pilot finds world CV p90=`0.269029m` and GMC+CV IoU>=0.1 candidate
+recall=`0.826277`. Deep OC-SORT soft raises image IDF1 to `0.337211` but purity
+falls to `0.478666`; hard veto gives purity `0.968358` but IDF1 `0.096966` and
+fragmentation `28142`. The clean world-XY diagnostic has purity `0.995616` and
+IDF1 `0.548384`. Across 320 view-person sequences, 537 LoS gaps exceed the
+five-frame buffer, explaining most world-oracle fragmentation. The script's
+automatic `world_motion_or_annotation_bottleneck` branch is therefore too
+coarse; the structured conclusion is `readiness_gate_lifecycle_confounded`.
+The next action is to separate active visible-run quality from long-gap
+reacquisition/stitching before comparing another tracker.
+
+The earlier decision was `local_tracklet_quality_blocked`. On smoke,
+`bbox_sort` macro local IDF1/purity is `0.248077/0.329275` (identity merging),
+whereas `bbox_osnet` is `0.073641/0.959313` (pure but severely fragmented).
+The old foundation's `0-999` formal remains intentionally blocked. Pilot shows
+GMC is necessary but insufficient: best mature IDF1 is about `0.088`, purity
+about `0.749`, and the fallback-selected configs all have
+`purity_gate_pass=false`. An offline candidate audit shows only `25.70%` of
+same-person consecutive pairs reach the default `IoU>=0.5` appearance-candidate
+region after GMC, despite OSNet same-person threshold acceptance of `91.15%`.
+That candidate-recall and soft-vs-hard appearance experiment is now complete.
+
+## Latest Implementation Update (2026-08-02 mobile-camera readiness)
+
+Implemented:
+
+```text
+src/tracking/matrix_mature_local_tracklet.py
+scripts/prepare_matrix_local_tracklet_osnet_cache.py
+scripts/phase3_matrix_mobile_camera_local_tracklet_readiness.py
+tests/test_matrix_mobile_camera_local_tracklet.py
+tests/test_matrix_botsort_candidate_gate_repair.py
+scripts/phase3_matrix_botsort_candidate_gate_repair.py
+src/tracking/matrix_ocsort_local_tracklet.py
+scripts/phase3_matrix_ocsort_motion_representation_audit.py
+tests/test_matrix_ocsort_motion_representation.py
+scripts/analyze_matrix_local_tracklet_lifecycle_stratified.py
+tests/test_matrix_local_tracklet_lifecycle_stratified.py
+summary_md/experiments/2026-8-2/
+mermaid/exp_20260802_001_matrix_mobile_camera_local_tracklet_readiness/
+mermaid/exp_20260802_002_matrix_botsort_candidate_gate_repair/
+mermaid/exp_20260802_003_matrix_ocsort_motion_representation_audit/
+mermaid/exp_20260802_004_matrix_local_tracklet_lifecycle_stratified_readiness/
+```
+
+The adapter uses Ultralytics BoT-SORT `8.4.113`, precomputed OSNet features,
+and externally audited sparse-optical-flow GMC. It remaps the process-global
+Ultralytics internal track number into a per-UAV local namespace. World state
+is accumulated only after image-plane association. Pilot locks the four mature
+variant configs; Formal refuses to run without that config file.
+
+Local dependency preflight installed `lap==0.5.12` under
+`.venvs/local-tracklet`. Candidate-gate target tests pass (`20 passed`). The cache preparation
+script reports progress every loading chunk and writes resumable embedding
+checkpoints. The all-view cache and both earlier Pilots are complete. OC-SORT
+adds 10 focused tests, and lifecycle stratification adds 8 focused tests; the
+complete suite passes (`196 passed`). The
+user-terminal Pilot is now complete; Formal was not launched. The runner
+selected `delta_t/inertia` before comparing Deep OC-SORT no-app, soft
+appearance, and hard veto, and wrote `formal_allowed=0`.
+
+GitHub synchronization is prepared in
+`scripts/manage_github_tracklet_transition.sh`, including the new experiment
+issue body. This workspace currently has no discoverable Git worktree and
+`gh auth status` reports an invalid token, so no remote update was claimed. The
+next synchronization commands are:
+
+```bash
+gh auth refresh -h github.com
+bash scripts/manage_github_tracklet_transition.sh
+```
+
+The identity/position/lifecycle update separation formal is complete. Decision
+is `identity_gate_only_supported`; measurement is valid with `34/34`
+checkpoints and zero reference mismatches. The best method is
+`identity_gated_position_only`: OSNet occlusion IDF1 is `0.386625/0.305918`,
+and simulated-medium is `0.638227/0.509608` at 1000/1500ms. Separated update
+does not stably beat current joint, and lifecycle-only has exactly zero effect.
+
+The main attribution has changed: delayed appearance is useful primarily for
+selecting which track may receive a position update. Writing support appearance
+back into the shared template reduces survival, while a primary-anchored
+identity gate is substantially stronger. Simulated-medium recovers
+`71.66%/68.09%` of zero-noise headroom, so the predefined tracker-architecture
+bottleneck does not trigger. The next focus is cross-view template authority,
+followed by an explicit appearance-assisted primary-reacquisition path.
+
+The real CNN appearance transfer formal is complete. Its decision is
 `tracking_transfer_supported` and `boundary_consistent`. M3OT-GeM has margin
 `0.032300`, below the simulated failure boundary, and does not improve tracking.
 OSNet has margin `0.124401`; with covariance it passes both transition delays:
 survival delta is `0.185434/0.090150` and IDSW delta is
-`-2.931694/-0.338798` at 1000/1500ms. The next focus is separating identity
-state updates from position-state authority, not training another ReID model.
+`-2.931694/-0.338798` at 1000/1500ms. The update-separation formal now shows
+that the gain is mainly candidate authorization, not support-template writing.
 
 The current decision is `identity_dimension_supported`. At `0.25m` support
 world-coordinate noise, high useful-window `world_xy` fixed-lag remains harmful
@@ -49,6 +217,9 @@ scripts/phase1_matrix_async_pose_gt.py
 scripts/phase1_matrix_delay_event_diagnostics.py
 scripts/phase1_matrix_threshold_stability.py
 scripts/phase1_matrix_time_pose_uncertainty.py
+src/tracking/matrix_local_tracklet.py
+scripts/prepare_matrix_local_tracklet_osnet_cache.py
+scripts/phase3_matrix_incremental_tracklet_foundation.py
 scripts/phase1_matrix_risk_aware_delayed_association.py
 scripts/phase1_matrix_risk_aware_v2_ablation.py
 scripts/phase1_matrix_support_marginal_value_audit.py
@@ -65,6 +236,7 @@ scripts/phase2_matrix_tracker_state_aware_reanchoring.py
 scripts/analyze_matrix_fixed_lag_useful_window.py
 scripts/phase2_matrix_fixed_lag_temporal_spatial_robustness.py
 scripts/phase2_matrix_fixed_lag_simulated_identity_cue_ablation.py
+scripts/phase2_matrix_identity_position_update_separation.py
 scripts/validate_matrix_dataset.py
 src/tracking/support_audit.py
 src/tracking/matrix_reanchoring.py
@@ -76,6 +248,7 @@ tests/test_matrix_reanchoring.py
 tests/test_fixed_lag_useful_window.py
 tests/test_fixed_lag_temporal_spatial_robustness.py
 tests/test_matrix_simulated_identity_cue.py
+tests/test_matrix_identity_position_update_separation.py
 ```
 
 Concept notes:
@@ -921,18 +1094,20 @@ geometry-shortlisted candidate distribution.
 
 ## Next Command
 
-Design the real/semi-real appearance readiness audit:
-
-```text
-MATRIX bbox crops -> ReID/CNN embedding -> geometry candidate shortlist
--> candidate-conditioned same/different similarity
--> calibrated identity threshold -> fixed-lag tracker evaluation
-```
-
-Before the next formal, run:
+Run the identity/position separation smoke manually:
 
 ```bash
-PYTHONPATH=src python -m pytest tests/ -q
+PYTHONPATH=src /usr/bin/python3 scripts/phase2_matrix_identity_position_update_separation.py \
+  --matrix-root MATRIX/MATRIX_30x30 \
+  --frame-start 0 --frame-end 49 \
+  --delay-profiles fixed_2 fixed_3 --lag-frames 2 3 \
+  --pose-noise-m 0.25 \
+  --identity-sources osnet_x0_25_msmt17 simulated_medium \
+  --real-embedding-dir outputs/20260731_matrix_real_embedding_quality_transfer \
+  --simulated-reference-dir outputs/20260726_matrix_fixed_lag_simulated_identity_cue_ablation \
+  --zero-noise-reference-dir outputs/20260724_matrix_tracker_state_aware_reanchoring \
+  --progress-every 25 --resume \
+  --output-dir outputs/20260801_matrix_identity_position_update_separation_audit_smoke
 ```
 
 ## Latest Documentation Update (2026-07-31 idea mainline curation)
@@ -986,4 +1161,75 @@ Verified decision:
 tracking_transfer_supported
 boundary_consistent
 passing backend: osnet_x0_25_msmt17
+```
+
+## Latest Implementation Update (2026-08-01 state separation)
+
+Implemented `exp_20260801_001_matrix_identity_position_update_separation_audit`:
+
+```text
+src/tracking/matrix_reanchoring.py
+scripts/phase2_matrix_identity_position_update_separation.py
+tests/test_matrix_identity_position_update_separation.py
+summary_md/experiments/2026-8-1/
+mermaid/exp_20260801_001_matrix_identity_position_update_separation_audit/
+```
+
+The tracker now exposes explicit current-joint, position-only, strict
+identity-only, identity-plus-lifecycle, and separated support update policies.
+The default preserves prior behavior. The runner reuses the existing OSNet
+cache, writes per-condition checkpoints and progress messages, and does not
+run CNN extraction. Target tests and full regression tests are recorded in the
+implementation handoff.
+
+Verification:
+
+```text
+PYTHONPATH=src python -m pytest tests/ -q -> 147 passed
+py_compile matrix_reanchoring + experiment runner + new tests -> passed
+```
+
+## Latest Formal Update (2026-08-01 state separation)
+
+Formal `0-999` completed with `34/34` condition checkpoints. Measurement gates
+all pass, including zero primary perturbation, zero GT runtime-key leakage, and
+exact reproduction of both real and simulated references.
+
+Verified decision:
+
+```text
+identity_gate_only_supported
+identity candidate selection supported: yes
+separated update supported: no
+lifecycle effect dominant: no
+tracker architecture bottleneck: no
+```
+
+Best occlusion IDF1 at `fixed_2/fixed_3`:
+
+```text
+OSNet identity-gated position-only:       0.386625 / 0.305918
+simulated-medium identity-gated position: 0.638227 / 0.509608
+```
+
+Durable analysis:
+`summary_md/experiments/2026-8-1/exp_20260801_001_matrix_identity_position_update_separation_audit_analysis.md`.
+
+## Latest Research Decision (2026-08-01 tracklet transition)
+
+The prior system is now explicitly scoped as asynchronous cross-view
+observation-to-track fusion, not a complete two-stage MVMOT implementation.
+The next message unit is a per-frame incremental local-tracklet state. Decision
+record:
+`summary_md/decisions/20260801_incremental_tracklet_update_transition.md`.
+
+GitHub issue bodies and authenticated-terminal commands are prepared under
+`summary_md/github/`. Remote issue creation remains pending because the Codex
+sandbox has an empty read-only `.git` directory and its isolated `gh` account
+token is invalid; do not copy credentials into the sandbox.
+
+Exact next command from the authenticated project terminal:
+
+```bash
+bash scripts/manage_github_tracklet_transition.sh
 ```

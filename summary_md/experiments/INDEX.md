@@ -42,6 +42,14 @@ Status labels:
 | `exp_20260726_003_matrix_fixed_lag_simulated_identity_cue_ablation` | 2026-07-26 | Simulated identity cue message-content ablation | MATRIX `0-999` | fixed_2/fixed_3 + 0.25m support noise；比较 world_xy、world_xy+covariance、world_xy+simulated identity、world_xy+covariance+simulated identity | `outputs/20260726_matrix_fixed_lag_simulated_identity_cue_ablation/` | mainline | Measurement gate 通过。High useful-window 中，world_xy 仍为负收益：1000ms survival delta `-0.077936`，1500ms `-0.078924`；medium `covariance+identity` 转为正收益：1000ms `0.289408` / IDSW delta `-4.327869`，1500ms `0.167618` / `-1.333333`。 | `identity_dimension_supported`；身份维度能补 0.25m geometry-only 边界，但需要与 covariance/authority control 联合使用。Analysis: `summary_md/experiments/2026-7-26/exp_20260726_003_matrix_fixed_lag_simulated_identity_cue_ablation_analysis.md` |
 | `exp_20260731_001_matrix_identity_cue_quality_boundary` | 2026-07-31 | Identity cue quality boundary | MATRIX `0-999` | fixed_2/fixed_3 + 0.25m；扫描 embedding noise 与 identity threshold；离线阈值校准后对边界下侧补齐完整 tracking grid | `outputs/20260731_matrix_identity_cue_quality_boundary/` | mainline | Measurement gate 通过，30/30 checkpoints 完成，medium reference mismatch `0`。`margin=0.056747, threshold=0.20` 两 delay 均稳健通过；`margin=0.040019` 的五个 threshold 全部失败。 | `quality_boundary_identified`；离散边界 `(0.040019, 0.056747]`。下一步用真实/半真实 embedding 做候选条件化校准。Analysis: `summary_md/experiments/2026-7-31/exp_20260731_001_matrix_identity_cue_quality_boundary_analysis.md` |
 | `exp_20260731_002_matrix_real_embedding_quality_transfer` | 2026-07-31 | Frozen real embedding quality and tracking transfer | MATRIX `0-999` | GT projected bbox + LoS；M3OT-GeM/OSNet 双冻结模型；身份两折候选条件化校准；fixed_2/fixed_3 + 0.25m | `outputs/20260731_matrix_real_embedding_quality_transfer/` | mainline | Measurement gate 通过，50/50 checkpoints 完成。M3OT margin `0.032300` 低于模拟边界并失败；OSNet margin `0.124401` 高于边界，covariance+appearance survival delta 为 `0.185434/0.090150`，IDSW delta 为 `-2.931694/-0.338798`。 | `tracking_transfer_supported` 且 `boundary_consistent`；真实身份维度收益迁移成功，但必须与位置权威控制联合。Analysis: `summary_md/experiments/2026-7-31/exp_20260731_002_matrix_real_embedding_quality_transfer_analysis.md` |
+| `exp_20260801_001_matrix_identity_position_update_separation_audit` | 2026-08-01 | Identity/position/lifecycle update separation audit | MATRIX `0-999` | fixed_2/fixed_3 + 0.25m；OSNet frozen thresholds + simulated-medium；只拆分 support 状态动作，主视角 Hungarian 不变 | `outputs/20260801_matrix_identity_position_update_separation_audit/` | mainline | Measurement gate 通过，34/34 checkpoints 完成。identity-gated-position-only 最佳：OSNet IDF1 `0.386625/0.305918`，simulated-medium `0.638227/0.509608`；分离更新无稳定增益，生命周期效应为 0。 | `identity_gate_only_supported`；身份主要用于候选授权，support 模板写回有害；模拟线索恢复 `71.66%/68.09%` headroom。Analysis: `summary_md/experiments/2026-8-1/exp_20260801_001_matrix_identity_position_update_separation_audit_analysis.md` |
+| `exp_20260801_002_matrix_incremental_tracklet_update_foundation` | 2026-08-01 | Observation-to-tracklet foundation | MATRIX smoke `0-49` | history-1 adapter equivalence；independent per-UAV bbox/OSNet local trackers；causal incremental message；local quality/aggregation audit | `outputs/20260801_matrix_incremental_tracklet_update_foundation_smoke/` | mainline-blocked | Gate A 四条件 prediction/action mismatch 均为 0；全视角 OSNet cache 从 25.59% 补齐至 100%；无 GT、因果和确定性 gate 通过。bbox_sort IDF1/purity `0.248/0.329`，bbox_osnet `0.074/0.959`，分别表现为身份合并和严重碎片化。 | `local_tracklet_quality_blocked`；不启动 0-999 formal，先修移动相机 local tracker。Analysis: `summary_md/experiments/2026-8-1/exp_20260801_002_matrix_incremental_tracklet_update_foundation_analysis.md` |
+| `exp_20260802_001_matrix_mobile_camera_local_tracklet_readiness` | 2026-08-02 | 移动相机局部轨迹就绪 | MATRIX Pilot `0-199` | BoT-SORT 成熟生命周期；稀疏光流 GMC 与冻结 OSNet 2x2 消融；每视角独立 local ID | `outputs/20260802_matrix_mobile_camera_local_tracklet_readiness_pilot/` | mainline-blocked | 测量门全通过。GMC 将 no-app IDF1 `0.0275 -> 0.0877`、遮挡覆盖 `0.648 -> 0.936`，但 OSNet 增量近零；所有成熟配置 purity 均未过 `0.95`。GMC 后仅 `25.7%` 同人连续框满足默认 `IoU>=0.5` proximity 门。 | Pilot fallback 配置已锁但不代表通过；暂缓 Formal，先做 proximity candidate recall 与 soft/hard appearance gate 消融。Analysis: `summary_md/experiments/2026-8-2/exp_20260802_001_matrix_mobile_camera_local_tracklet_readiness_analysis.md` |
+| `exp_20260802_002_matrix_botsort_candidate_gate_repair` | 2026-08-02 | BoT-SORT 候选门最小修复 | MATRIX Pilot `0-199` | 固定 GMC；扫描 proximity `0.1/0.3/0.5`；比较标准软外观代价与 OSNet hard veto | `outputs/20260802_matrix_botsort_candidate_gate_repair_pilot/` | negative | Measurement Gate 全通过。`p=0.1 + hard veto` 为最佳纯度折中：IDF1 `0.137546`、purity `0.946417`、覆盖 `0.997379`；`p=0.3 + hard veto` purity `0.973078`，但 IDF1 仅 `0.077409`，hard-gate 同人总召回仅 `0.429553`。 | `hard_veto_tradeoff_only`；无配置通过 readiness，Formal 不运行。停止细调 proximity，下一步做 OC-SORT 最小对照。Analysis: `summary_md/experiments/2026-8-2/exp_20260802_002_matrix_botsort_candidate_gate_repair_analysis.md` |
+| `exp_20260802_003_matrix_ocsort_motion_representation_audit` | 2026-08-02 | OC-SORT 运动与状态表达审计 | MATRIX Pilot `0-199` | BoT-SORT 最强参考；OC-SORT/Deep OC-SORT；GMC 与 OSNet 权限消融；clean world-XY CV 离线上限 | `outputs/20260802_matrix_ocsort_motion_representation_audit_pilot/` | mainline-blocked | Measurement 全通过。world CV p90 `0.269m`，GMC+CV 候选召回 `0.826`；最佳 image IDF1 `0.337` 但 purity `0.479`。world-XY purity `0.996`、IDF1 `0.548`，低 IDF1 主要与 `max_age=5` 和长 LoS gap 混杂。 | Formal 禁止。自动 world-motion 标签证据不足，分析结论为 `readiness_gate_lifecycle_confounded`；先按 active visible run 与长 gap 分层校准 readiness。Analysis: `summary_md/experiments/2026-8-2/exp_20260802_003_matrix_ocsort_motion_representation_audit_analysis.md` |
+| `exp_20260802_004_matrix_local_tracklet_lifecycle_stratified_readiness` | 2026-08-02 | 局部轨迹生命周期分层就绪审计 | MATRIX Pilot `0-199` | 将连续活跃可见段与超过 5 帧的长间隔分开；重算局部 IDF1/purity/碎片，并审计重捕获与跨视角支撑桥 | `outputs/20260802_matrix_local_tracklet_lifecycle_stratified_readiness/` | mainline-blocked | Measurement 全通过。clean world-XY active-run IDF1 从全序列 `0.548384` 升至 `0.935778`；最佳 image active-run IDF1 `0.373450`、purity `0.433254`，无 image pipeline 通过。`537/537` 长 gap 的每个缺失帧均有其他 UAV 可见证据。 | `readiness_metric_recalibrated_local_tracker_still_blocked`；旧门槛确有长 gap 混杂，但图像局部关联仍未就绪。停止当前 Formal，并行比较公开移动相机 tracker 与最小 global stitching。Analysis: `summary_md/experiments/2026-8-2/exp_20260802_004_matrix_local_tracklet_lifecycle_stratified_readiness_analysis.md` |
+| `exp_20260802_005_mdmt_dataset_neutral_local_tracklet_adapter` | 2026-08-02 | MDMT 数据集无关增量轨迹适配 | MDMT val-22 与 official test-26 two-view smoke | 将 local packet 与 MATRIX world-XY 解耦；XML identity 仅离线使用；接入官方 MDA GT | `outputs/20260802_mdmt_dataset_neutral_adapter_official_gt_smoke/` | adapter-ready | 运行时 GT/world-XY 读取均为 0；test-26 官方 51,900 行全部回连 XML，映射冲突 0；完整测试 203 passed。 | `adapter_ready_official_mapping_available`；官方 test MDA 评价可用，但 test 同号行有 3.47% 类别冲突，需报告标注噪声敏感性。Card: `summary_md/experiments/2026-8-2/exp_20260802_005_mdmt_dataset_neutral_local_tracklet_adapter.md` |
+| `exp_20260803_001_mdmt_local_tracklet_readiness` | 2026-08-03 | MDMT 行人局部轨迹就绪 | val Pilot -> locked official test Formal | 在无 world XY/运行时 GT 的条件下比较 bbox SORT、BoT-SORT、Deep OC-SORT、GMC 与冻结 OSNet；使用 active-visible-run 指标 | `outputs/20260803_mdmt_local_tracklet_readiness/` | positive | 14 个 official test pair 的测量门全部通过；12 个有效行人序列贡献 124824 行、912 active runs。`bbox_sort` IDF1/purity 为 `0.997229/0.997500`，IDSW/fragmentation 为 `22/20`。 | `person_local_tracklet_ready`；停止优化 local tracker，进入 person-only 异步 incremental tracklet fusion。Analysis: `summary_md/experiments/2026-8-3/exp_20260803_001_mdmt_local_tracklet_readiness_analysis.md` |
 
 ## Current Mainline Chain
 
@@ -105,4 +113,50 @@ Status labels:
     enough, and `world_xy + covariance + simulated identity` restores positive
     high-window survival while reducing IDSW below drop at both 1000ms and
     1500ms. Next replace simulated identity with calibrated/real appearance
-    evidence and add checkpoint/resume for larger matrices.
+   evidence and add checkpoint/resume for larger matrices.
+16. Real CNN appearance transfer is complete. OSNet crosses the simulated
+   quality boundary and improves both transition delays only when covariance
+   limits noisy position authority; M3OT-GeM remains below the boundary.
+17. Identity/position/lifecycle update separation formal is complete. The
+   decision is `identity_gate_only_supported`: identity-gated position update
+   is substantially stronger than covariance-only/current-joint, separated
+   update has no stable gain, and lifecycle-only has zero effect. Simulated
+   identity recovers more than 60% headroom, so the predefined architecture
+   bottleneck is not triggered. Next isolate cross-view appearance-template
+   authority and add an explicit primary-reacquisition identity path.
+18. The research unit now transitions from per-frame support observations to
+   causal incremental local-tracklet updates. Previous experiments remain the
+   observation-level mechanism baseline. The next gate is independent per-UAV
+   local tracking plus exact history-length-1 reproduction before any detector,
+   Mamba, or end-to-end expansion.
+19. Mobile-camera local-tracklet readiness Pilot is complete and blocked.
+   GMC is necessary, but default BoT-SORT appearance candidate generation is
+   too restrictive for MATRIX at 2 FPS.
+20. The minimum candidate-gate repair is also complete. Relaxing proximity to
+   `0.1` improves IDF1 substantially and hard veto raises purity, but the best
+   IDF1 is only `0.1375`; `p=0.3` achieves high purity by rejecting too many
+   true matches. Global tracklet fusion and Formal remain blocked. Compare an
+   OC-SORT or mobile-camera/UAV tracker next rather than tuning proximity again.
+21. The OC-SORT motion-representation Pilot is complete and Formal is blocked.
+   World motion and GMC+CV candidate reachability pass, but image association
+   retains a merge-versus-fragmentation trade-off. The clean-world diagnostic
+   exposes that the current readiness gate also measures long-gap lifecycle and
+   long-term ReID, so it must be stratified before another tracker comparison.
+22. Lifecycle-stratified readiness is complete. Clean world-XY reaches active-run
+   IDF1 `0.9358`, confirming that the old full-sequence gate mixed local tracking
+   with long-gap identity recovery. No image tracker passes the corrected gate,
+   so the local infrastructure remains blocked. All `537` long gaps have a
+   complete cross-view support bridge; this is evidence availability, not a
+   stitching result. Next compare one public mobile-camera tracker and run a
+   separate minimum global-stitching audit.
+23. The dataset-neutral packet and MDMT local-tracklet adapter are implemented.
+   Official paired MDA GT exists for all 14 test sequences, and the evaluator
+   defines cross-view association through equal GT IDs. Test-26 reconciles all
+   51,900 rows with zero conflicts. Cross-view test evaluation is now available;
+   the 3.47% class-conflict rate remains an annotation-noise risk.
+24. MDMT person local-tracklet readiness Pilot and Formal are complete. All
+   measurement gates pass. On 124,824 visible test detections and 912 active
+   runs, `bbox_sort` reaches IDF1 `0.997229`, purity `0.997500`, IDSW `22`, and
+   fragmentation `20`. The decision is `person_local_tracklet_ready`; stop
+   local-tracker tuning and proceed to person-only asynchronous incremental
+   tracklet fusion.

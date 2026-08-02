@@ -1,0 +1,26 @@
+flowchart LR
+    A[旧局部跟踪失败]:::fail --> B[GT bbox 与冻结 OSNet]:::input
+    B --> C[成熟 BoT-SORT 生命周期]:::method
+    C --> D1[无 GMC 无外观]:::ablation
+    C --> D2[GMC]:::ablation
+    C --> D3[OSNet]:::ablation
+    C --> D4[GMC 加 OSNet]:::ablation
+    D1 --> E{局部轨迹就绪门}:::gate
+    D2 --> E
+    D3 --> E
+    D4 --> E
+    E -->|通过| F[进入异步全局轨迹片段融合]:::next
+    E -->|失败| G[转向专门的移动相机跟踪器]:::fail
+
+    P[当前位置<br>代码完成 等待 Pilot]:::current -.-> C
+    R[通过标准<br>IDF1 纯度 最差视角 遮挡覆盖]:::note -.-> E
+
+    classDef input fill:#f2f2f2,stroke:#555,color:#111
+    classDef method fill:#eef5ff,stroke:#4f78a8,color:#172536
+    classDef ablation fill:#fff,stroke:#888,color:#222
+    classDef gate fill:#fff4df,stroke:#b77a22,stroke-width:2px,color:#332100
+    classDef next fill:#eef8ed,stroke:#4f8a54,color:#143018
+    classDef fail fill:#fff1f1,stroke:#b65757,color:#351616
+    classDef current fill:#ffe6cc,stroke:#cc5500,stroke-width:3px,color:#241000
+    classDef note fill:#fff,stroke:#999,stroke-dasharray:4 3,color:#222
+
