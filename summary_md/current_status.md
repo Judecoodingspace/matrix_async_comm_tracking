@@ -22,10 +22,18 @@ the experiment card; Formal remains unauthorized until
 Verification:
 
 ```text
-PYTHONPATH=src python -m pytest tests/ -q -> 194 passed, 2 skipped
+PYTHONPATH=src python -m pytest tests/ -q -> 195 passed, 2 skipped
 py_compile MDMT dataset/message/fusion/CLI modules -> passed
 git diff --check -> passed
 ```
+
+The first full-val Pilot attempt exposed a threshold-search complexity bug after
+printing `sequence=5/5`: each unique similarity threshold rescanned every pair,
+giving near-quadratic work. Implementation version 2 replaces this with one
+stable sort plus cumulative TP/FP counts (`O(N log N)`) and prints each
+direction/cue pair count. A one-million-pair benchmark completes in `0.830s`.
+The old running process must be stopped and restarted because Python has already
+loaded implementation version 1.
 
 `exp_20260803_001_mdmt_local_tracklet_readiness` Formal is complete. The scope is
 MDMT person-only tracking with GT bbox and active-visible-run evaluation. All

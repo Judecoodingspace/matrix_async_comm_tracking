@@ -12,7 +12,7 @@ import time
 from collections import Counter, defaultdict
 from dataclasses import replace
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Callable, Iterable, Mapping, Sequence
 
 import numpy as np
 
@@ -47,7 +47,7 @@ from tracking.tracklet_packets import (
 
 
 EXPERIMENT_ID = "exp_20260803_002_mdmt_async_incremental_tracklet_fusion"
-IMPLEMENTATION_VERSION = 1
+IMPLEMENTATION_VERSION = 2
 DEFAULT_DELAYS = (0, 1, 2, 5, 10, 20, 50)
 
 
@@ -321,6 +321,7 @@ def select_thresholds(
     *,
     directions: Sequence[tuple[int, int]],
     minimum_precision: float,
+    progress_callback: Callable[[int, int, str, int], None] | None = None,
 ) -> tuple[dict[str, dict[str, float]], list[dict[str, object]]]:
     selected: dict[str, dict[str, float]] = {}
     output: list[dict[str, object]] = []
@@ -334,6 +335,8 @@ def select_thresholds(
                 and int(row["support_view"]) == support
                 and str(row["threshold_kind"]) == kind
             ]
+            if progress_callback is not None:
+                progress_callback(primary, support, kind, len(rows))
             if not rows:
                 result = {
                     "threshold": 1.0,
@@ -708,7 +711,12 @@ def main() -> None:
             calibration_pair_rows,
             directions=directions,
             minimum_precision=args.minimum_calibration_precision,
+            progress_callback=lambda primary, support, kind, count: print(
+                f"[3/6][calibrate] direction={primary}:{support} kind={kind} pairs={count}",
+                flush=True,
+            ),
         )
+        calibration_pair_rows.clear()
         threshold_valid = all(int(row["precision_gate_pass"]) for row in threshold_rows)
         selected_payload = {
             "experiment_id": EXPERIMENT_ID,

@@ -268,6 +268,29 @@ def test_precision_threshold_and_cluster_bootstrap_are_reproducible() -> None:
     assert first == second
 
 
+def test_precision_threshold_matches_brute_force_with_tied_scores() -> None:
+    similarities = [0.9, 0.9, 0.8, 0.7, 0.7, 0.2]
+    labels = [1, 0, 1, 1, 0, 0]
+    selected = select_precision_threshold(
+        similarities, labels, minimum_precision=0.6
+    )
+    brute = []
+    for threshold in sorted(set(similarities), reverse=True):
+        accepted = [index for index, value in enumerate(similarities) if value >= threshold]
+        tp = sum(labels[index] for index in accepted)
+        fp = len(accepted) - tp
+        precision = tp / max(tp + fp, 1)
+        recall = tp / sum(labels)
+        brute.append((threshold, precision, recall, tp, fp))
+    expected = max(
+        (row for row in brute if row[1] >= 0.6),
+        key=lambda row: (row[2], row[1], row[0]),
+    )
+    assert selected["threshold"] == expected[0]
+    assert selected["precision"] == expected[1]
+    assert selected["recall"] == expected[2]
+
+
 def test_official_person_aas_matches_frame_jaccard_formula() -> None:
     primary = [
         {"frame_id": 0, "official_person_id": 1, "global_id": 10, "frame_consistent_person": 1},

@@ -545,22 +545,42 @@ def select_precision_threshold(
     minimum_precision: float = 0.95,
 ) -> dict[str, float | int]:
     """Select the threshold with highest recall under a precision constraint."""
-    if len(similarities) != len(labels) or not similarities:
+    if len(similarities) != len(labels) or len(similarities) == 0:
         raise ValueError("threshold calibration requires aligned non-empty samples")
     values = np.asarray(similarities, dtype=np.float64)
     truth = np.asarray(labels, dtype=np.int8)
     positives = max(int(truth.sum()), 1)
-    candidates = sorted({float(value) for value in values}, reverse=True)
-    rows = []
-    for threshold in candidates:
-        accepted = values >= threshold
-        tp = int(np.sum(accepted & (truth == 1)))
-        fp = int(np.sum(accepted & (truth == 0)))
-        precision = tp / max(tp + fp, 1)
-        recall = tp / positives
-        rows.append((threshold, precision, recall, tp, fp))
-    eligible = [row for row in rows if row[1] >= minimum_precision]
-    selected = max(eligible or rows, key=lambda row: (row[2], row[1], row[0]))
+    # Sorting once and evaluating cumulative counts at equal-score group ends
+    # avoids rescanning every pair for every unique threshold.
+    order = np.argsort(-values, kind="stable")
+    sorted_values = values[order]
+    sorted_truth = truth[order]
+    cumulative_tp = np.cumsum(sorted_truth, dtype=np.int64)
+    group_ends = np.flatnonzero(
+        np.r_[sorted_values[:-1] != sorted_values[1:], True]
+    )
+    accepted = group_ends + 1
+    true_positive = cumulative_tp[group_ends]
+    false_positive = accepted - true_positive
+    precision = true_positive / accepted
+    recall = true_positive / positives
+    eligible = precision >= float(minimum_precision)
+    candidate_indices = np.flatnonzero(eligible) if np.any(eligible) else np.arange(len(group_ends))
+    selected_index = max(
+        (int(index) for index in candidate_indices),
+        key=lambda index: (
+            float(recall[index]),
+            float(precision[index]),
+            float(sorted_values[group_ends[index]]),
+        ),
+    )
+    selected = (
+        float(sorted_values[group_ends[selected_index]]),
+        float(precision[selected_index]),
+        float(recall[selected_index]),
+        int(true_positive[selected_index]),
+        int(false_positive[selected_index]),
+    )
     return {
         "threshold": selected[0],
         "precision": selected[1],

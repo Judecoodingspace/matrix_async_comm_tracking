@@ -96,6 +96,11 @@ python scripts/phase3_mdmt_async_incremental_tracklet_fusion.py \
 smoke 标记 `measurement_invalid` 仅因为 V1 主视角同视角 ReID 校准只有
 1 个正样本，单序列无法达到 precision `>=0.95`。完整 val Pilot 将决定阈值 gate。
 
+首次完整 val Pilot 在打印 `sequence=5/5` 后暴露阈值搜索复杂度缺陷：旧实现对每个唯一
+similarity 阈值重新扫描全部候选对，接近 `O(N^2)`。实现版本 2 已改为排序后累计 TP/FP
+的 `O(N log N)` 扫描，并增加 direction/cue 级进度输出；100 万候选对基准耗时
+`0.830s`。旧进程需要终止后用同一命令重新运行。
+
 ## Decision
 
 `implemented_pilot_pending`
