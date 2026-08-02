@@ -1,0 +1,21 @@
+flowchart LR
+    A["迟到支撑<br>位置 + 外观"] --> B{"身份候选门控"}
+    B -->|不通过| R["拒绝"]
+    B -->|通过| C{"位置门控"}
+    C -->|通过| E["协方差位置更新"]:::pass
+    C -->|不通过| F["不移动轨迹"]
+
+    B --> T["写入支撑外观模板"]
+    T --> W["后续候选门控漂移"]:::fail
+
+    I["本轮结论<br>身份门控位置更新最佳"]:::current --> B
+    D1["OSNet IDF1<br>0.387 / 0.306"] -.-> E
+    D2["模拟身份 IDF1<br>0.638 / 0.510"] -.-> E
+    D3["分离更新无稳定增益<br>生命周期效应为零"] -.-> W
+
+    N["下一步<br>主视角锚定 / 双模板 / 置信度模板"]:::plan --> T
+
+    classDef pass fill:#eef8ed,stroke:#4f8a54,stroke-width:2px,color:#143018
+    classDef fail fill:#fff1f1,stroke:#b65757,stroke-width:2px,color:#351616
+    classDef current fill:#ffe6cc,stroke:#cc5500,stroke-width:3px,color:#241000
+    classDef plan fill:#eef5ff,stroke:#4f78a8,stroke-width:1px,color:#172536

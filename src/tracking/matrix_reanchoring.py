@@ -6,6 +6,7 @@ import math
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from enum import Enum
 from typing import Callable, Mapping, Sequence
 
 import numpy as np
@@ -33,6 +34,8 @@ class WorldSortTrack:
     recovery_updates: int = 0
     appearance_embedding: np.ndarray | None = None
     appearance_updates: int = 0
+    last_identity_seen_frame: int | None = None
+    identity_updates: int = 0
 
     @property
     def xy(self) -> np.ndarray:
@@ -55,6 +58,8 @@ class WorldSortTrack:
             recovery_updates=int(self.recovery_updates),
             appearance_embedding=None if self.appearance_embedding is None else self.appearance_embedding.copy(),
             appearance_updates=int(self.appearance_updates),
+            last_identity_seen_frame=self.last_identity_seen_frame,
+            identity_updates=int(self.identity_updates),
         )
 
 
@@ -75,6 +80,17 @@ class ReanchoringRun:
     delay_frames: int
     delay_ms: float
     latency_ms_per_frame: float
+
+
+class SupportUpdatePolicy(str, Enum):
+    """Select which tracker state dimensions a support observation may update."""
+
+    CURRENT_JOINT = "current_joint"
+    POSITION_ONLY = "position_only"
+    IDENTITY_GATED_POSITION_ONLY = "identity_gated_position_only"
+    IDENTITY_ONLY_STRICT = "identity_only_strict"
+    IDENTITY_ONLY_WITH_LIFECYCLE = "identity_only_with_lifecycle"
+    SEPARATED = "separated_update"
 
 
 def _obs_xy(obs: MatrixObservation) -> np.ndarray:
@@ -218,18 +234,21 @@ class WorldSortTracker:
             last_update_source=source,
             appearance_embedding=None if appearance_embedding is None else np.asarray(appearance_embedding, dtype=np.float64).copy(),
             appearance_updates=0 if appearance_embedding is None else 1,
+            last_identity_seen_frame=None if appearance_embedding is None else int(frame_id),
+            identity_updates=0 if appearance_embedding is None else 1,
         )
         return track_id
 
-    def _update_appearance(self, track_id: int, embedding: np.ndarray | None, *, alpha: float = 0.20) -> None:
+    def _update_appearance(self, track_id: int, embedding: np.ndarray | None, *, alpha: float = 0.20) -> float:
         if embedding is None:
-            return
+            return 0.0
         track = self.tracks[int(track_id)]
         emb = np.asarray(embedding, dtype=np.float64)
         norm = float(np.linalg.norm(emb))
         if norm <= 1.0e-12:
-            return
+            return 0.0
         emb = emb / norm
+        before = None if track.appearance_embedding is None else track.appearance_embedding.copy()
         if track.appearance_embedding is None:
             track.appearance_embedding = emb.copy()
         else:
@@ -237,6 +256,69 @@ class WorldSortTracker:
             mixed_norm = float(np.linalg.norm(mixed))
             track.appearance_embedding = mixed if mixed_norm <= 1.0e-12 else mixed / mixed_norm
         track.appearance_updates += 1
+        if before is None:
+            return 1.0
+        similarity = cosine_similarity(before, track.appearance_embedding)
+        return 0.0 if similarity is None else max(0.0, 1.0 - float(similarity))
+
+    def _update_identity_state(
+        self,
+        track_id: int,
+        embedding: np.ndarray | None,
+        *,
+        frame_id: int,
+    ) -> float:
+        track = self.tracks[int(track_id)]
+        previous_updates = int(track.appearance_updates)
+        shift = self._update_appearance(track_id, embedding)
+        if int(track.appearance_updates) > previous_updates:
+            track.last_identity_seen_frame = int(frame_id)
+            track.identity_updates += 1
+        return shift
+
+    def _refresh_track_lifecycle(
+        self,
+        track_id: int,
+        *,
+        frame_id: int,
+        source: str,
+        mode: str,
+        margin: float,
+    ) -> None:
+        track = self.tracks[int(track_id)]
+        track.hit_count += 1
+        track.miss_count = 0
+        track.last_frame = int(frame_id)
+        track.last_update_source = source
+        track.association_margin = float(margin)
+        if source == "primary":
+            track.last_primary_seen_frame = int(frame_id)
+        else:
+            track.last_support_seen_frame = int(frame_id)
+        if mode == "fixed_lag_update":
+            track.fixed_lag_updates += 1
+        if mode == "recovery_stitch":
+            track.recovery_updates += 1
+
+    def _update_position_state(
+        self,
+        track_id: int,
+        xy: np.ndarray,
+        *,
+        measurement_noise: float | None = None,
+    ) -> float:
+        track = self.tracks[int(track_id)]
+        before = track.state.copy()
+        z = np.asarray(xy, dtype=np.float64)
+        h = np.asarray([[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]], dtype=np.float64)
+        noise = self.measurement_noise if measurement_noise is None else float(measurement_noise)
+        r = np.eye(2, dtype=np.float64) * (noise ** 2)
+        innovation = z - (h @ track.state)
+        s = h @ track.covariance @ h.T + r
+        k = track.covariance @ h.T @ np.linalg.inv(s)
+        track.state = track.state + (k @ innovation)
+        track.covariance = (np.eye(4, dtype=np.float64) - k @ h) @ track.covariance
+        return float(np.linalg.norm(track.state[:2] - before[:2]))
 
     def _update_track(
         self,
@@ -250,30 +332,15 @@ class WorldSortTracker:
         measurement_noise: float | None = None,
         appearance_embedding: np.ndarray | None = None,
     ) -> None:
-        track = self.tracks[int(track_id)]
-        z = np.asarray(xy, dtype=np.float64)
-        h = np.asarray([[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]], dtype=np.float64)
-        noise = self.measurement_noise if measurement_noise is None else float(measurement_noise)
-        r = np.eye(2, dtype=np.float64) * (noise ** 2)
-        innovation = z - (h @ track.state)
-        s = h @ track.covariance @ h.T + r
-        k = track.covariance @ h.T @ np.linalg.inv(s)
-        track.state = track.state + (k @ innovation)
-        track.covariance = (np.eye(4, dtype=np.float64) - k @ h) @ track.covariance
-        track.hit_count += 1
-        track.miss_count = 0
-        track.last_frame = int(frame_id)
-        track.last_update_source = source
-        track.association_margin = float(margin)
-        if source == "primary":
-            track.last_primary_seen_frame = int(frame_id)
-        else:
-            track.last_support_seen_frame = int(frame_id)
-        if mode == "fixed_lag_update":
-            track.fixed_lag_updates += 1
-        if mode == "recovery_stitch":
-            track.recovery_updates += 1
-        self._update_appearance(track_id, appearance_embedding)
+        self._update_position_state(track_id, xy, measurement_noise=measurement_noise)
+        self._refresh_track_lifecycle(
+            track_id,
+            frame_id=frame_id,
+            source=source,
+            mode=mode,
+            margin=margin,
+        )
+        self._update_identity_state(track_id, appearance_embedding, frame_id=frame_id)
 
     def _identity_only_update(
         self,
@@ -285,21 +352,14 @@ class WorldSortTracker:
         margin: float,
         appearance_embedding: np.ndarray | None = None,
     ) -> None:
-        track = self.tracks[int(track_id)]
-        track.hit_count += 1
-        track.miss_count = 0
-        track.last_frame = int(frame_id)
-        track.last_update_source = source
-        track.association_margin = float(margin)
-        if source == "primary":
-            track.last_primary_seen_frame = int(frame_id)
-        else:
-            track.last_support_seen_frame = int(frame_id)
-        if mode == "fixed_lag_update":
-            track.fixed_lag_updates += 1
-        if mode == "recovery_stitch":
-            track.recovery_updates += 1
-        self._update_appearance(track_id, appearance_embedding)
+        self._refresh_track_lifecycle(
+            track_id,
+            frame_id=frame_id,
+            source=source,
+            mode=mode,
+            margin=margin,
+        )
+        self._update_identity_state(track_id, appearance_embedding, frame_id=frame_id)
 
     def _associate_primary(
         self,
@@ -384,12 +444,80 @@ class WorldSortTracker:
         identity_accept_threshold: float = 0.25,
         identity_only_distance_threshold: float | None = None,
         support_measurement_noise: float | None = None,
+        update_policy: SupportUpdatePolicy | str = SupportUpdatePolicy.CURRENT_JOINT,
     ) -> tuple[set[int], list[dict[str, object]]]:
+        policy = SupportUpdatePolicy(update_policy)
+        identity_policies = {
+            SupportUpdatePolicy.IDENTITY_GATED_POSITION_ONLY,
+            SupportUpdatePolicy.IDENTITY_ONLY_STRICT,
+            SupportUpdatePolicy.IDENTITY_ONLY_WITH_LIFECYCLE,
+            SupportUpdatePolicy.SEPARATED,
+        }
+        if policy in identity_policies and not use_identity_gate:
+            raise ValueError(f"support update policy {policy.value} requires use_identity_gate=True")
+
         obs_rows = _collapse_geometric_observations(observations)
         diagnostics: list[dict[str, object]] = []
         matched_tracks: set[int] = set()
         used_tracks: set[int] = set()
         threshold = self.distance_threshold if recovery_distance_threshold is None else float(recovery_distance_threshold)
+        identity_radius = threshold * 2.0 if identity_only_distance_threshold is None else float(identity_only_distance_threshold)
+
+        def state_text(track: WorldSortTrack | None) -> str:
+            if track is None:
+                return ""
+            return ",".join(f"{float(value):.6f}" for value in track.state)
+
+        def action_diag(
+            obs: MatrixObservation,
+            *,
+            action_mode: str,
+            track_id: int | None,
+            residual: float,
+            margin: float,
+            before: WorldSortTrack | None,
+            reject_reason: str = "",
+            identity_similarity: float | None = None,
+            identity_gate_pass: bool = False,
+            position_gate_pass: bool = False,
+            identity_applied: bool = False,
+            position_applied: bool = False,
+            lifecycle_applied: bool = False,
+        ) -> dict[str, object]:
+            after = None if track_id is None else self.tracks.get(int(track_id))
+            before_xy = None if before is None else before.xy.copy()
+            after_xy = None if after is None else after.xy.copy()
+            kinematic_shift = ""
+            if before_xy is not None and after_xy is not None:
+                kinematic_shift = f"{float(np.linalg.norm(after_xy - before_xy)):.6f}"
+            appearance_shift = ""
+            if before is not None and after is not None:
+                similarity = cosine_similarity(before.appearance_embedding, after.appearance_embedding)
+                if similarity is not None:
+                    appearance_shift = f"{max(0.0, 1.0 - float(similarity)):.6f}"
+                elif before.appearance_embedding is None and after.appearance_embedding is not None:
+                    appearance_shift = "1.000000"
+            row = {
+                **_support_diag(obs, frame_id, action_mode, track_id, residual, margin, after, reject_reason),
+                "update_policy": policy.value,
+                "identity_gate_pass": int(identity_gate_pass),
+                "position_gate_pass": int(position_gate_pass),
+                "identity_applied": int(identity_applied),
+                "position_applied": int(position_applied),
+                "lifecycle_applied": int(lifecycle_applied),
+                "identity_similarity": "" if identity_similarity is None else f"{float(identity_similarity):.6f}",
+                "identity_accept_threshold": f"{float(identity_accept_threshold):.6f}" if use_identity_gate else "",
+                "support_measurement_noise_m": "" if support_measurement_noise is None else f"{float(support_measurement_noise):.6f}",
+                "kinematic_shift_m": kinematic_shift,
+                "appearance_shift": appearance_shift,
+                "state_before": state_text(before),
+                "state_after": state_text(after),
+                "covariance_trace_before": "" if before is None else f"{float(np.trace(before.covariance[:2, :2])):.6f}",
+                "covariance_trace_after": "" if after is None else f"{float(np.trace(after.covariance[:2, :2])):.6f}",
+                "miss_count_before": "" if before is None else int(before.miss_count),
+                "miss_count_after": "" if after is None else int(after.miss_count),
+            }
+            return row
 
         for obs in obs_rows:
             xy = _obs_xy(obs)
@@ -431,45 +559,49 @@ class WorldSortTracker:
                     )
                     matched_tracks.add(track_id)
                     used_tracks.add(track_id)
-                    diagnostics.append(
-                        {
-                            **_support_diag(obs, frame_id, mode, track_id, 0.0, margin, self.tracks[track_id]),
-                            "identity_similarity": "",
-                            "identity_accept_threshold": f"{float(identity_accept_threshold):.6f}" if use_identity_gate else "",
-                            "support_measurement_noise_m": "" if support_measurement_noise is None else f"{float(support_measurement_noise):.6f}",
-                        }
-                    )
+                    diagnostics.append(action_diag(
+                        obs,
+                        action_mode=mode,
+                        track_id=track_id,
+                        residual=0.0,
+                        margin=margin,
+                        before=None,
+                        identity_gate_pass=not use_identity_gate,
+                        position_gate_pass=True,
+                        identity_applied=appearance is not None,
+                        position_applied=True,
+                        lifecycle_applied=True,
+                    ))
                 else:
-                    diagnostics.append(
-                        {
-                            **_support_diag(
-                                obs,
-                                frame_id,
-                                "reject",
-                                None,
-                                float("inf"),
-                                margin,
-                                None,
-                                "identity_gate" if use_identity_gate else "no_track",
-                            ),
-                            "identity_similarity": "",
-                            "identity_accept_threshold": f"{float(identity_accept_threshold):.6f}" if use_identity_gate else "",
-                            "support_measurement_noise_m": "" if support_measurement_noise is None else f"{float(support_measurement_noise):.6f}",
-                        }
-                    )
+                    diagnostics.append(action_diag(
+                        obs,
+                        action_mode="reject",
+                        track_id=None,
+                        residual=float("inf"),
+                        margin=margin,
+                        before=None,
+                        reject_reason="identity_gate" if use_identity_gate else "no_track",
+                    ))
                 continue
 
             track_id, residual = ranked[0]
             identity_similarity = identity_scores.get(int(track_id))
-            reject_reason = ""
-            if residual > threshold:
-                reject_reason = "candidate_gate"
-            elif margin < float(margin_threshold):
-                reject_reason = "association_margin"
+            before = self.tracks[int(track_id)].copy()
+            identity_pass = bool(
+                use_identity_gate
+                and identity_similarity is not None
+                and float(identity_similarity) >= float(identity_accept_threshold)
+            )
+            position_pass = bool(residual <= threshold and margin >= float(margin_threshold))
+            expanded_identity_pass = bool(identity_pass and residual <= identity_radius and margin >= float(margin_threshold))
 
-            if reject_reason:
-                identity_only_threshold = threshold * 2.0 if identity_only_distance_threshold is None else float(identity_only_distance_threshold)
-                if use_identity_gate and reject_reason == "candidate_gate" and residual <= identity_only_threshold:
+            if policy == SupportUpdatePolicy.CURRENT_JOINT:
+                reject_reason = ""
+                if residual > threshold:
+                    reject_reason = "candidate_gate"
+                elif margin < float(margin_threshold):
+                    reject_reason = "association_margin"
+                if reject_reason and use_identity_gate and reject_reason == "candidate_gate" and residual <= identity_radius:
                     self._identity_only_update(
                         track_id,
                         frame_id=frame_id,
@@ -480,53 +612,195 @@ class WorldSortTracker:
                     )
                     matched_tracks.add(int(track_id))
                     used_tracks.add(int(track_id))
-                    diagnostics.append(
-                        {
-                            **_support_diag(
-                                obs,
-                                frame_id,
-                                "identity_only_update",
-                                track_id,
-                                residual,
-                                margin,
-                                self.tracks[track_id],
-                            ),
-                            "identity_similarity": "" if identity_similarity is None else f"{float(identity_similarity):.6f}",
-                            "identity_accept_threshold": f"{float(identity_accept_threshold):.6f}",
-                            "support_measurement_noise_m": "" if support_measurement_noise is None else f"{float(support_measurement_noise):.6f}",
-                        }
-                    )
+                    diagnostics.append(action_diag(
+                        obs,
+                        action_mode="identity_only_update",
+                        track_id=track_id,
+                        residual=residual,
+                        margin=margin,
+                        before=before,
+                        identity_similarity=identity_similarity,
+                        identity_gate_pass=identity_pass,
+                        identity_applied=True,
+                        lifecycle_applied=True,
+                    ))
                     continue
-                diagnostics.append(
-                    {
-                        **_support_diag(obs, frame_id, "reject", track_id, residual, margin, self.tracks[track_id], reject_reason),
-                        "identity_similarity": "" if identity_similarity is None else f"{float(identity_similarity):.6f}",
-                        "identity_accept_threshold": f"{float(identity_accept_threshold):.6f}" if use_identity_gate else "",
-                        "support_measurement_noise_m": "" if support_measurement_noise is None else f"{float(support_measurement_noise):.6f}",
-                    }
+                if reject_reason:
+                    diagnostics.append(action_diag(
+                        obs,
+                        action_mode="reject",
+                        track_id=track_id,
+                        residual=residual,
+                        margin=margin,
+                        before=before,
+                        reject_reason=reject_reason,
+                        identity_similarity=identity_similarity,
+                        identity_gate_pass=identity_pass,
+                    ))
+                    continue
+                self._update_track(
+                    track_id,
+                    xy,
+                    frame_id=frame_id,
+                    source="support",
+                    mode=mode,
+                    margin=margin,
+                    measurement_noise=support_measurement_noise,
+                    appearance_embedding=appearance,
                 )
+                matched_tracks.add(int(track_id))
+                used_tracks.add(int(track_id))
+                diagnostics.append(action_diag(
+                    obs,
+                    action_mode=mode,
+                    track_id=track_id,
+                    residual=residual,
+                    margin=margin,
+                    before=before,
+                    identity_similarity=identity_similarity,
+                    identity_gate_pass=identity_pass,
+                    position_gate_pass=True,
+                    identity_applied=appearance is not None,
+                    position_applied=True,
+                    lifecycle_applied=True,
+                ))
                 continue
 
-            self._update_track(
-                track_id,
-                xy,
-                frame_id=frame_id,
-                source="support",
-                mode=mode,
-                margin=margin,
-                measurement_noise=support_measurement_noise,
-                appearance_embedding=appearance,
-            )
-            matched_tracks.add(int(track_id))
-            used_tracks.add(int(track_id))
-            diagnostics.append(
-                {
-                    **_support_diag(obs, frame_id, mode, track_id, residual, margin, self.tracks[track_id]),
-                    "identity_similarity": "" if identity_similarity is None else f"{float(identity_similarity):.6f}",
-                    "identity_accept_threshold": f"{float(identity_accept_threshold):.6f}" if use_identity_gate else "",
-                    "support_measurement_noise_m": "" if support_measurement_noise is None else f"{float(support_measurement_noise):.6f}",
-                }
-            )
+            if policy in {SupportUpdatePolicy.POSITION_ONLY, SupportUpdatePolicy.IDENTITY_GATED_POSITION_ONLY}:
+                if position_pass:
+                    self._update_track(
+                        track_id,
+                        xy,
+                        frame_id=frame_id,
+                        source="support",
+                        mode=mode,
+                        margin=margin,
+                        measurement_noise=support_measurement_noise,
+                        appearance_embedding=None,
+                    )
+                    matched_tracks.add(int(track_id))
+                    used_tracks.add(int(track_id))
+                    diagnostics.append(action_diag(
+                        obs,
+                        action_mode="position_only_update",
+                        track_id=track_id,
+                        residual=residual,
+                        margin=margin,
+                        before=before,
+                        identity_similarity=identity_similarity,
+                        identity_gate_pass=identity_pass,
+                        position_gate_pass=True,
+                        position_applied=True,
+                        lifecycle_applied=True,
+                    ))
+                else:
+                    diagnostics.append(action_diag(
+                        obs,
+                        action_mode="reject",
+                        track_id=track_id,
+                        residual=residual,
+                        margin=margin,
+                        before=before,
+                        reject_reason="candidate_gate" if residual > threshold else "association_margin",
+                        identity_similarity=identity_similarity,
+                        identity_gate_pass=identity_pass,
+                    ))
+                continue
+
+            if policy in {SupportUpdatePolicy.IDENTITY_ONLY_STRICT, SupportUpdatePolicy.IDENTITY_ONLY_WITH_LIFECYCLE}:
+                if expanded_identity_pass:
+                    if policy == SupportUpdatePolicy.IDENTITY_ONLY_WITH_LIFECYCLE:
+                        self._identity_only_update(
+                            track_id,
+                            frame_id=frame_id,
+                            source="support",
+                            mode=mode,
+                            margin=margin,
+                            appearance_embedding=appearance,
+                        )
+                        matched_tracks.add(int(track_id))
+                        lifecycle_applied = True
+                        action_mode = "identity_only_with_lifecycle"
+                    else:
+                        self._update_identity_state(track_id, appearance, frame_id=frame_id)
+                        lifecycle_applied = False
+                        action_mode = "identity_only_strict"
+                    used_tracks.add(int(track_id))
+                    diagnostics.append(action_diag(
+                        obs,
+                        action_mode=action_mode,
+                        track_id=track_id,
+                        residual=residual,
+                        margin=margin,
+                        before=before,
+                        identity_similarity=identity_similarity,
+                        identity_gate_pass=True,
+                        position_gate_pass=position_pass,
+                        identity_applied=True,
+                        lifecycle_applied=lifecycle_applied,
+                    ))
+                else:
+                    diagnostics.append(action_diag(
+                        obs,
+                        action_mode="reject",
+                        track_id=track_id,
+                        residual=residual,
+                        margin=margin,
+                        before=before,
+                        reject_reason="identity_radius" if residual > identity_radius else "association_margin",
+                        identity_similarity=identity_similarity,
+                        identity_gate_pass=identity_pass,
+                    ))
+                continue
+
+            if expanded_identity_pass:
+                if position_pass:
+                    self._update_track(
+                        track_id,
+                        xy,
+                        frame_id=frame_id,
+                        source="support",
+                        mode=mode,
+                        margin=margin,
+                        measurement_noise=support_measurement_noise,
+                        appearance_embedding=appearance,
+                    )
+                    matched_tracks.add(int(track_id))
+                    action_mode = "separated_joint_update"
+                    position_applied = True
+                    lifecycle_applied = True
+                else:
+                    self._update_identity_state(track_id, appearance, frame_id=frame_id)
+                    action_mode = "separated_identity_only"
+                    position_applied = False
+                    lifecycle_applied = False
+                used_tracks.add(int(track_id))
+                diagnostics.append(action_diag(
+                    obs,
+                    action_mode=action_mode,
+                    track_id=track_id,
+                    residual=residual,
+                    margin=margin,
+                    before=before,
+                    identity_similarity=identity_similarity,
+                    identity_gate_pass=True,
+                    position_gate_pass=position_pass,
+                    identity_applied=True,
+                    position_applied=position_applied,
+                    lifecycle_applied=lifecycle_applied,
+                ))
+            else:
+                diagnostics.append(action_diag(
+                    obs,
+                    action_mode="reject",
+                    track_id=track_id,
+                    residual=residual,
+                    margin=margin,
+                    before=before,
+                    reject_reason="identity_radius" if residual > identity_radius else "association_margin",
+                    identity_similarity=identity_similarity,
+                    identity_gate_pass=identity_pass,
+                ))
 
         return matched_tracks, diagnostics
 
@@ -547,6 +821,7 @@ class WorldSortTracker:
         identity_accept_threshold: float = 0.25,
         identity_only_distance_threshold: float | None = None,
         support_measurement_noise: float | None = None,
+        support_update_policy: SupportUpdatePolicy | str = SupportUpdatePolicy.CURRENT_JOINT,
     ) -> list[dict[str, object]]:
         self.predict_to(frame_id)
         matched: set[int] = set()
@@ -572,6 +847,7 @@ class WorldSortTracker:
             identity_accept_threshold=identity_accept_threshold,
             identity_only_distance_threshold=identity_only_distance_threshold,
             support_measurement_noise=support_measurement_noise,
+            update_policy=support_update_policy,
         )
         matched.update(support_matched)
         diagnostics.extend(support_diag)
@@ -659,6 +935,8 @@ def _support_diag(
         "delay_frames": int(obs.delay),
         "person_id_eval_only": int(obs.person_id),
         "drone_id": int(obs.drone_id),
+        "position_id": int(obs.position_id),
+        "bbox_xyxy": ",".join(str(int(value)) for value in obs.bbox_xyxy),
         "mode": mode,
         "reject_reason": reject_reason,
         "track_id": "" if track_id is None else int(track_id),
@@ -873,6 +1151,7 @@ def _run_lag_or_state_aware(
     identity_accept_threshold: float = 0.25,
     identity_only_distance_threshold: float | None = None,
     support_measurement_noise: float | None = None,
+    support_update_policy: SupportUpdatePolicy | str = SupportUpdatePolicy.CURRENT_JOINT,
     progress_callback: Callable[[int], None] | None = None,
     progress_every: int = 25,
 ) -> ReanchoringRun:
@@ -907,6 +1186,7 @@ def _run_lag_or_state_aware(
             identity_accept_threshold=identity_accept_threshold,
             identity_only_distance_threshold=identity_only_distance_threshold,
             support_measurement_noise=support_measurement_noise,
+            support_update_policy=support_update_policy,
         )
         diagnostics.extend(_annotate_pipeline(frame_diag, pipeline, delay_profile, delay_ms))
         save_snapshot(frame_id)
@@ -942,6 +1222,7 @@ def _run_lag_or_state_aware(
                     identity_accept_threshold=identity_accept_threshold,
                     identity_only_distance_threshold=identity_only_distance_threshold,
                     support_measurement_noise=support_measurement_noise,
+                    update_policy=support_update_policy,
                 )[1]
                 diagnostics.extend(_annotate_pipeline(late_diag, pipeline, delay_profile, delay_ms))
             else:
@@ -1177,6 +1458,8 @@ def run_fixed_lag_multicue_update(
     identity_accept_threshold: float = 0.25,
     identity_only_distance_threshold: float | None = None,
     support_measurement_noise: float | None = None,
+    support_update_policy: SupportUpdatePolicy | str = SupportUpdatePolicy.CURRENT_JOINT,
+    support_margin_threshold: float = 0.50,
     progress_callback: Callable[[int], None] | None = None,
     progress_every: int = 25,
 ) -> ReanchoringRun:
@@ -1193,13 +1476,14 @@ def run_fixed_lag_multicue_update(
         primary_drone_id=primary_drone_id,
         lag_frames=lag_frames,
         state_aware=False,
-        support_margin_threshold=0.50,
+        support_margin_threshold=support_margin_threshold,
         occlusion_keys=occlusion_keys,
         appearance_embeddings=appearance_embeddings,
         use_identity_gate=use_identity_gate,
         identity_accept_threshold=identity_accept_threshold,
         identity_only_distance_threshold=identity_only_distance_threshold,
         support_measurement_noise=support_measurement_noise,
+        support_update_policy=support_update_policy,
         progress_callback=progress_callback,
         progress_every=progress_every,
     )
