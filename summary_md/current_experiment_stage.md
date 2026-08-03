@@ -71,13 +71,39 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
   the active task is a minimum person-only asynchronous incremental-tracklet
   fusion audit. Cross-view category-conflict sensitivity remains a required
   evaluation gate.
-- `exp_20260803_002_mdmt_async_incremental_tracklet_fusion` is now implemented.
-  The current stage is **full val threshold calibration pending**, not Formal.
-  The experiment compares identical history-1 packets at arrival/capture time
-  against stable-ID pooled incremental tracklets, fixed-lag, and future-only
-  recovery. A val-22 double-direction smoke completed all 14 implementation gates;
-  one-sequence primary-ReID calibration was intentionally insufficient. Run the
-  complete val Pilot before authorizing official-test Formal.
+- `exp_20260803_002_mdmt_async_incremental_tracklet_fusion` full val Pilot is
+  complete. All 14 implementation-level measurement gates pass, but appearance
+  calibration is blocked: pooled cue precision is `0.014642` in both directions,
+  V2-primary same-view ReID precision is `0.022989`, and latest cross-view recall
+  is effectively zero (`0.000079/0.000119`). The current output label
+  `measurement_invalid` conflates valid measurement plumbing with failed cue
+  calibration. **Current position: official-test Formal is not authorized. Fix
+  reject-all fallback and run a candidate-conditioned tracklet appearance audit
+  before any delay sweep.**
+- `exp_20260804_001_mdmt_sync_cross_view_tracklet_association` remains an
+  appearance-only negative baseline. The V1->V2 val branch also needs an empty
+  primary-person stream guard before it can be formally closed, but it is no
+  longer a mainline blocker.
+- The active mainline is `exp_20260804_003_mdmt_mia_carafe_paper_alignment_reproduction`.
+  It keeps `delay=0` and audits the published CARAFE+ByteTrack parameter
+  protocol in an isolated source copy before any full-test or async conclusion.
+  Pair-26 is a mechanism/evaluator audit; only the 14-pair macro result can be
+  compared with Table III. `Tracklet`, homography, ID-state and supplementation
+  delay ablations remain explicitly blocked.
+- The preceding `exp_20260804_002_mdmt_author_mia_sync_reproduction`.
+  It first freezes and reproduces the authors' synchronous MIA-Net under its
+  required legacy stack, using the existing MDMT data and detector checkpoint.
+  No delay, custom ReID replacement, or message-interface refactor is allowed
+  until the local/global/no-supplementation/full-MIA synchronous comparison is
+  deterministic and evaluated with the author MDA/AAS protocol.
+  The isolated environment and one-image tracker smoke are valid. The author
+  local, global-matching, and full-MIA entries all completed test pair 26 with
+  two 300-frame JSON outputs. The author-compatible evaluator reports AAS/MDA
+  `0.226674` for local/global and `0.266068` for full MIA. This is only a
+  pair-level functional result: full MIA improves cross-view association but
+  lowers view-2 IDF1 and raises view-2 IDSW. Batch evaluation over all official
+  test pairs is required before accepting the synchronous baseline or injecting
+  delay.
 
 ## Current Data
 
