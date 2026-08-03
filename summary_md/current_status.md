@@ -1,8 +1,67 @@
 # Current Status
 
-Updated: 2026-08-02
+Updated: 2026-08-04
 
 ## Latest Research Focus
+
+`exp_20260804_003_mdmt_mia_carafe_paper_alignment_reproduction` is the active
+mainline. It extends the completed author pair-26 run without adding delay: an
+isolated paper-aligned source variant audits `>=10` global matches, `50/100 px`
+ID distances, and the paper's low-score supplementation. Pair-26 is first used
+only to validate the patch and evaluator; the decision then depends on a macro
+evaluation over all 14 official test pairs. No asynchronous `Tracklet`, `H`,
+`ID state`, or supplementation message experiment is authorized before this
+synchronous gate completes.
+
+The prior `exp_20260804_002_mdmt_author_mia_sync_reproduction` established the
+legacy environment and pair-26 baseline.
+The alignment code, tests and manual commands are ready. The current Codex
+sandbox mounts the external compatibility workspace read-only, so its accidental
+partial `variants/paper_thresholds_only/` copy must be removed in a normal
+server terminal before creating the detached Git worktrees; no experiment run
+has started from that partial directory.
+Frozen OSNet cannot supply a usable cross-view appearance-only candidate signal on
+MDMT, so the next gate is an isolated reproduction of the authors' synchronous
+MIA-Net before any further delay sweep. The compatibility workspace is separate
+from this repository, uses Python 3.8 / Torch 1.10 / MMCV 1.5 / MMDetection 2.25.1,
+references the existing data and `epoch_12.pth`, and does not retrain a detector.
+The isolated environment, one-image author tracker smoke, author local/global
+matching, and full MIA pair-26 runs are complete. Each pipeline has two complete
+300-frame JSON outputs. The author-compatible evaluator reports pair-26 AAS/MDA
+`0.226674` for local/global and `0.266068` for MIA. MIA improves the
+cross-view score but lowers view-2 IDF1 and raises view-2 IDSW, so this is a
+functional pair-level result, not yet an accepted synchronous baseline. Batch
+evaluation over all official test pairs is the next action; no delay should be
+injected before that gate is complete.
+
+Verification:
+
+```text
+PYTHONPATH=src:scripts python -m pytest tests/ -q -> 206 passed, 2 skipped
+py_compile shared fusion, sync association module, packet schema and CLI -> passed
+```
+
+The latest evaluation command was:
+
+```bash
+PYTHONPATH=src python scripts/evaluate_mdmt_author_sync.py \
+  --dataset-root /mnt/data/yzm/datasets/Multi-Drone-Multi-Object-Detection-and-Tracking \
+  --official-mda-gt-root data/MDMT_official_mda_gt \
+  --output-dir outputs/20260804_mdmt_author_mia_sync_reproduction_pair26
+```
+
+The evaluator uses only completed author JSON outputs and official MDA GT. It
+does not inject delay or alter the MIA method. Durable details are in
+`summary_md/experiments/2026-8-4/exp_20260804_002_mdmt_author_mia_sync_reproduction_analysis.md`.
+
+The first Pilot attempt stopped during tracking because validation sequence `49`
+has no visible person annotations in V1 after person-only filtering, so the
+`V1->V2` primary packet stream is empty and `min(primary_packets)` raises
+`ValueError`. This is an unhandled empty-stream edge case, not an Oracle or
+appearance result. Calibration checkpoints and 36 tracking checkpoints for
+sequences `22, 36, 46` are preserved. After adding an explicit
+`skipped_no_primary_person` audit row, rerun the same Pilot with `--resume`; do
+not interpret the partial output as a completed experiment.
 
 `exp_20260803_002_mdmt_async_incremental_tracklet_fusion` is implemented on the
 stacked branch `exp/20260803-002-mdmt-async-tracklet-fusion`. It adds a
@@ -10,14 +69,20 @@ dataset-neutral one-embedding wire packet, separate primary/support appearance
 galleries, arrival-time fusion, capture-time replay, fixed-lag update, and
 future-only late recovery. Published online global IDs are immutable.
 
-The MDMT val-22 double-direction smoke completed end to end. All 14
-implementation measurement checks are zero/pass and embedding coverage is
-`1.0`. Its final `measurement_invalid` is expected for this reduced smoke:
-V1-primary same-view ReID has only one positive calibration pair and precision
-`0.333`, while all four cross-view thresholds and the reverse primary threshold
-pass `0.95` precision. The exact next action is the full val Pilot command in
-the experiment card; Formal remains unauthorized until
-`selected_config.json.formal_allowed=true`.
+The complete five-sequence MDMT val Pilot has now finished. All 14 implementation
+measurement checks pass and embedding coverage is `1.0`, but only 3/6 threshold
+rows pass precision `>=0.95`. Both pooled cross-view directions have precision
+`0.014642`; V2-primary same-view ReID has precision `0.022989`; latest cross-view
+cues pass precision only at effectively zero recall (`0.000079/0.000119`). The
+final `measurement_invalid` therefore means calibration failure, not GT leakage,
+causality failure, or packet-schema failure. Formal remains unauthorized
+(`selected_config.json.formal_allowed=false`). Durable analysis:
+`summary_md/experiments/2026-8-3/exp_20260803_002_mdmt_async_incremental_tracklet_fusion_analysis.md`.
+
+The next action is not the official-test command. First separate measurement and
+calibration gates, make failed calibration reject all rather than fall back to a
+near-all-accept threshold, fix the independent AAS bootstrap branch in H1, and
+audit candidate-conditioned latest/pooled/gallery appearance quality.
 
 Verification:
 
