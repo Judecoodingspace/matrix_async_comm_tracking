@@ -1,0 +1,23 @@
+flowchart TD
+    R["冻结同步 MIA 参考<br/>CARAFE + ByteTrack + paper-aligned MIA"] --> P
+    P["建立四类带 capture frame 的消息包<br/>arrival = capture"] --> O
+    O["保持作者同步顺序<br/>不注入延迟"] --> C
+
+    subgraph C["一帧中的同步消息边界"]
+        L["两视角 ByteTrack<br/>LocalTrackPacket"] --> H["单应矩阵估计<br/>HomographyPacket"]
+        H --> I1["A 到 B 新 ID 统一<br/>IDStatePacket"]
+        I1 --> I2["B 到 A 新 ID 统一<br/>IDStatePacket"]
+        I2 --> I3["旧未匹配 ID 修复<br/>IDStatePacket"]
+        I3 --> S["高分/低分目标补全<br/>SupplementPacket"]
+        S --> N["NMS 与 ID 写回 ByteTrack"]
+        N --> U["发布当前帧 JSON"]
+    end
+
+    U --> G{"与冻结 JSON 逐字节一致？"}
+    G -->|"所有 14 pair / 两视角均是"| PASS["Gate A 通过<br/>后续才允许逐通道延迟"]
+    G -->|"任一 JSON 或指标不同"| FAIL["Gate A 失败<br/>先定位接口或状态反馈漂移"]
+
+    classDef pass fill:#e9f7ea,stroke:#3d7b45,color:#102b15
+    classDef fail fill:#fdecec,stroke:#a33d3d,color:#381010
+    class PASS pass
+    class FAIL fail

@@ -1994,6 +1994,97 @@ GT 中的同号 ID 定义真实跨机关联；官方 test GT 的 ID 经坐标核
 
 相关术语：[[#Dataset-Neutral Tracklet Packet / 数据集无关轨迹消息]]。
 
+### MIA-Net / 多重匹配身份认证网络
+
+> 像两名巡逻员各自认人，再拿着一张会随画面变化的地图核对：谁在两个视角中可能是同一个人、哪里缺了一个人、是否需要把另一边的线索补进来。
+
+MDMT 作者提出的同步多无人机跟踪基线。它不是只比较两个 CNN embedding，而是把本地
+ByteTrack 的轨迹、已确认的跨视角公共 ID、[[#Homography / 单应矩阵]]、新旧未匹配
+轨迹的投影关联、[[#Target Supplementation / 目标补全]]和 NMS 串成逐帧闭环。它的同步
+表现先作为异步研究的可信上限；只有 `delay=0` 能复现，才讨论任何延迟消息如何进入
+global tracker。
+
+### Packet Interface Equivalence / 消息接口同步等价
+
+> 像先把两人面对面交接的纸质流程拆成四份可邮寄的单据，再确认同城即时送达时，结果和原来手递手完全一样；否则以后看到的差异无法判断是邮寄慢造成的，还是拆单据时把流程改坏了。
+
+把集中式同步 MIA-Net 中的跨视角信息显式投影为 `LocalTrackPacket`、
+`HomographyPacket`、`IDStatePacket` 和 `SupplementPacket`，并强制
+`arrival_frame = capture_frame` 的验证。它要求 packetized 运行与冻结作者运行在每个 pair、
+每个视角的 JSON 文件、MOTA、IDF1、IDSW 和 MDA 上都精确相同。
+
+这个门检验的是接口重构是否保持算法语义，**不**检验通信延迟是否有害。消息负载必须可独立
+复制和序列化，且不含 XML/官方 GT identity；不过作者 ByteTrack 的跨视角 ID 写回存在历史
+进程内状态反馈，因此零延迟兼容路径必须首先保留该原始反馈语义。完成同步等价后，才能逐一
+把 Local Track、单应矩阵、ID state 和 supplementation 改成真正的延迟状态通道。
+
+相关术语：[[#MIA-Net / 多重匹配身份认证网络]]、[[#Homography / 单应矩阵]]、[[#Target Supplementation / 目标补全]]。
+
+### Active Packet Runtime / 主动消息运行时
+
+> 像不只是把交接单复印一份存档，而是要求下一位工作人员只能按这份复印后再还原的单据继续办事。
+
+Gate A 的 packet trace 只证明“生成并记录单据不影响原流程”；主动消息运行时进一步要求
+状态经过 `JSON serialization -> deserialization` 后，解码对象成为后续 MIA 计算的唯一输入。
+它在 `delay=0` 下仍必须逐 JSON 等价，才可以在后续将 Local Track、单应矩阵、ID state 或
+补全消息各自延迟。为保持作者 ByteTrack 的跨帧语义，NMS 后的融合 ID 与 bbox 必须显式写成
+下一帧 ByteTrack 的 feedback input，而不能依赖 NumPy 数组的共享引用。
+
+相关术语：[[#Packet Interface Equivalence / 消息接口同步等价]]、[[#MIA-Net / 多重匹配身份认证网络]]。
+
+### State-Channel Delay / 状态通道延迟
+
+> 像把一项面对面协作拆成四种不同的快递：现场名单、地图、已确认的同名对照表和临时补单。它们即使都“晚到一帧”，后果也不相同。
+
+在 MIA-Net 中，`Local Track`、`Homography`、`ID state` 与 `Supplement` 分别是本地目标证据、
+跨视角投影几何、跨视角身份映射和当前帧检测补全。异步审计不把它们简化成同一种“延迟观测”：
+
+```text
+Local Track late  -> 当前帧缺远端目标证据，跳过跨视角步骤
+H late            -> 使用最近已到达 H，几何状态随年龄变旧
+ID state late     -> 延迟 ID remap，只允许改变到达后仍存活的轨迹
+Supplement late   -> 帧级补框过期，不能插入已经发布的帧
+```
+
+这一定义用于定位伤害源和级联路径，并不代表四种消息具有相同字节量或同一部署频率。
+
+### Frame Deadline / 帧截止语义
+
+> 像直播字幕：这一秒的字幕来不及就空着，不能把上一秒的字幕当成现在的话，也不能回头篡改已经播出的画面。
+
+对 `Local Track` 和 `Supplement`，capture frame 的内容只在该 frame 的在线截止前有资格参与。
+远端 Local Track 迟到时，本机仍可正常发布自己的结果，但该帧跳过跨视角关联；Supplement 迟到时
+直接过期。这样将“当前帧没有及时证据”的信息损失与“拿旧 bbox 冒充当前 bbox”的错误明确分离。
+
+相关术语：[[#Published Online ID vs Corrected Internal State / 已发布身份与内部修正状态]]。
+
+### Versioned ID Remap / 版本化身份重映射
+
+> 像员工更名通知：晚到的旧通知不能把一个人又改回已经废弃的名字，只能在仍有效的档案上按版本顺序更新。
+
+MIA 的跨视角 ID 统一被编码为 `(view_id, source_track_id, target_track_id, state_version)` 事件，
+而不是可以整体覆盖的旧状态快照。接收端只接受单调递增版本；目标 local track 已终止时，该事件标记
+为 `obsolete`，不创建历史重写。这使 ID-state delay 成为可审计的未来状态更新，而不是隐藏的回放。
+
+### Homography / 单应矩阵
+
+> 像把一张倾斜拍摄的平面地图拉正并贴到另一张地图上：它告诉你 A 视角中的一个点，在 B 视角的大致哪里。
+
+一个 `3×3` 的二维投影变换 `H_AB`，将视角 A 图像平面中的点投影到视角 B 的图像平面。
+MIA-Net 优先用已确认公共 ID 的 bbox 中心点经 RANSAC 估计；公共点不足时回退到全局
+图像特征匹配或上一帧的 `H`。它解决的是“目标可能在哪里”，不直接证明“目标是谁”。在
+异步研究中，`H` 的 capture-time 与 arrival-time 差异是独立于 tracklet 消息延迟的一类
+几何状态陈旧问题。
+
+### Target Supplementation / 目标补全
+
+> 像一名巡逻员暂时看不到目标时，另一名巡逻员把自己看到的人按地图投影到他这边；只有这边的检测也支持这个位置，才补上一条记录。
+
+MIA-Net 将一个视角的未匹配 bbox 投影到另一视角，并以与该视角检测结果的 IoU 验证后
+加入 tracking results，再通过 NMS 去重。它会改变当前帧的检测/轨迹集合，因此与只改变
+跨视角 ID 映射不同：异步补全会同时影响漏检、误检、MOTA 和身份指标。后续必须单独研究
+它的延迟，不能和 `H` 或 ID state 延迟混成一个结论。
+
 ### MDMT XML ID and Official TXT ID / MDMT XML 与官方 TXT 身份号
 
 > 就像同一名学生在原始花名册编号为 0，在提交给考试系统时编号改成 1；人没有变化，只是编号格式变了。
@@ -2034,6 +2125,31 @@ AAS_frame = TA / (GA + FA + MA)
 相关术语：[[#Cross-View Identity Mapping / 跨视角身份映射]]、
 [[#MDMT XML ID and Official TXT ID / MDMT XML 与官方 TXT 身份号]]。
 
+### Reject-All Threshold / 全拒绝阈值
+
+> 就像门禁无法找到可靠的识别分数线时，先把门锁住，而不是把所有人都放进来。
+
+当校准数据中不存在满足最低 precision 的相似度阈值时，使用高于余弦相似度上限的
+sentinel（当前为 `1.000001`），使所有候选都被拒绝。它把“外观线索不可校准”与
+“低阈值强行融合”分开，避免失败的 embedding 污染 global ID。相关术语：
+[[#Identity Accept Threshold / 身份接受阈值]]。
+
+### Receiver-Side Appearance Gallery / 接收端外观库
+
+> 就像每次只寄一张证件照，但收件人把最近几张照片留在相册中，之后可以逐张比对。
+
+Support 每条消息仍只传一个 embedding；global tracker 在接收端保存最近 `K` 个历史
+向量，并使用最大相似度或 Top-k 平均相似度关联候选。它增加接收端状态量，但不增加
+单包 embedding 数量，区别于一次发送多个外观向量。
+
+### Synchronous Support Headroom / 同步支撑性能空间
+
+> 就像先确认面对面递交资料确实有帮助，再研究快递晚到会损失多少价值。
+
+在 `delay=0` 时，跨视角 support 相对最强主视角基线仍可获得的 gap survival、AAS 或
+IDF1 净增量。如果 Oracle identity 都没有同步性能空间，继续研究 timestamped replay、
+fixed-lag 或 delay boundary 无法回答有效问题，应先修复 global fusion 或评价通路。
+
 ---
 
 ## 当前实验结论速查
@@ -2066,7 +2182,30 @@ AAS_frame = TA / (GA + FA + MA)
 | 跨视角支撑桥不等于拼接成功 | 537 个长 gap 都有完整其他视角覆盖，只证明信息存在；还需单独验证全局时空与外观拼接 |
 | GitHub CLI 应管理实验脉络而非大输出 | issue/branch/PR 管实验进度，summary_md 管 durable conclusion，outputs 只作本地证据 |
 | MDMT 下一阶段比较单帧与增量轨迹消息 | 同发送频率、每包一个向量；只改变稳定 local ID 与历史聚合外观，并以主视角 ReID 作为强基线 |
+| MDMT 异步 Pilot 暴露跨视角外观阻塞 | latest 只有近零召回，cumulative pooled 精度约 0.015；先回到同步条件验证候选与外观记忆 |
+| MIA-Net 同步复现是当前闸门 | 先复现作者的轨迹、几何、身份状态与补全闭环；同步基线可信后，才分开注入 Tracklet、H、ID state 和补全的异步 |
+| 论文对齐复现先于延迟消融 | 同一份代码的阈值、低分补全和宏平均协议都可能改变同步结果；若同步基线不可信，异步增量没有可解释的参照 |
 
 ---
 
-*最后更新: 2026-08-02 | 当前术语数: 100*
+### Paper-Aligned Reproduction / 论文对齐复现
+
+> 就像先确认两份菜谱用的是同一份配方和同一把量勺，再比较哪家厨房做得更好。
+
+对同一公开方法，分别冻结 released code 和只包含论文明确参数的独立副本。它不等于
+“调参追论文分数”：每一个差异都记录 source hash、运行 manifest 和机制影响。当前
+CARAFE+ByteTrack 对齐包含 global homography 的 `>=10` 点条件、新/旧 ID 的
+`50/100 px` 距离、低分检测的 `IoU>0.01` 补全，以及统一的 `0.3` NMS。
+
+### MDA / AAS 宏平均
+
+> 就像先给每一对无人机单独打分，再让每对无人机拥有相同的一票；不能让目标很多的一对把其他对的声音淹没。
+
+作者的 MDA/AAS 先在每个同步帧计算跨设备公共 ID 的正确、错误和漏掉关联，再对帧
+平均为 pair 分数，最后对 14 个 official test pairs 做宏平均。每视角 MOTA/IDF1 同理
+先按序列评估，再对 Drone1、Drone2 和 28 个视角序列分别宏平均。它与
+[[#IDF1 (Identification F1 Score)]]不同，不能互相替代。
+
+---
+
+*最后更新: 2026-08-05 | 当前术语数: 113*

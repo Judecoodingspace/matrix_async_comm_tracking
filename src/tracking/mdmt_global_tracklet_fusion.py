@@ -25,6 +25,19 @@ PIPELINES = (
     "late_recovery_stitching",
 )
 
+CANDIDATE_POLICIES = (
+    "all_history",
+    "primary_active",
+    "primary_active_or_recent",
+)
+
+APPEARANCE_SCORE_MODES = (
+    "mean",
+    "latest",
+    "gallery_max",
+    "gallery_topk",
+)
+
 
 def cosine_similarity(first: np.ndarray | None, second: np.ndarray | None) -> float | None:
     if first is None or second is None:
@@ -36,12 +49,17 @@ def cosine_similarity(first: np.ndarray | None, second: np.ndarray | None) -> fl
 class _AppearanceAccumulator:
     value_sum: np.ndarray | None = None
     count: int = 0
+    history: list[np.ndarray] = field(default_factory=list)
 
     @property
     def template(self) -> np.ndarray | None:
         return None if self.value_sum is None else normalize_vector(self.value_sum)
 
-    def update(self, value: np.ndarray | None) -> None:
+    @property
+    def latest(self) -> np.ndarray | None:
+        return None if not self.history else self.history[-1]
+
+    def update(self, value: np.ndarray | None, *, history_capacity: int = 10) -> None:
         if value is None:
             return
         normalized = normalize_vector(value)
@@ -50,6 +68,41 @@ class _AppearanceAccumulator:
         else:
             self.value_sum += normalized
         self.count += 1
+        self.history.append(normalized.astype(np.float64).copy())
+        if len(self.history) > int(history_capacity):
+            del self.history[:-int(history_capacity)]
+
+    def similarity(
+        self,
+        value: np.ndarray | None,
+        *,
+        mode: str,
+        gallery_size: int,
+        gallery_top_k: int,
+    ) -> float | None:
+        if value is None:
+            return None
+        if mode not in APPEARANCE_SCORE_MODES:
+            raise ValueError(f"unknown appearance score mode: {mode}")
+        if mode == "mean":
+            return cosine_similarity(value, self.template)
+        if mode == "latest":
+            return cosine_similarity(value, self.latest)
+        history = self.history[-max(int(gallery_size), 1):]
+        similarities = sorted(
+            (
+                score
+                for candidate in history
+                if (score := cosine_similarity(value, candidate)) is not None
+            ),
+            reverse=True,
+        )
+        if not similarities:
+            return None
+        if mode == "gallery_max":
+            return float(similarities[0])
+        count = min(max(int(gallery_top_k), 1), len(similarities))
+        return float(np.mean(similarities[:count]))
 
 
 @dataclass
@@ -114,16 +167,38 @@ class GlobalFusionState:
         *,
         frame_id: int,
         cross_threshold: float,
+        candidate_policy: str,
+        candidate_recent_frames: int,
+        appearance_score_mode: str,
+        gallery_size: int,
+        gallery_top_k: int,
     ) -> list[dict[str, object]]:
         diagnostics: list[dict[str, object]] = []
-        candidates = sorted(self.identities)
+        if candidate_policy not in CANDIDATE_POLICIES:
+            raise ValueError(f"unknown candidate policy: {candidate_policy}")
+        if candidate_policy == "all_history":
+            candidates = sorted(self.identities)
+        elif candidate_policy == "primary_active":
+            candidates = sorted(
+                global_id
+                for global_id, identity in self.identities.items()
+                if identity.last_primary_capture == int(frame_id)
+            )
+        else:
+            candidates = sorted(
+                global_id
+                for global_id, identity in self.identities.items()
+                if 0 <= int(frame_id) - identity.last_primary_capture <= int(candidate_recent_frames)
+            )
         costs = np.full((len(packets), len(candidates)), 1.0e6, dtype=np.float64)
         similarities: dict[tuple[int, int], float | None] = {}
         for row_index, packet in enumerate(packets):
             for column_index, global_id in enumerate(candidates):
-                similarity = cosine_similarity(
+                similarity = self.identities[global_id].primary_appearance.similarity(
                     packet.appearance_vector,
-                    self.identities[global_id].primary_appearance.template,
+                    mode=appearance_score_mode,
+                    gallery_size=gallery_size,
+                    gallery_top_k=gallery_top_k,
                 )
                 similarities[(row_index, column_index)] = similarity
                 if similarity is not None and similarity >= cross_threshold:
@@ -165,14 +240,27 @@ class GlobalFusionState:
         allow_cross_view: bool,
         primary_threshold: float,
         cross_threshold: float,
+        appearance_score_mode: str,
+        gallery_size: int,
+        gallery_top_k: int,
     ) -> tuple[float | None, str]:
         primary_similarity = (
-            cosine_similarity(packet.appearance_vector, identity.primary_appearance.template)
+            identity.primary_appearance.similarity(
+                packet.appearance_vector,
+                mode=appearance_score_mode,
+                gallery_size=gallery_size,
+                gallery_top_k=gallery_top_k,
+            )
             if allow_primary_reid
             else None
         )
         support_similarity = (
-            cosine_similarity(packet.appearance_vector, identity.support_appearance.template)
+            identity.support_appearance.similarity(
+                packet.appearance_vector,
+                mode=appearance_score_mode,
+                gallery_size=gallery_size,
+                gallery_top_k=gallery_top_k,
+            )
             if allow_cross_view
             else None
         )
@@ -192,6 +280,9 @@ class GlobalFusionState:
         allow_cross_view: bool,
         primary_threshold: float,
         cross_threshold: float,
+        appearance_score_mode: str,
+        gallery_size: int,
+        gallery_top_k: int,
     ) -> list[dict[str, object]]:
         diagnostics: list[dict[str, object]] = []
         new_packets: list[GlobalFusionPacket] = []
@@ -220,6 +311,9 @@ class GlobalFusionState:
                     allow_cross_view=allow_cross_view,
                     primary_threshold=primary_threshold,
                     cross_threshold=cross_threshold,
+                    appearance_score_mode=appearance_score_mode,
+                    gallery_size=gallery_size,
+                    gallery_top_k=gallery_top_k,
                 )
                 evidence[(row_index, column_index)] = (similarity, reason)
                 if similarity is not None:
@@ -264,6 +358,11 @@ class GlobalFusionState:
         allow_cross_view: bool,
         primary_threshold: float,
         cross_threshold: float,
+        candidate_policy: str = "all_history",
+        candidate_recent_frames: int = 5,
+        appearance_score_mode: str = "mean",
+        gallery_size: int = 10,
+        gallery_top_k: int = 3,
     ) -> list[dict[str, object]]:
         unknown, diagnostics = self._refresh_mapped_support(support_packets, frame_id=frame_id)
         diagnostics.extend(
@@ -274,6 +373,9 @@ class GlobalFusionState:
                 allow_cross_view=allow_cross_view,
                 primary_threshold=primary_threshold,
                 cross_threshold=cross_threshold,
+                appearance_score_mode=appearance_score_mode,
+                gallery_size=gallery_size,
+                gallery_top_k=gallery_top_k,
             )
         )
         if allow_cross_view:
@@ -282,6 +384,11 @@ class GlobalFusionState:
                     unknown,
                     frame_id=frame_id,
                     cross_threshold=cross_threshold,
+                    candidate_policy=candidate_policy,
+                    candidate_recent_frames=candidate_recent_frames,
+                    appearance_score_mode=appearance_score_mode,
+                    gallery_size=gallery_size,
+                    gallery_top_k=gallery_top_k,
                 )
             )
         return diagnostics
@@ -359,6 +466,11 @@ def run_global_tracklet_fusion(
     lag_frames: int,
     primary_reid_threshold: float,
     cross_view_threshold: float,
+    candidate_policy: str = "all_history",
+    candidate_recent_frames: int = 5,
+    appearance_score_mode: str = "mean",
+    gallery_size: int = 10,
+    gallery_top_k: int = 3,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> GlobalFusionRunResult:
     """Run one causal online condition with immutable published predictions."""
@@ -430,6 +542,11 @@ def run_global_tracklet_fusion(
                     allow_cross_view=allow_cross,
                     primary_threshold=primary_reid_threshold,
                     cross_threshold=cross_view_threshold,
+                    candidate_policy=candidate_policy,
+                    candidate_recent_frames=candidate_recent_frames,
+                    appearance_score_mode=appearance_score_mode,
+                    gallery_size=gallery_size,
+                    gallery_top_k=gallery_top_k,
                 )
                 for row in replay_diagnostics:
                     row["pipeline"] = pipeline
@@ -455,6 +572,11 @@ def run_global_tracklet_fusion(
                 allow_cross_view=allow_cross,
                 primary_threshold=primary_reid_threshold,
                 cross_threshold=cross_view_threshold,
+                candidate_policy=candidate_policy,
+                candidate_recent_frames=candidate_recent_frames,
+                appearance_score_mode=appearance_score_mode,
+                gallery_size=gallery_size,
+                gallery_top_k=gallery_top_k,
             )
             for row in frame_diagnostics:
                 row["pipeline"] = pipeline
@@ -502,6 +624,11 @@ def run_global_tracklet_fusion(
                         allow_cross_view=allow_cross,
                         primary_threshold=primary_reid_threshold,
                         cross_threshold=cross_view_threshold,
+                        candidate_policy=candidate_policy,
+                        candidate_recent_frames=candidate_recent_frames,
+                        appearance_score_mode=appearance_score_mode,
+                        gallery_size=gallery_size,
+                        gallery_top_k=gallery_top_k,
                     )
                     snapshots[replay_frame] = state.clone()
             else:
@@ -514,6 +641,11 @@ def run_global_tracklet_fusion(
                     allow_cross_view=allow_cross,
                     primary_threshold=primary_reid_threshold,
                     cross_threshold=cross_view_threshold,
+                    candidate_policy=candidate_policy,
+                    candidate_recent_frames=candidate_recent_frames,
+                    appearance_score_mode=appearance_score_mode,
+                    gallery_size=gallery_size,
+                    gallery_top_k=gallery_top_k,
                 )
                 late_historical_mutations += int(before != tuple(published_signature))
 
@@ -565,7 +697,19 @@ def select_precision_threshold(
     precision = true_positive / accepted
     recall = true_positive / positives
     eligible = precision >= float(minimum_precision)
-    candidate_indices = np.flatnonzero(eligible) if np.any(eligible) else np.arange(len(group_ends))
+    if not np.any(eligible):
+        return {
+            "threshold": 1.000001,
+            "precision": 0.0,
+            "recall": 0.0,
+            "true_positive": 0,
+            "false_positive": 0,
+            "precision_gate_pass": 0,
+            "calibration_feasible": 0,
+            "n_pairs": len(values),
+            "n_positive": int(truth.sum()),
+        }
+    candidate_indices = np.flatnonzero(eligible)
     selected_index = max(
         (int(index) for index in candidate_indices),
         key=lambda index: (
@@ -588,6 +732,7 @@ def select_precision_threshold(
         "true_positive": selected[3],
         "false_positive": selected[4],
         "precision_gate_pass": int(selected[1] >= minimum_precision),
+        "calibration_feasible": 1,
         "n_pairs": len(values),
         "n_positive": int(truth.sum()),
     }

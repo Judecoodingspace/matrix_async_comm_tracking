@@ -148,13 +148,25 @@ flowchart TD
         EN_MDMT["bbox SORT test IDF1 0.997<br>purity 0.998<br>本地轨迹不再阻塞"]:::evidence
         N_MDMT -.-> EN_MDMT
 
-        N3["当前位置<br>MDMT 异步增量轨迹融合"]:::current
-        EN3["单帧 latest 对比 pooled 增量消息<br>arrival 对比 timestamped<br>fixed-lag 对比 late recovery"]:::currentEvidence
+        N3["异步增量轨迹 Pilot 阻塞"]:::partial
+        EN3["测量实现通过<br>latest 近零召回<br>pooled 精度仅 0.015"]:::evidence
         N3 -.-> EN3
 
-        N4["通过后<br>检测误差与通信预算"]:::plan
-        EN4["真实 detector<br>等字节消息内容消融"]:::planEvidence
+        N_SYNC["同步 MIA 论文对齐复现通过<br>Gate A 消息旁路等价通过"]:::pass
+        EN_SYNC["14 pair 宏平均对齐 Table III<br>旁路消息 JSON 严格等价<br>仍禁止 delay"]:::evidence
+        N_SYNC -.-> EN_SYNC
+
+        N_ACTIVE["Gate B 主动消息同步等价通过"]:::pass
+        EN_ACTIVE["14 pair 逐 JSON 等价<br>显式写回下一帧 ByteTrack"]:::evidence
+        N_ACTIVE -.-> EN_ACTIVE
+
+        N4["当前位置<br>分通道异步状态审计"]:::current
+        EN4["Local H ID Supplement<br>固定延迟与级联效应"]:::currentEvidence
         N4 -.-> EN4
+
+        N5["后续<br>按主导通道设计缓解机制"]:::plan
+        EN5["H 预测或重估<br>ID 固定窗口更新<br>late supplement recovery"]:::planEvidence
+        N5 -.-> EN5
     end
 
     CURRENT --> N1
@@ -165,11 +177,14 @@ flowchart TD
     N_OC --> N_MOBILE
     N_MOBILE --> N_MDMT
     N_MDMT --> N3
-    N3 --> N4
+    N3 --> N_SYNC
+    N_SYNC --> N_ACTIVE
+    N_ACTIVE --> N4
+    N4 --> N5
 
-    SUMMARY["一眼结论<br>MATRIX 单帧观测已给出时间与风险边界<br>MDMT 已解决行人本地轨迹基础<br>当前位置验证 history 大于1 是否真有跨视角增量"]:::summary
+    SUMMARY["一眼结论<br>MATRIX 已给出单帧时间风险边界<br>MDMT MIA 同步接口已冻结<br>当前定位四类异步状态的伤害与级联"]:::summary
 
-    N3 --> SUMMARY
+    N4 --> SUMMARY
 
     classDef title fill:#f2f2f2,stroke:#222222,stroke-width:2px,color:#111111
     classDef pass fill:#eef8ed,stroke:#4f8a54,stroke-width:1px,color:#143018

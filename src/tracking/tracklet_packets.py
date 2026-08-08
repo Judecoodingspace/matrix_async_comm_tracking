@@ -87,7 +87,7 @@ class GlobalFusionPacket:
     latest_bbox: tuple[float, float, float, float]
     bbox_velocity: tuple[float, float, float, float]
     appearance_vector: np.ndarray | None
-    appearance_kind: Literal["latest", "pooled"]
+    appearance_kind: str
     appearance_count: int
     hit_count: int
     miss_count: int

@@ -15,5 +15,5 @@ flowchart LR
     E --> F{增量消息是否优于单帧?}
     F -->|通过| G[进入 detector 和通信预算鲁棒性]
     F -->|不通过| H[审计跨视角外观与同步性能空间]
-    N[当前位置: 代码完成<br>等待完整 val Pilot]:::current --> B
+    N[当前位置: Val Pilot完成<br>外观校准失败 Formal阻塞]:::current --> H
     classDef current fill:#ffe6cc,stroke:#cc5500,stroke-width:3px,color:#241000

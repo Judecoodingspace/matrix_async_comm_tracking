@@ -4,6 +4,20 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
 
 ## Current Mainline
 
+### Latest Update: Formal Channel Audit Completed (2026-08-08)
+
+- Gate A (`exp_20260805_001`) 已完成 14-pair 严格同步等价：其 packet 仅为旁路审计，作者原始
+  进程内对象仍驱动 MIA。
+- `exp_20260805_002_mdmt_mia_active_packet_runtime_equivalence` 已在 Pair-26、Pair-48 与 14-pair
+  Formal 逐 JSON 等价通过；`packetized_active_sync` 的 Local Track、H、ID state 与 Supplement
+  均经过 JSON roundtrip，并显式将 NMS 后 ID/bbox 写回下一帧 ByteTrack。
+- `exp_20260805_003_mdmt_mia_async_state_channel_audit` 已完成 14-pair Formal，测量门全部通过，
+  决策为 `coupled_state_cascade_identified`。Local 与 Supplement 使用帧截止语义；H 使用最近
+  已到达矩阵；ID 使用版本化、未来生效的 remap 事件。
+- Formal 结果需要分开解释：Local Track 是上游流程阻断，`all_channels` 近似 `local_only`；
+  ID state 对 IDSW/IDF1 最敏感；Supplement 主要影响 MDA；5 帧延迟下 ID state 与 Supplement
+  出现稳定组合级级联。当前下一步是联合状态事务与有限窗口更新，不是继续扩大同一套延迟矩阵。
+
 - The old M3OT ReID-only Backfill direction was rejected.
 - The active question is how asynchronous communication of pose/world-coordinate
   observations affects persistent multi-UAV multi-object tracking.
@@ -71,13 +85,39 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
   the active task is a minimum person-only asynchronous incremental-tracklet
   fusion audit. Cross-view category-conflict sensitivity remains a required
   evaluation gate.
-- `exp_20260803_002_mdmt_async_incremental_tracklet_fusion` is now implemented.
-  The current stage is **full val threshold calibration pending**, not Formal.
-  The experiment compares identical history-1 packets at arrival/capture time
-  against stable-ID pooled incremental tracklets, fixed-lag, and future-only
-  recovery. A val-22 double-direction smoke completed all 14 implementation gates;
-  one-sequence primary-ReID calibration was intentionally insufficient. Run the
-  complete val Pilot before authorizing official-test Formal.
+- `exp_20260803_002_mdmt_async_incremental_tracklet_fusion` full val Pilot is
+  complete. All 14 implementation-level measurement gates pass, but appearance
+  calibration is blocked: pooled cue precision is `0.014642` in both directions,
+  V2-primary same-view ReID precision is `0.022989`, and latest cross-view recall
+  is effectively zero (`0.000079/0.000119`). The current output label
+  `measurement_invalid` conflates valid measurement plumbing with failed cue
+  calibration. **Current position: official-test Formal is not authorized. Fix
+  reject-all fallback and run a candidate-conditioned tracklet appearance audit
+  before any delay sweep.**
+- `exp_20260804_001_mdmt_sync_cross_view_tracklet_association` remains an
+  appearance-only negative baseline. The V1->V2 val branch also needs an empty
+  primary-person stream guard before it can be formally closed, but it is no
+  longer a mainline blocker.
+- The active mainline is `exp_20260804_003_mdmt_mia_carafe_paper_alignment_reproduction`.
+  It keeps `delay=0` and audits the published CARAFE+ByteTrack parameter
+  protocol in an isolated source copy before any full-test or async conclusion.
+  Pair-26 is a mechanism/evaluator audit; only the 14-pair macro result can be
+  compared with Table III. `Tracklet`, homography, ID-state and supplementation
+  delay ablations remain explicitly blocked.
+- The preceding `exp_20260804_002_mdmt_author_mia_sync_reproduction`.
+  It first freezes and reproduces the authors' synchronous MIA-Net under its
+  required legacy stack, using the existing MDMT data and detector checkpoint.
+  No delay, custom ReID replacement, or message-interface refactor is allowed
+  until the local/global/no-supplementation/full-MIA synchronous comparison is
+  deterministic and evaluated with the author MDA/AAS protocol.
+  The isolated environment and one-image tracker smoke are valid. The author
+  local, global-matching, and full-MIA entries all completed test pair 26 with
+  two 300-frame JSON outputs. The author-compatible evaluator reports AAS/MDA
+  `0.226674` for local/global and `0.266068` for full MIA. This is only a
+  pair-level functional result: full MIA improves cross-view association but
+  lowers view-2 IDF1 and raises view-2 IDSW. Batch evaluation over all official
+  test pairs is required before accepting the synchronous baseline or injecting
+  delay.
 
 ## Current Data
 

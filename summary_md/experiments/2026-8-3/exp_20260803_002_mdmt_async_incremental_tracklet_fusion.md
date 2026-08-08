@@ -103,10 +103,19 @@ similarity 阈值重新扫描全部候选对，接近 `O(N^2)`。实现版本 2 
 
 ## Decision
 
-`implemented_pilot_pending`
+`pilot_complete_calibration_blocked`
+
+完整 val Pilot 已完成。14 项实现级 measurement gate 全部通过，但 3/6 个阈值无法
+达到 precision `>=0.95`：两个方向的 pooled cue precision 都只有 `0.014642`，V2 主
+视角同视角 ReID precision 为 `0.022989`。latest cue 虽达到 precision 门，recall 仅
+`0.000079/0.000119`，实际近似丢弃 support。`formal_allowed=false`。
+
+详细分析：
+`summary_md/experiments/2026-8-3/exp_20260803_002_mdmt_async_incremental_tracklet_fusion_analysis.md`。
 
 ## Next Actions
 
-- [ ] 用户终端执行完整 val Pilot。
-- [ ] 仅当 `selected_config.json.formal_allowed=true` 时执行 official test Formal。
-- [ ] Formal 后按七维框架填写分析报告并更新决策。
+- [x] 用户终端执行完整 val Pilot。
+- [ ] 分离 measurement validity 与 calibration feasibility，并修复无可行阈值 fallback。
+- [ ] 完成 candidate-conditioned latest/pooled appearance audit。
+- [ ] 仅当同步 support headroom 和阈值 gate 通过后执行 official test Formal。

@@ -1,0 +1,14 @@
+flowchart TD
+  R[冻结 paper-aligned MIA] --> L[ByteTrack 本地轨迹]
+  L --> P1[Local packet JSON 往返]
+  P1 --> H[Homography packet JSON 往返]
+  H --> I[ID state packet JSON 往返]
+  I --> S[Supplement packet JSON 往返]
+  S --> N[NMS]
+  N --> C[显式写回 ByteTrack]
+  C --> F[下一帧 feedback 输入]
+  F --> E{逐 JSON 等价?}
+  E -->|Pair 26: 单边界+组合| X[Pair 48 稀少 H 点]
+  X -->|严格通过| Y[14 pair all packets]
+  Y -->|SHA256 与指标均相同| Z[Gate B 通过\n允许分通道延迟]
+  E -->|否| Q[定位失败边界\n禁止延迟实验]
