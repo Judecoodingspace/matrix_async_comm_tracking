@@ -56,3 +56,25 @@ answer those questions with byte-identical prediction and async-state traces.
   not update it from the failed observation.
 - Provenance: v3 remains untouched as failed-run evidence. The corrected
   generated source must use a new isolated variant and run fingerprint.
+
+## 2026-08-13 Detector Cache Import/Path Repair
+
+- Trigger: fresh v5 MVE completed the Pair-26 author run, then failed closed
+  because `detector_cache_attempts/26/attempt_001` did not exist.
+- Root cause 1: the author wrapper added only `variant/demo/utils` to
+  `PYTHONPATH`; editable installation therefore loaded `mmtrack` and
+  `byte_track.py` from `upstream`, bypassing the variant's detector-cache hook.
+- Root cause 2: the research CLI retained a relative output directory while
+  the author wrapper changed its working directory, so a relative cache root
+  could not identify the intended repository output path.
+- Repair: prepend the complete isolated variant to `PYTHONPATH`, guard the
+  released fork's absent optional SOT/VID/VIS modules, canonicalize all CLI
+  paths before spawning the author process, and record/validate the cache hook
+  and model-init source hashes in the variant manifest.
+- Classification: execution/provenance repair only. No R4-R6 condition,
+  packet payload, delay, tracker decision, metric or evaluator changes.
+- Evidence: isolated Conda import resolves both `mmtrack` and `byte_track.py`
+  to the generated variant; synthetic write/read creates one `.npz` and
+  reproduces all three detector-class arrays exactly; repository tests pass.
+- Provenance: the failed v5 attempt remains `ABORTED` and cannot be promoted as
+  evidence. A new generated variant, run ID and output directory are required.

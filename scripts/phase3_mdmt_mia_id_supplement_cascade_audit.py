@@ -148,6 +148,13 @@ def validate_variant_source(cascade_source: Path) -> dict[str, object]:
     async_runtime = cascade_source / "demo/utils/async_deadline_runtime.py"
     if not async_runtime.is_file() or manifest.get("async_deadline_runtime_sha256") != sha256(async_runtime):
         raise RuntimeError("cascade variant parent async runtime digest mismatch")
+    detector_cache_source = cascade_source / "mmtrack/models/mot/byte_track.py"
+    if not detector_cache_source.is_file() \
+            or manifest.get("detector_cache_source_sha256") != sha256(detector_cache_source):
+        raise RuntimeError("cascade variant detector cache source digest mismatch")
+    model_init = cascade_source / "mmtrack/models/__init__.py"
+    if not model_init.is_file() or manifest.get("model_init_sha256") != sha256(model_init):
+        raise RuntimeError("cascade variant model init digest mismatch")
     return manifest
 
 
@@ -486,6 +493,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--output-dir", type=Path, required=True)
     return parser.parse_args()
+
+
+def normalize_paths(args: argparse.Namespace) -> argparse.Namespace:
+    """Freeze paths before the author wrapper changes its working directory."""
+    for field in ("mia_root", "dataset_root", "official_mda_gt_root",
+                  "cascade_source", "output_dir"):
+        setattr(args, field, getattr(args, field).expanduser().resolve())
+    if args.mve_evidence_dir is not None:
+        args.mve_evidence_dir = args.mve_evidence_dir.expanduser().resolve()
+    return args
 
 
 def selected_pairs(args: argparse.Namespace) -> tuple[str, ...]:
@@ -1323,7 +1340,7 @@ def decision(args: argparse.Namespace, decision_rows, gates) -> str:
 
 
 def main() -> None:
-    args = parse_args()
+    args = normalize_paths(parse_args())
     require_frozen_repository(Path(__file__).resolve().parents[1])
     if not args.cascade_source.is_dir():
         raise FileNotFoundError(f"cascade source missing: {args.cascade_source}")

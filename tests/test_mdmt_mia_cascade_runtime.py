@@ -221,21 +221,66 @@ def test_variant_source_validation_detects_unrecorded_edits(tmp_path: Path) -> N
     spec.loader.exec_module(module)
     changed = tmp_path / "demo/supplement_MIA.py"
     runtime = tmp_path / "demo/utils/async_deadline_runtime.py"
+    detector_cache = tmp_path / "mmtrack/models/mot/byte_track.py"
+    model_init = tmp_path / "mmtrack/models/__init__.py"
     changed.parent.mkdir(parents=True)
     runtime.parent.mkdir(parents=True)
+    detector_cache.parent.mkdir(parents=True)
+    model_init.parent.mkdir(parents=True, exist_ok=True)
     changed.write_text("original", encoding="utf-8")
     runtime.write_text("runtime", encoding="utf-8")
+    detector_cache.write_text("cache", encoding="utf-8")
+    model_init.write_text("init", encoding="utf-8")
     digest = lambda value: hashlib.sha256(value.read_bytes()).hexdigest()
     (tmp_path / "cascade_edge_manifest.json").write_text(json.dumps({
         "structure_audit": {"boundary": 1},
         "changed_files": ["demo/supplement_MIA.py"],
         "sha256": {"demo/supplement_MIA.py": digest(changed)},
         "async_deadline_runtime_sha256": digest(runtime),
+        "detector_cache_source_sha256": digest(detector_cache),
+        "model_init_sha256": digest(model_init),
     }), encoding="utf-8")
     module.validate_variant_source(tmp_path)
     changed.write_text("edited", encoding="utf-8")
     with pytest.raises(RuntimeError, match="digest mismatch"):
         module.validate_variant_source(tmp_path)
+
+
+def test_cascade_variant_guards_optional_missing_model_families(tmp_path: Path) -> None:
+    path = ROOT / "scripts/prepare_mdmt_mia_cascade_edge_variant.py"
+    spec = importlib.util.spec_from_file_location("cascade_variant_import_guard", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    target = tmp_path / "mmtrack/models/__init__.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("\n".join(
+        f"from .{name} import *  # noqa: F401,F403" for name in ("sot", "vid", "vis")),
+        encoding="utf-8",
+    )
+    module.patch_optional_model_imports(tmp_path)
+    patched = target.read_text(encoding="utf-8")
+    assert all(f"try:\n    from .{name} import *" in patched for name in ("sot", "vid", "vis"))
+
+
+def test_cascade_audit_normalizes_output_and_cache_parent_paths(tmp_path: Path, monkeypatch) -> None:
+    path = ROOT / "scripts/phase3_mdmt_mia_id_supplement_cascade_audit.py"
+    spec = importlib.util.spec_from_file_location("cascade_audit_paths", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.chdir(tmp_path)
+    args = type("Args", (), {
+        "mia_root": Path("mia"),
+        "dataset_root": Path("data"),
+        "official_mda_gt_root": Path("gt"),
+        "cascade_source": Path("variant"),
+        "output_dir": Path("outputs/run"),
+        "mve_evidence_dir": None,
+    })()
+    module.normalize_paths(args)
+    assert args.output_dir == tmp_path / "outputs/run"
+    assert args.cascade_source == tmp_path / "variant"
 
 
 def test_formal_requires_prior_mve_evidence() -> None:

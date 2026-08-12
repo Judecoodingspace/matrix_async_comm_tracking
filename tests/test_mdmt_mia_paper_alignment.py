@@ -120,6 +120,7 @@ def test_author_sync_wrapper_exits_after_progress_stream_ends(tmp_path: Path) ->
     fake_python.parent.mkdir(parents=True)
     fake_python.write_text(
         "#!/usr/bin/env bash\n"
+        "printf 'PYTHONPATH=%s\\n' \"$PYTHONPATH\"\n"
         "printf '\\r[>>>>>>>>>>>>>>>>>>>>>>>>>>>>>] 1/1, 1.0 task/s, elapsed: 1s, ETA: 0s\\n'\n",
         encoding="utf-8",
     )
@@ -145,6 +146,8 @@ def test_author_sync_wrapper_exits_after_progress_stream_ends(tmp_path: Path) ->
 
     assert result.returncode == 0
     assert "[author-sync] complete stage=mia" in result.stdout
-    assert "1/1" in (output_root / "mia/test_26/author.log").read_text(encoding="utf-8")
+    author_log = (output_root / "mia/test_26/author.log").read_text(encoding="utf-8")
+    assert "1/1" in author_log
+    assert f"PYTHONPATH={source_root}:{source_root}/demo/utils" in author_log
     assert (run_input_root / "26/test/1/26-1").is_symlink()
     assert (run_input_root / "26/test/2/26-2").is_symlink()

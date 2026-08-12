@@ -26,6 +26,8 @@ def audit_variant_structure(root: Path) -> dict[str, int]:
     entry = (root / "demo/supplement_MIA.py").read_text(encoding="utf-8")
     supplement = (root / "demo/utils/supplement.py").read_text(encoding="utf-8")
     transform = (root / "demo/utils/trans_matrix.py").read_text(encoding="utf-8")
+    model_init = (root / "mmtrack/models/__init__.py").read_text(encoding="utf-8")
+    byte_track = (root / "mmtrack/models/mot/byte_track.py").read_text(encoding="utf-8")
     capture = entry.find("cascade_runtime.capture_prebranch(")
     first_frame_end = entry.find("# 第一帧结束")
     first_id = entry.find("id_before_view1, id_before_view2 = track_bboxes.copy()")
@@ -59,6 +61,13 @@ def audit_variant_structure(root: Path) -> dict[str, int]:
             transform.count("def _is_valid_homography(") == 1
             and transform.count("if not all(_is_valid_homography(value) for value in (M, M2, M3)):") == 1
             and transform.count("return f, f_last") >= 2),
+        "optional_model_imports_guarded": int(all(
+            f"try:\n    from .{name} import *" in model_init
+            for name in ("sot", "vid", "vis"))),
+        "detector_cache_hook_present": int(
+            "def _load_or_compute_mdmt_detections(" in byte_track
+            and "MIA_DETECTION_CACHE_ROOT" in byte_track
+            and "cached_classes = _load_or_compute_mdmt_detections(" in byte_track),
     }
 
 
@@ -74,6 +83,21 @@ def replace_first(text: str, old: str, new: str, label: str) -> str:
     if count < 1:
         raise RuntimeError(f"{label}: expected at least one source match, found none")
     return text.replace(old, new, 1)
+
+
+def patch_optional_model_imports(root: Path) -> None:
+    """Make the copied MDMT fork importable as the active ``mmtrack`` tree."""
+    path = root / "mmtrack/models/__init__.py"
+    source = path.read_text(encoding="utf-8")
+    for name in ("sot", "vid", "vis"):
+        guarded = f"try:\n    from .{name} import *  # noqa: F401,F403\nexcept ModuleNotFoundError:\n    pass"
+        direct = f"from .{name} import *  # noqa: F401,F403"
+        if guarded in source:
+            continue
+        if direct not in source:
+            raise RuntimeError(f"optional model import is neither direct nor guarded: {name}")
+        source = source.replace(direct, guarded, 1)
+    path.write_text(source, encoding="utf-8")
 
 
 LINEAGE_HELPER = r'''
@@ -373,6 +397,7 @@ def patch_entry(root: Path, runtime_source: Path) -> None:
 def patch_variant(root: Path, runtime_source: Path) -> dict[str, object]:
     if not (root / "demo/supplement_MIA.py").is_file():
         raise FileNotFoundError("missing copied packetized_async_deadline source")
+    patch_optional_model_imports(root)
     patch_common_lineage(root)
     patch_supplement_diagnostics(root)
     patch_homography_fallback(root)
@@ -383,6 +408,7 @@ def patch_variant(root: Path, runtime_source: Path) -> dict[str, object]:
         "demo/utils/supplement.py",
         "demo/utils/trans_matrix.py",
         "demo/utils/cascade_runtime.py",
+        "mmtrack/models/__init__.py",
     )
     structure_audit = audit_variant_structure(root)
     if not all(structure_audit.values()):
@@ -397,6 +423,8 @@ def patch_variant(root: Path, runtime_source: Path) -> dict[str, object]:
         "sha256": {relative: sha256(root / relative) for relative in changed},
         "structure_audit": structure_audit,
         "async_deadline_runtime_sha256": sha256(root / "demo/utils/async_deadline_runtime.py"),
+        "detector_cache_source_sha256": sha256(root / "mmtrack/models/mot/byte_track.py"),
+        "model_init_sha256": sha256(root / "mmtrack/models/__init__.py"),
     }
     (root / "cascade_edge_manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")

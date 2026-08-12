@@ -17,7 +17,10 @@ STAGE="${1:-}"
 SPLIT="${2:-test}"
 PAIR_ID="${3:-26}"
 DEVICE="${DEVICE:-cuda:0}"
-export PYTHONPATH="$MIA_SOURCE_ROOT/demo/utils${PYTHONPATH:+:$PYTHONPATH}"
+# Import the isolated source tree itself before the editable-installed upstream
+# package.  Otherwise demo patches load from the variant while ``mmtrack`` and
+# its detector-cache hook silently load from upstream.
+export PYTHONPATH="$MIA_SOURCE_ROOT:$MIA_SOURCE_ROOT/demo/utils${PYTHONPATH:+:$PYTHONPATH}"
 
 if [[ -z "$STAGE" || "$STAGE" == "-h" || "$STAGE" == "--help" ]]; then
   cat <<'EOF'
