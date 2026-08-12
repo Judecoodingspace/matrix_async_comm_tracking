@@ -459,3 +459,169 @@ def test_compensation_contrast_is_computed_pairwise() -> None:
     assert len(rows) == 1
     assert rows[0]["n_pairs"] == 2
     assert rows[0]["mda_mean"] == pytest.approx(0.15)
+
+
+def _audit_module(name: str):
+    path = ROOT / "scripts/phase3_mdmt_mia_id_supplement_cascade_audit.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_formal_decision_supports_negative_edge_as_candidate_mediated_compensation() -> None:
+    module = _audit_module("cascade_audit_bidirectional_decision")
+    args = type("Args", (), {"mode": "formal", "delay_frames": (1,)})()
+    contrasts = [{
+        "contrast": "R_edge", "delay_frames": 1,
+        "mda_ci_low": -0.08, "mda_ci_high": -0.01,
+        "mda_positive_pairs": 1, "mda_negative_pairs": 13,
+    }]
+    compensation = [{
+        "contrast": "C_compensation", "delay_frames": 1,
+        "mda_ci_low": 0.02, "mda_ci_high": 0.09,
+        "mda_positive_pairs": 12, "mda_negative_pairs": 2,
+    }]
+    process = [{
+        "delay_frames": 1,
+        "n_y10_disagreement_candidates": 10,
+        "n_y10_high_score_bbox_written": 4,
+    }]
+    rows = module.mechanism_decision_rows(args, contrasts, compensation, process)
+    assert rows[0]["edge_direction"] == "negative"
+    assert rows[0]["pattern"] == "B_candidate_set_mediated_compensation"
+    assert module.decision(args, rows, [{"passed": 1}]) \
+        == "candidate_set_mediated_compensation_supported"
+
+
+def test_mechanism_decisions_remain_separate_by_delay() -> None:
+    module = _audit_module("cascade_audit_delay_specific_decision")
+    args = type("Args", (), {"mode": "formal", "delay_frames": (1, 5)})()
+    contrasts = [
+        {"contrast": "R_edge", "delay_frames": 1, "mda_ci_low": 0.01,
+         "mda_ci_high": 0.08, "mda_positive_pairs": 12, "mda_negative_pairs": 2},
+        {"contrast": "R_edge", "delay_frames": 5, "mda_ci_low": -0.01,
+         "mda_ci_high": 0.02, "mda_positive_pairs": 7, "mda_negative_pairs": 7},
+    ]
+    compensation = [
+        {"delay_frames": delay, "mda_ci_low": -0.01, "mda_ci_high": 0.01,
+         "mda_positive_pairs": 7, "mda_negative_pairs": 7}
+        for delay in (1, 5)
+    ]
+    process = [
+        {"delay_frames": delay, "n_y10_disagreement_candidates": 4,
+         "n_y10_high_score_bbox_written": 1}
+        for delay in (1, 5)
+    ]
+    rows = module.mechanism_decision_rows(args, contrasts, compensation, process)
+    assert [row["pattern"] for row in rows] == [
+        "A_destructive_candidate_set_contribution",
+        "E_predefined_mechanisms_not_supported",
+    ]
+    assert module.decision(args, rows, [{"passed": 1}]) \
+        == "heterogeneous_or_unresolved_mechanism"
+
+
+def test_attempt_replacement_marks_interrupted_attempt_aborted(tmp_path: Path) -> None:
+    module = _audit_module("cascade_audit_attempt_replacement")
+    root = tmp_path / "condition"
+    first_id, first_root, _ = module._next_attempt(root, "26")
+    manifest = {
+        "attempt_id": first_id,
+        "end_status": "RUNNING",
+        "failure_reason": "",
+        "child_pid": None,
+    }
+    module.atomic_write_json(first_root / "attempt_manifest.json", manifest)
+    second_id, _, existing = module._next_attempt(root, "26")
+    replaced = module._mark_replaced_attempts(existing, second_id, tmp_path / "output", "Y00", "26")
+    updated = json.loads((first_root / "attempt_manifest.json").read_text())
+    assert replaced == first_id
+    assert updated["end_status"] == "ABORTED"
+    assert updated["replacement_attempt_id"] == second_id
+
+
+def test_resume_requires_complete_attempt_manifest_and_canonical_link(tmp_path: Path) -> None:
+    module = _audit_module("cascade_audit_resume_attempt")
+    root = tmp_path / "condition"
+    attempt_id, attempt_root, _ = module._next_attempt(root, "26")
+    result = attempt_root / "mia/test_26/results/mia_test_26"
+    result.mkdir(parents=True)
+    for view in (1, 2):
+        (result / f"26-{view}.json").write_text('{"frame=0": []}\n', encoding="utf-8")
+    module.atomic_write_json(attempt_root / "attempt_manifest.json", {
+        "attempt_id": attempt_id,
+        "run_fingerprint": "fingerprint",
+        "end_status": "COMPLETE",
+    })
+    module._promote_attempt(attempt_root, root, "26")
+    checkpoint = tmp_path / "checkpoint.json"
+    module.atomic_write_json(checkpoint, {
+        "attempt_id": attempt_id,
+        "run_fingerprint": "fingerprint",
+    })
+    assert module.completed_checkpoint_matches(checkpoint, "fingerprint", root, "26")
+    assert not module.completed_checkpoint_matches(checkpoint, "other", root, "26")
+
+
+def test_frozen_repository_gate_rejects_dirty_source(monkeypatch) -> None:
+    module = _audit_module("cascade_audit_source_freeze")
+    monkeypatch.setattr(module, "repository_state", lambda _: {
+        "commit": "abc123", "branch": "experiment", "worktree_clean": 0})
+    with pytest.raises(RuntimeError, match="dirty"):
+        module.require_frozen_repository(ROOT)
+
+
+def test_attempt_fail_fast_detects_source_bypass_and_wrong_yec_selection(tmp_path: Path) -> None:
+    module = _audit_module("cascade_audit_attempt_fail_fast")
+    root = tmp_path / "attempt"
+    base = root / "mia/test_26/results/mia_test_26"
+    base.mkdir(parents=True)
+    for view in (1, 2):
+        (base / f"26-{view}.json").write_text('{"frame=0": []}\n', encoding="utf-8")
+    packet = {
+        field: 0 for field in module.PACKET_ZERO_FIELDS
+    }
+    packet.update({
+        "source_bypass_read_count": 1,
+        "packet_emission_count": 2,
+        "packet_consumption_count": 2,
+        "offline_init_frames": [0],
+        "delay_frames": module.delay_map(1, 0),
+    })
+    (base / "async_packet_manifest_26-1.json").write_text(
+        json.dumps(packet), encoding="utf-8")
+    (base / "async_packet_trace_26-1.jsonl").write_text("", encoding="utf-8")
+    cascade = {field: 0 for field in module.CASCADE_ZERO_FIELDS}
+    cascade.update({
+        "edge_cut_enabled": 1,
+        "shadow_enabled": 1,
+        "shadow_execution_mode": "fork_isolated",
+        "shadow_export_fields": ["membership"],
+        "logger_read_only": 1,
+        "offline_gt_read_count": 2,
+        "prebranch_capture_count": 1,
+        "prebranch_consume_count": 1,
+        "frame_enter_count": 2,
+    })
+    (base / "cascade_edge_manifest_26-1.json").write_text(
+        json.dumps(cascade), encoding="utf-8")
+    (base / "cascade_edge_trace_26-1.jsonl").write_text(json.dumps({
+        "identifiable": 1,
+        "views": {"1": {"high_score_trigger_count": 0, "n_cf_members": 1}},
+    }) + "\n", encoding="utf-8")
+    gt_root = tmp_path / "gt"
+    gt_root.mkdir()
+    for view in (1, 2):
+        (gt_root / f"26-{view}.txt").write_text(
+            "1,1,0,0,10,10,1,1,1\n", encoding="utf-8")
+    args = type("Args", (), {
+        "mia_root": tmp_path,
+        "reference_run_id": "reference",
+        "official_mda_gt_root": gt_root,
+    })()
+    errors = module.validate_completed_attempt(
+        args, "Yec_d1", module.delay_map(1, 0), "26", root, True, True, True)
+    assert "packet_invariant:source_bypass_read_count" in errors
+    assert "Yec_selected_membership_not_S_cf" in errors

@@ -851,11 +851,11 @@ Q3 R_edge = Yec - Y10; positive, null and negative are all admissible
 
 | ID | Status | Requirement |
 | --- | --- | --- |
-| F1 | BLOCKED | Extend `decision()` and tests to cover Patterns A-F, including supported negative `R_edge`. |
-| F2 | BLOCKED | Validate every completed pair-condition manifest and abort immediately on causal-validity failure. |
-| F3 | BLOCKED | Add isolated attempt roots plus `ABORTED`, clean-start and replacement-attempt manifests. |
-| F4 | WARNING / DECISION NEEDED | Either accept missing projection/IoU/reject diagnostics as a declared P2 limitation, or add read-only fields and rerun logging invariance. |
-| F5 | BLOCKED | Freeze all approved E023 changes in a reproducible commit; regenerate variant/config hashes and rerun affected MVE gates. |
+| F1 | RESOLVED / TESTED | `decision()` covers bidirectional `R_edge` and Patterns A-F per delay. |
+| F2 | RESOLVED / TESTED | Every pair-condition is validated before promotion; P0/P1 failure stops immediately. |
+| F3 | RESOLVED / TESTED | Attempts use isolated roots, ABORTED/COMPLETE states, clean-start proof and replacement links. |
+| F4 | RESOLVED AS P2 WARNING | Missing projection/IoU/reject diagnostics are accepted as a declared mechanism-localization limitation; logger unchanged. |
+| F5 | IMPLEMENTED / PENDING FIX COMMIT AND MVE | Git/source/config/checkpoint/environment hashes are recorded and dirty worktrees rejected; fresh MVE still required. |
 
 ### Formal Run Matrix
 
@@ -879,6 +879,25 @@ introduced during these readiness fixes.
 
 Formal may start only after F1-F3/F5 pass, F4 is explicitly resolved, and a
 fresh readiness audit changes the exact verdict to `FORMAL_READY`.
+
+## P1 Fix Implementation Record (2026-08-12)
+
+Current state: `P1 FIXED / FRESH TWO-PAIR MVE AUTHORIZED / FORMAL BLOCKED`.
+
+- Statistical decisions now report positive, negative and zero pair counts,
+  paired median/CI, and Pattern A-F separately for d1 and d5.
+- Every author invocation runs in `attempt_NNN`; only a validated COMPLETE
+  attempt is promoted to the evaluator path.
+- Restart never resumes tracker state. Stale RUNNING attempts become ABORTED
+  and identify their replacement attempt.
+- Packet/source-bypass/alias/future/writeback, shadow quarantine,
+  pre-branch conservation, Yec membership selection, GT-frame coverage and Y00
+  reference equivalence are checked before the next pair-condition starts.
+- The run and attempt manifests record the repository commit and all locked
+  source/config/checkpoint/environment hashes. Dirty source cannot run.
+
+The old v4 MVE remains historical evidence but cannot authorize Formal against
+the changed launcher hash. A new Pair-26/48 MVE is the next permitted action.
 
 # Blockers
 

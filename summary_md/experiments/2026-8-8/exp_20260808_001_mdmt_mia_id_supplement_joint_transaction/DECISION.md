@@ -93,3 +93,18 @@ clean-restart manifest，E023 源码尚未冻结到 clean commit。P2 拒绝原�
 作为 warning 保留；若修改 logger，必须重跑 logging ON/OFF MVE gate。
 
 详细证据见 `FORMAL_READINESS_REPORT.md`。
+
+## P1 Blocker Resolution (2026-08-12)
+
+四个 P1 已在实现中关闭：双向 `R_edge`/Patterns A-F、逐
+pair-condition fail-fast、隔离 attempt/ABORTED replacement chain、以及
+Git commit 与源码/配置/checkpoint/environment hash 冻结。P2 的
+projection/IoU/reject-reason 缺口被明确接受为本次 Formal 的非阻断
+mechanism-localization warning，未修改 logger。
+
+当前授权边界：
+
+```text
+fresh Pair-26/48 MVE: ALLOWED
+14-pair Formal: BLOCKED until fresh MVE passes and readiness is re-audited
+```
