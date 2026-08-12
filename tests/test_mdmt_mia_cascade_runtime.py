@@ -287,6 +287,37 @@ def test_cascade_variant_guards_optional_training_apis(tmp_path: Path) -> None:
     assert "try:\n    from .train import init_random_seed, train_model" in patched
 
 
+def test_detector_cache_key_resolves_condition_symlinks(tmp_path: Path) -> None:
+    path = ROOT / "scripts/prepare_mdmt_mia_cascade_edge_variant.py"
+    spec = importlib.util.spec_from_file_location("cascade_variant_cache_key", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    target = tmp_path / "mmtrack/models/mot/byte_track.py"
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        "import hashlib\nfrom pathlib import Path\n\n"
+        "def _mdmt_cache_filename(img_metas):\n"
+        "    filename = str(img_metas[0]['filename'])\n"
+        "    return hashlib.sha256(filename.encode(\"utf-8\")).hexdigest() + \".npz\"\n",
+        encoding="utf-8",
+    )
+    module.patch_detector_cache_key(tmp_path)
+    namespace: dict[str, object] = {}
+    exec(target.read_text(encoding="utf-8"), namespace)
+    dataset = tmp_path / "dataset/frame.jpg"
+    dataset.parent.mkdir()
+    dataset.write_bytes(b"frame")
+    first = tmp_path / "run/seed/frame.jpg"
+    second = tmp_path / "run/Y00/frame.jpg"
+    first.parent.mkdir(parents=True)
+    second.parent.mkdir(parents=True)
+    first.symlink_to(dataset)
+    second.symlink_to(dataset)
+    cache_name = namespace["_mdmt_cache_filename"]
+    assert cache_name([{"filename": str(first)}]) == cache_name([{"filename": str(second)}])
+
+
 def test_cascade_audit_normalizes_output_and_cache_parent_paths(tmp_path: Path, monkeypatch) -> None:
     path = ROOT / "scripts/phase3_mdmt_mia_id_supplement_cascade_audit.py"
     spec = importlib.util.spec_from_file_location("cascade_audit_paths", path)

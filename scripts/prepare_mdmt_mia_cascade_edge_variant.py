@@ -72,6 +72,8 @@ def audit_variant_structure(root: Path) -> dict[str, int]:
             "def _load_or_compute_mdmt_detections(" in byte_track
             and "MIA_DETECTION_CACHE_ROOT" in byte_track
             and "cached_classes = _load_or_compute_mdmt_detections(" in byte_track),
+        "detector_cache_key_uses_resolved_path": int(
+            "canonical = str(Path(filename).expanduser().resolve())" in byte_track),
     }
 
 
@@ -127,6 +129,22 @@ def patch_optional_training_api_imports(root: Path) -> None:
             raise RuntimeError(f"optional training API import is neither direct nor guarded: {direct}")
         source = source.replace(direct, guarded, 1)
     path.write_text(source, encoding="utf-8")
+
+
+def patch_detector_cache_key(root: Path) -> None:
+    """Make detector-cache identity independent of condition symlink paths."""
+    path = root / "mmtrack/models/mot/byte_track.py"
+    source = path.read_text(encoding="utf-8")
+    canonical = (
+        "    canonical = str(Path(filename).expanduser().resolve())\n"
+        "    return hashlib.sha256(canonical.encode(\"utf-8\")).hexdigest() + \".npz\""
+    )
+    if canonical in source:
+        return
+    direct = "    return hashlib.sha256(filename.encode(\"utf-8\")).hexdigest() + \".npz\""
+    if direct not in source:
+        raise RuntimeError("detector cache key is neither raw-path nor canonical-path based")
+    path.write_text(source.replace(direct, canonical, 1), encoding="utf-8")
 
 
 LINEAGE_HELPER = r'''
@@ -428,6 +446,7 @@ def patch_variant(root: Path, runtime_source: Path) -> dict[str, object]:
         raise FileNotFoundError("missing copied packetized_async_deadline source")
     patch_optional_model_imports(root)
     patch_optional_training_api_imports(root)
+    patch_detector_cache_key(root)
     patch_common_lineage(root)
     patch_supplement_diagnostics(root)
     patch_homography_fallback(root)
@@ -440,6 +459,7 @@ def patch_variant(root: Path, runtime_source: Path) -> dict[str, object]:
         "demo/utils/cascade_runtime.py",
         "mmtrack/models/__init__.py",
         "mmtrack/apis/__init__.py",
+        "mmtrack/models/mot/byte_track.py",
     )
     structure_audit = audit_variant_structure(root)
     if not all(structure_audit.values()):

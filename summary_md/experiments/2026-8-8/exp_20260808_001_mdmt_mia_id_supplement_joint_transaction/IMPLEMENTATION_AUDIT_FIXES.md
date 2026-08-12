@@ -85,3 +85,10 @@ answer those questions with byte-identical prediction and async-state traces.
   upstream workspace and records the API-init hash. v6 remains `ABORTED`; the
   next evidence variant must pass an explicit `from mmtrack.apis import
   inference_mot, init_model` preflight.
+- Cache-key follow-up: v7 successfully generated and promoted all 2,000
+  Pair-26/48 view-frame cache entries, but Y00 missed the first entry because
+  the key hashed the condition-specific run-input symlink. Seed and Y00 raw
+  paths differed while their resolved dataset path was identical. Cache keys
+  now hash `Path(filename).resolve()`; a regression test creates two condition
+  symlinks to the same frame and requires an identical key. v7 remains
+  `ABORTED`; a fresh source fingerprint and cache seed are required.
