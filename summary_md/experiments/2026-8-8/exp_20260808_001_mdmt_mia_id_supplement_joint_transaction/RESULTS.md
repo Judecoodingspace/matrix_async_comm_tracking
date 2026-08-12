@@ -1,136 +1,73 @@
 # RESULTS
 
-Status: `PENDING`
+Status: `NO EXPERIMENT RUN - V2 STATIC RE-AUDIT PASSED`
 
 ## Experiment ID
 
 `exp_20260808_001_mdmt_mia_id_supplement_joint_transaction`
 
-## Commit
+The filename is historical. ADR-20260809-R4 suspended the joint-transaction
+hypothesis. The active experiment is the R5/R6 ID-delay candidate-membership
+cascade mechanism audit.
 
-- Base commit: `09281aa`
+## Implementation Provenance
+
+- Base commit recorded by Contract: `09281aa`
 - Implementation commit: `PENDING`
 - Evaluation commit: `PENDING`
+- Rejected source variant: `packetized_id_supplement_cascade` (v1)
+- Current source variant: `packetized_id_supplement_cascade_v2`
+- Variant manifest: `/mnt/data/yzm/experiments/mdmt_mia_official/variants/packetized_id_supplement_cascade_v2/cascade_edge_manifest.json`
 
-## Configs
-
-- Frozen config: `PENDING`
-- Config SHA256: `PENDING`
-- Runtime/variant manifest: `PENDING`
-- Detector checkpoint and SHA256: `PENDING`
-
-## Seeds
-
-- Runtime seed: `7` (locked by Contract)
-- Bootstrap seed: `7` (locked by Contract)
-- Bootstrap resamples: `10000` (Formal; locked by Contract)
-
-## Run Completeness
+## Static Verification
 
 ### OBSERVATION
 
-- MVE expected pair-runs: `18` plus deterministic repeat
-- MVE completed: `PENDING`
-- Formal expected pair-runs: `126`
-- Formal completed: `PENDING`
-- Missing/failed conditions: `PENDING`
+- Focused cascade tests: passed.
+- Full repository regression: passed; no existing test failure.
+- Generated v2 source: structural audit passed for every registered boundary.
+- Generated changed files: Python AST/compile checks passed.
+- Generated file SHA256 values equal the v2 manifest.
+- No MVE or Formal condition was executed.
 
 ### INTERPRETATION
 
-`PENDING`
+The implementation is eligible for a separately authorized MVE. Static
+verification is not evidence for or against the scientific hypothesis.
 
-## Primary Metric
+## Active Conditions
 
-Primary metric: delay-5 pair-level MDA improvement of `joint_transaction` over `independent_id_plus_supplement`, 14-pair macro mean with paired bootstrap 95% CI.
+```text
+Y00: ID timely  + Supplement timely + synchronous membership
+Y10: ID delayed + Supplement timely + S_delay
+Y01: ID timely  + Supplement expired
+Y11: ID delayed + Supplement expired
+Yec: ID delayed + Supplement timely + oracle S_cf membership only
+```
 
-### OBSERVATION
+Y10 and Yec both compute the same read-only shadow diagnostics. Only Yec may
+consume `S_cf` as High-score membership. Low-score receives no oracle input.
 
-`PENDING`
+## Mandatory MVE Gates
 
-### INTERPRETATION
-
-`PENDING`
-
-## Secondary Metrics
-
-### OBSERVATION
-
-- IDF1: `PENDING`
-- IDSW: `PENDING`
-- MOTA: `PENDING`
-- improved-pair direction count: `PENDING`
-- conflict/obsolete events: `PENDING`
-- valid joint commit rate: `PENDING`
-- published rewrite count: `PENDING`
-
-### INTERPRETATION
-
-`PENDING`
-
-## Baseline Comparison
-
-### OBSERVATION
-
-| Delay | Baseline | Proposed | MDA Delta | 95% CI | IDF1 Delta | IDSW Delta | Pair Direction | Status |
-| --- | --- | --- | ---: | --- | ---: | ---: | --- | --- |
-| 1 | `independent_id_plus_supplement` | `joint_transaction` | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-| 5 | `independent_id_plus_supplement` | `joint_transaction` | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
-
-### INTERPRETATION
-
-`PENDING`
-
-## Observed Patterns
-
-### OBSERVATION
-
-`PENDING`
-
-### INTERPRETATION
-
-`PENDING`
-
-## Anomalies
-
-### OBSERVATION
-
-`PENDING`
-
-### INTERPRETATION
-
-`PENDING`
-
-## Failed Runs
-
-### OBSERVATION
-
-`PENDING`
-
-### INTERPRETATION
-
-`PENDING`
-
-## Contract Deviations
-
-### OBSERVATION
-
-`PENDING - no deviation may be silently accepted.`
-
-### INTERPRETATION
-
-`PENDING`
+- Y00 equals the frozen synchronous reference JSON.
+- One complete pre-branch capture/consume per non-initial frame.
+- No missing, stale, double, wrong-frame or non-conserved snapshot.
+- No runtime GT, future read, NumPy alias, feedback mismatch or published rewrite.
+- Shadow export is membership-only and actual branch inputs remain unchanged.
+- Y10/Yec 各自 run 内的 actual/shadow candidate 使用 pre-branch row key；状态分叉后禁止跨 run 复用该 key。
+- Logging ON/OFF predictions and async state traces are byte-identical.
+- Shadow ON/OFF Y10 predictions and async state traces are byte-identical.
+- Packet emission equals packet consumption plus expiry.
+- Resume fingerprint matches variant, conditions, pairs, seed and reference.
 
 ## Missing Evidence
 
-### OBSERVATION
+- MVE measurement gate: `NOT RUN`
+- MVE R5d process trace: `NOT RUN`
+- MVE decision: `NOT RUN`
+- Formal 14-pair metrics and bootstrap: `NOT RUN`
+- Scientific decision: `PENDING`
 
-- Implementation provenance: `PENDING`
-- MVE measurement gate: `PENDING`
-- Formal completeness: `PENDING`
-- Pair-level bootstrap table: `PENDING`
-- Transaction mediation evidence: `PENDING`
-
-### INTERPRETATION
-
-`PENDING`
-
+Formal is code-gated by `--mve-evidence-dir` and cannot proceed from static
+verification alone.

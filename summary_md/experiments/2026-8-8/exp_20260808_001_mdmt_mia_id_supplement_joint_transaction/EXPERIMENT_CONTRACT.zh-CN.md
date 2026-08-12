@@ -13,7 +13,7 @@
 - 当前分支：`exp/20260803-002-mdmt-async-tracklet-fusion`
 - 基准提交：`09281aa`，`record recent experiment updates`
 - 建立契约时 Git 状态：干净
-- 当前状态：`proposed — NEEDS_RESEARCH_DECISION`
+- 当前状态：`V2 IMPLEMENTATION REPAIRED — 静态复审通过；MVE 仍需单独授权`
 - 上一轮实验：`exp_20260805_003_mdmt_mia_async_state_channel_audit`
 - 相关 Issue：`UNKNOWN`
 - 相关 PR：`UNKNOWN`
@@ -28,6 +28,270 @@
 - `outputs/20260805_mdmt_mia_async_state_channel_audit_formal_v2/async_channel_interaction_effects.csv`
 - `outputs/20260805_mdmt_mia_async_state_channel_audit_formal_v2/async_cascade_mechanisms.csv`
 
+# 契约修订与决策记录
+
+## IR-20260811-AUDIT-FIX：实现修正记录
+
+本记录属于实现与测量修正，不修改 R4-R6、R5a-R5d、实验条件、指标、数据划分或研究假设。
+
+- v1 `packetized_id_supplement_cascade` 因 pre-branch capture 边界和 shadow 隔离问题被否决，不得生成科研证据。
+- v2 `packetized_id_supplement_cascade_v2` 改为每个非初始化帧恰好保存并消费一次完整分支前状态；缺失、过期或守恒失败时退回实际 delayed membership。
+- Y10 与 Yec 都计算同一个只读 shadow，只有 Yec 使用 `S_cf`；High-score 是唯一直接消费 membership 的模块。
+- MVE 必须验证 logging ON/OFF、shadow ON/OFF、Y10/Yec candidate pairing、packet conservation 和全部 manifest 字段。
+- Formal 必须显式读取同配置且全部 gate 通过的 MVE evidence，不能直接运行。
+- 当前只完成单元测试、全仓回归、v2 生成源码结构/语法/SHA 审计；没有运行 MVE 或 Formal。
+
+## ADR-20260809-R1-R3
+
+- 生效日期：`2026-08-09`
+- 决策依据：科研讨论后的研究者明确批准
+- 优先级：本记录覆盖本文后续与其不一致的“待批准”旧表述；旧表述保留并显式标记，不做静默改写。
+
+三个决定互不冲突：R1 限定迟到 Supplement 的权限；R2 只撤销 `W=5` 作为 E023 科学参数；R3 固定不完整/过期/冲突事务的 reject-all 回退。它们不修改研究问题、H1、主指标、数据划分、baseline、delay schedule、publication deadline、Local/H 时序、payload、detector/tracker/evaluator 或首帧初始化。
+
+| 决定 | 类型 | 生效语义 | 契约影响 |
+| --- | --- | --- | --- |
+| R1 | CLARIFICATION / RESOLVED_CONDITIONAL | 迟到 Supplement 不执行迟到目标补全。它的 capture-time 原始内容只能验证既有 capture-time ID state change 是否有对应跨视角观测支持。验证、版本和 live-track 检查都通过后，才允许该既有 ID effect 影响 arrival 后的 future identity state。禁止旧 bbox、arrival-time re-association 和新 remap。 | 原 joint-transaction H1 暂停期间休眠；只有未来重新启用该方法时才生效。 |
+| R2 | CONTRACT AMENDMENT / RESOLVED_CONDITIONAL | 删除 `W=5` 作为 E023 科学参数。第一条同事务合法消息到达后开始计时；对称 fixed-delay 条件下，同 capture 的 ID/Supplement 预期同帧到达。只记录 `transaction_wait_frames`，不在 E023 检验窗口。 | 移除旧 claim 的记录仍有效；joint-transaction H1 暂停期间不实现 waiting policy。 |
+| R3 | CLARIFICATION / RESOLVED_CONDITIONAL | incomplete/obsolete/conflicting transaction 全部 reject-all；不得自动退化为 ID-only，也不得 late recovery。ID-only 只保留为独立机制消融。 | 原 joint-transaction H1 暂停期间休眠；只有未来重新启用该方法时才生效。 |
+
+锁定不变量：
+
+```text
+no old-bbox insertion
+no historical/published rewrite
+no future read
+no runtime GT
+no source bypass
+same detector/tracker/payload/arrival/evaluator
+no test-driven tuning
+```
+
+以下为原 joint-transaction 提案的历史实现项，已由 R4 暂停，当前不得定义或实现：
+
+1. exact transaction key；当前每帧可能有多个 ID stage 和 Supplement stage，`capture_frame` 单独不足以区分。
+2. 不读取 GT/未来信息、也不做 arrival-time 重关联的 Supplement-to-ID observation-support 判据。
+3. 对选定 transaction key 证明 E023 对称条件下 ID/Supplement 确实同帧到达。
+
+状态：`SUSPENDED_BY_R4`。R4-R6 科研语义与修订后的 gate 已解决。I4-I7 v2 已按 `START_FIX_AUDIT_FINDINGS` 完成静态修复验证；MVE 仍需研究者另行授权。
+
+### ADR-20260809-R4：上游假设转向
+
+状态：`RESOLVED / PIVOT APPROVED AT RESEARCH-DIRECTION LEVEL`；机制实现仍被阻塞。
+
+研究者不同意立即在 frame bundle 与 per-candidate lineage 中二选一。源码显示成功 ID effect 与 high-score Supplement 通常是替代分支：ID mutation 后候选集合重新计算，只有仍未匹配的候选进入 Supplement；low-score Supplement 是独立 detector-to-detector 分支。当前 packet 只保存 effect 后状态，没有共同上游 lineage。
+
+因此上一轮 interaction 只支持：
+
+> ID 与 Supplement 通道通过 tracking-state evolution 存在非加性系统级耦合。
+
+它不能直接支持“同一 candidate 的 ID effect 与 Supplement evidence 天然属于一个 joint transaction”。
+
+源码支持的因果结构是：
+
+```text
+capture-time ID association decision
+  -> ID mutation 原本会改变 identity state
+  -> ID delay 使该 current-frame commit 缺席
+  -> get_matched_ids() 在 mutation 前状态上重新计算 matched/unmatched
+  -> Supplement 看到改变后的 candidate set
+  -> Supplement 可能改变当前 tracker state
+  -> fused state 反馈给下一帧
+  -> future ID association 改变
+```
+
+分类：前四个代码顺序与反馈边是 FACT；它们是否解释 delay-5 interaction 仍是 INFERENCE。
+
+R4 后的研究问题：ID+Supplement 非加性是否来自“ID commit 缺席 → candidate-set shift → Supplement state change → future association”路径？
+
+机制假设 H4：在相同 ID delay 与冻结输入下，只切断上述 candidate-set mediation 边的可审计诊断，应显著削弱额外交互，同时保留 ID delay 的直接作用。
+
+必须保留的竞争解释：该非加性可能是“补偿消失”而非“破坏传播”。ID-only delay 时，及时 Supplement 可能补偿新增 unmatched；同时延迟 Supplement 只是拿走了补偿。上一轮 `interaction_loss` 不能区分两者。
+
+契约后果：
+
+- 原 joint-transaction H1 与实现计划标记 `SUSPENDED`，不是实验否证；
+- 不授权 transaction key、candidate lineage 或 observation-support record；
+- R1-R3 保留为 `RESOLVED_CONDITIONAL`；
+- 当前目标是 causal-edge-cut diagnostic；R5a-R5d 与 R6 已锁定其 oracle intervention、contrasts 和日志边界，后续只剩授权后的实现验证；
+- 旧 MVE/Formal 均不得运行。
+
+R4 后的决定解决记录：
+
+| ID | 状态 | 需要决定的内容 |
+| --- | --- | --- |
+| R5 | `RESOLVED / CONTRACT AMENDMENT` | R5a-R5d 已锁定主 edge-cut 与 membership-only oracle 构造。ID delay、当前帧 non-commit、Supplement 算法和下游 writeback 保持不变。 |
+| R6 | `RESOLVED / CONTRACT AMENDMENT` | 五个条件、预定义 contrasts、机制判定模式、oracle quarantine 与 R5d 日志职责已锁定。runtime verification 仍必须执行，但不再是开放科研决定。 |
+
+R4-R6 科研语义已关闭。研究者明确输入 `START_IMPLEMENTATION` 前仍禁止实现。
+
+### ADR-20260809-R5：主因果边选择
+
+分类：`RESEARCH DECISION / RESOLVED BY R5a-R5d`。
+
+已经批准：
+
+```text
+保持完全相同的 ID delay
+保持当前帧 ID effect 不 commit
+只干预 high-score Supplement 看到的 candidate-set input
+保持 Supplement 后续算法和 tracker writeback 不变
+```
+
+没有批准：阻止 Supplement writeback 作为 R5 主诊断、任何具体 shadow-state 实现、transaction key、传输 candidate lineage、新 observation-support payload，以及把诊断当作可部署在线方法。
+
+源码审查得到四项实现时必须保持的约束：
+
+1. `get_matched_ids()` 输出的不只是 membership，还包含 candidate ID、中心点和角点。
+2. `not_matched_supplement()` 会把 candidate ID 写入另一视角并更新 `matched_ids/coID_confirme`；直接替换同步 shadow candidates 会把 shadow identity label 注入 delayed branch。
+3. ID association 原地修改 ID，但没有刻意重排 rows。获批的最窄 oracle 是：shadow 只生成基于 pre-branch observation index 的 membership mask，随后使用 delayed branch 自己的 ID、几何和状态执行 Supplement。runtime 仍必须验证守恒，失败即 fail closed。
+4. low-score Supplement 是独立 detector-to-detector 分支，不来自 matched/unmatched，必须保持受控并单独报告。
+
+R5 已解决的子决定：
+
+| ID | 状态 | 问题 |
+| --- | --- | --- |
+| R5a | `RESOLVED / CONTRACT AMENDMENT` | 使用分叉前固定的 `(view_id, pre_branch_row_index)`。当前冻结 ID helper 在 Supplement 前保持 row 数量/顺序，只改 ID。runtime 守恒失败即 `unidentifiable` 并 fail closed；禁止 post-hoc rematching。 |
+| R5b | `RESOLVED / CONTRACT AMENDMENT` | shadow 可在内部计算同步反事实状态，但只能输出 current-capture membership bit；其他 shadow 信息全部隔离。 |
+| R5c | `RESOLVED / CLARIFICATION` | `S_cf` 只直接控制 high-score membership。Low-score 不读 oracle，但可因真实 downstream track state 自然改变；Supplement writeback 保持启用。 |
+| R5d | `RESOLVED / MEASUREMENT AMENDMENT` | 锁定只读 per-frame 与 disagreement-candidate 日志；logging 不得影响 runtime。 |
+
+阻止 Supplement writeback 仅保留为第二级诊断，用于研究下游边 `Supplement behavior -> tracker feedback -> future ID`，不属于 R5 主 edge-cut。
+
+### ADR-20260811-R5d：只读因果传播日志
+
+状态：`RESOLVED / MEASUREMENT AMENDMENT`。
+
+科学不变量：
+
+```text
+algorithm state -> diagnostic logger
+diagnostic logger -X-> candidate selection / Supplement / ID mutation / tracker writeback
+```
+
+最小 per-frame 日志锁定为：
+
+```text
+frame_id, direction/view
+
+membership:
+  n_delay_members
+  n_cf_members
+  membership_disagreement
+  n_disagreement
+  n_delay_only
+  n_cf_only
+
+high_score:
+  trigger_count
+  successful_bbox_writein_count
+
+low_score:
+  trigger_candidate_count
+  current_track_coverage_reject_count
+  successful_bbox_writein_count
+```
+
+每个 disagreement candidate 还必须记录：
+
+```text
+capture_frame
+view_id
+pre_branch_row_index
+delay_membership
+cf_membership
+high_score_triggered
+high_score_bbox_written
+```
+
+candidate-level record 只能使用 R5a 的 pre-branch observation key，禁止加入或重建跨分支 ID matching。必须保留 per-frame 粒度，因为 sequence aggregate 无法证明 membership、High-score 与 Low-score 变化发生在同一帧。
+
+R5d 只提供 causal traceability，回答传播在哪里停止；只有 R6 的预定义 experimental contrasts 可以证明 performance effect。Logging ON/OFF 必须得到 byte-identical predictions 与 state digests。任何 diagnostic value 参与 runtime control 都使实验无效。
+
+### ADR-20260811-R6：预定义机制对照与 Oracle 边界
+
+- 生效日期：`2026-08-11`
+- 状态：`RESOLVED / IMPLEMENTATION VERIFICATION REQUIRED`
+- 范围：机制对照、解释规则和 oracle-only 信息边界
+- 优先级：扩展 R4/R5，但不重新启用已暂停的 joint-transaction H1。
+
+#### 冲突检查
+
+R6 与 R4/R5 一致：`Y10/Y11/Yec` 保持相同 ID delay 和当前帧 ID commit 缺席；`Yec` 只改变 high-score Supplement 的 membership source；Supplement、low-score、NMS、发布和 tracker feedback 均保留。破坏性级联与及时 Supplement 补偿仍可同时存在。数据集、split、detector/tracker、delay schedule、evaluator、tracking metric 和既有 baseline 均不替换。
+
+R1-R3 继续作为 joint-transaction 假设下的休眠条件决定，R6 不重新启用它们。
+
+#### 决定分类
+
+| 决定组成 | 分类 | 契约影响 |
+| --- | --- | --- |
+| 五个条件与预定义 contrasts | `CONTRACT AMENDMENT` | 新增 oracle-only diagnostic，并在看结果前锁定比较；MDA 仍是主要 tracking metric，`R_edge` 是 contrast，不是新 metric。 |
+| 五种机制解释模式 | `CONTRACT AMENDMENT` | 锁定 destructive、compensation、both、unsupported、unresolved 的报告边界。 |
+| R5d logs 只作 observational evidence | `CLARIFICATION` | 日志解释传播停在哪个节点，不替代 contrast，也不能控制 runtime。 |
+| current-frame shadow 只向 `Yec` 输出 membership bit | `CONTRACT AMENDMENT — ORACLE INFORMATION BOUNDARY ONLY` | 不改变 deployable online boundary；shadow ID/bbox/matched/tracker state/H/detector、未来数据和 GT 仍禁止。 |
+| row key、mask encoding、守恒计数和 quarantine assertion | `IMPLEMENTATION DECISION` | 源码验证后才可选编码，且不得改变批准语义。 |
+
+#### 锁定条件与对照
+
+| Condition | ID state | Supplement state | High-score membership |
+| --- | --- | --- | --- |
+| `Y00` | timely | timely | synchronous membership |
+| `Y10` | delayed | timely | actual `S_delay` |
+| `Y01` | timely | delayed/expired | synchronous membership |
+| `Y11` | delayed | delayed/expired | actual `S_delay` |
+| `Yec` | delayed | timely | oracle `S_cf` |
+
+`Y00/Y10/Y01/Y11` 构成锁定的 2x2 factorial；`Yec` 只能作为 oracle edge-cut diagnostic，禁止表述为可部署性能。`Y10` 与 `Yec` 唯一有意差异是 high-score membership source。
+
+对于 higher-is-better outcome：
+
+```text
+D_ID    = Y00 - Y10
+R_edge  = Yec - Y10
+M_delay = Y10 - Y11
+M_sync  = Y00 - Y01
+```
+
+`R_edge` 是 candidate-set mediated/oracle recovery，不是 total ID-delay loss 的严格百分比分解。比较 `M_delay` 与 `M_sync` 用于判断额外 compensation。
+
+parent experiment 的 loss 定义为 `reference - condition`，`interaction_loss` 定义为 `combined_loss - max(single_channel_losses)`；正值表示组合条件比最差单通道更差。该符号方向与 R6 兼容，但它不等于 factorial difference `M_delay - M_sync`，必须分开命名和报告。
+
+#### 预定义解释
+
+| Pattern | 必需证据 | 允许结论 |
+| --- | --- | --- |
+| Destructive cascade | `R_edge > 0`，且 process logs 证明 membership disagreement 传到 actual high-score write-in；无额外 compensation 信号 | destructive candidate-set cascade supported |
+| Compensation | `R_edge` 不获支持，且 `M_delay > M_sync` | timely-Supplement compensation supported；cascade 只是 not supported，不是 disproved |
+| Both | `R_edge > 0` 且 `M_delay > M_sync`，并有 process evidence | 两种机制均 supported |
+| Neither dominant | 两个 contrast 均不获支持 | candidate-set path 不支持为 dominant；检查传播停止点 |
+| Mixed/unstable | direction、CI、process evidence 冲突 | other/unresolved mechanism |
+
+最终 threshold、CI 与 direction-consistency gate 必须沿用未修改的预定义统计协议，不得在结果后选择。
+
+#### R5d 日志边界
+
+R5d 可记录 membership disagreement、delay-only/cf-only candidate count、high-score trigger/write-in、low-score trigger/coverage rejection/write-in、future tracker/association divergence。它们只作 observational process evidence。Logging ON/OFF 必须 prediction-identical；日志不能控制 runtime，也不能单独证明机制。
+
+#### 源码验证记录
+
+- Parent sign convention：`VERIFIED`。
+- Source order：`VERIFIED`；ID mutation 后会重算 candidates/H，再进入后续 association 与 high-score Supplement。
+- Row conservation：`VERIFIED FOR THE FROZEN SOURCE`；active ID association helper 在 Supplement 前只修改 ID 列，不增删/重排行。candidate arrays 当前丢弃 row index，因此实现必须显式保留 pre-branch key。
+- Shadow quarantine：`RESEARCH SEMANTICS LOCKED`；只有 membership bit 可进入 actual delayed branch。runtime assertion 仍是强制实现验证。
+- Single-edge 边界：`CLARIFIED`；`S_cf` 可能包含重算 H 的上游作用，但 actual branch 只接收 membership。结论只能停留在 candidate-membership mediation。
+
+#### 授权实现后的强制验证
+
+- I4/R5a row-conservation invariant、编码与失败行为；
+- I5/R5b shadow/oracle quarantine assertion；
+- I6/R5c single-edge conservation 与 low-score control audit；
+- I7/R5d logging invariance test design；
+- 修订后的可执行 Contract/decision gate 与明确 `START_IMPLEMENTATION`。
+
+这些属于 implementation/measurement gate，不是开放科研决定。只有收到 `START_IMPLEMENTATION` 后才能实现；测试通过前仍禁止运行实验。
+
+可选的 content-aware vs presence-only、reject-all vs ID-only 消融不自动加入 E023；若未来启用，需要另行修订契约。
+
 ## 当前实验识别
 
 | 内容 | 类型 | 判断 | 来源 |
@@ -36,17 +300,20 @@
 | 当前分支 | FACT | 当前分支仍为 `exp/20260803-002-mdmt-async-tracklet-fusion`。 | Git 显式 worktree 查询 |
 | 分支与研究进度 | INFERENCE | 分支名称落后于已经完成的 2026-08-05 实验，不能单独用来判断当前研究问题。 | `current_experiment_stage.md`、`INDEX.md` |
 | 最近完成的实验 | FACT | 最近正式实验是 `exp_20260805_003`，决策为 `coupled_state_cascade_identified`。 | 上一轮实验卡和分析报告 |
-| 当前拟推进实验 | INFERENCE | 下一步应保持 Local Track 准时，研究 `ID state + Supplement` 的联合事务。 | `current_status.md`、上一轮分析报告 |
+| 当前拟推进实验 | LOCKED RESEARCH DESIGN | joint transaction 提案已由 R4 暂停；当前目标是 R5/R6 oracle causal-edge mechanism audit，实现等待 `START_IMPLEMENTATION`。 | ADR-20260809-R4/R5；ADR-20260811-R5d/R6 |
 
 当前研究变量的分类如下：
 
 - 研究问题：**INFERENCE**
 - 当前实验 ID：**INFERENCE**
 - 上一轮基线行为：**FACT**
-- 联合事务具体语义：**ASSUMPTION，待批准**
+- 联合事务具体语义：**SUSPENDED**；当前不得实现
+- causal-edge oracle 语义：**LOCKED RESEARCH DESIGN**；等待实现授权
 - 级联究竟来自非原子更新、补全过期还是评价耦合：**UNKNOWN**
 
 # 1. 研究问题
+
+状态：`SUSPENDED by ADR-20260809-R4`。以下内容仅保留为转向前的历史问题；当前有效问题见 R4。
 
 在 Local Track 和 Homography 都准时到达、已发布结果不可修改的条件下，将延迟的
 `ID state` 与 `Supplement` 作为一个版本一致的有限窗口事务处理，是否比当前的独立迟到处理方式更能保持跨视角关联性能？
@@ -74,6 +341,8 @@
 - 迟到 Supplement 可以作为未来 ID 状态提交的验证或约束，而不把陈旧框写回历史帧或当前帧。
 
 # 3. 主假设 H1
+
+状态：`SUSPENDED by ADR-20260809-R4`。除非未来契约修订明确恢复，否则不得据此实现或运行实验。
 
 ## 版本一致的联合提交能够降低状态级联
 
@@ -164,17 +433,28 @@ ID state + Supplement 的应用策略
 
 delay=1 和 delay=5 是预先规定的条件分层，不是调参变量。
 
-## 待批准的最小事务语义
+## 原待批准事务语义（保留用于审计）
 
-以下定义必须在开始编码前获得研究确认：
+ADR-20260809-R1-R3 已解决 R1-R3；以下旧文本与 ADR 冲突时以 ADR 为准：
 
 1. 只根据 capture frame、方向和 source state version 配对消息，不使用 GT 身份。
-2. 只有当相关轨迹仍存活、且事务在 `W=5` 帧内完整到达时，才提交联合状态。
+2. ~~只有当相关轨迹仍存活、且事务在 `W=5` 帧内完整到达时，才提交联合状态。~~ **已被 R2 覆盖：** E023 不使用固定 W，只记录 `transaction_wait_frames`。
 3. 迟到 Supplement 不能写入历史或当前发布框，只能验证或约束同一事务的未来 ID 重映射。
-4. 不完整、过期或冲突事务整体拒绝，不能部分覆盖更新版本。
+4. 不完整、过期或冲突事务整体拒绝，不能部分覆盖更新版本。**R3 已确认：** reject-all，不允许 ID-only fallback 或 late recovery。
 5. 已发布 JSON 不可修改；本轮不进行 capture-time replay。
 
-`W=5` 是基于上一轮 delay=5 级联现象提出的假设，不是新测试集调参结果。若要扫描多个 W，必须另建研究计划并重新确定验证集。
+~~`W=5` 是本轮事务窗口假设。~~ **已被 R2 覆盖。** E023 不检验或调节窗口；窗口敏感性属于后续 asymmetric delay/jitter 实验。
+
+R1 生效后的迟到 Supplement 语义：
+
+```text
+capture-time Supplement 原始内容
+  -> 验证对应 capture-time ID effect 是否有观测支持
+  -> 验证 + 当前版本 + live-track 合法：仅允许该既有 ID effect 影响 future state
+  -> 其他情况：整笔 reject-all
+
+禁止旧 bbox、arrival-time re-association、新 remap、partial ID-only 和 late recovery
+```
 
 # 9. 必须控制的变量
 
@@ -220,11 +500,13 @@ delay=1 和 delay=5 是预先规定的条件分层，不是调参变量。
 - 对已经发布的历史 JSON 进行修改；
 - 把 capture-time 的 Supplement 框当作当前帧框插入；
 - 线缆/对象反序列化后继续读取发送端对象或 NumPy 共享引用；
-- 使用 Formal 结果选择 W、阈值或回退策略。
+- 使用 Formal 结果选择阈值、回退策略或未来 transaction window；E023 不包含可调 W。
 
 事务可以延迟内部状态提交，但不能延迟外部帧发布，也不能改变已经发布的结果。否则研究问题就变成了新的在线延迟定义，必须重新进行研究决策。
 
 # 11. 指标
+
+状态：`原 JOINT-TRANSACTION 指标已暂停`。上一轮 MDA/IDF1/IDSW 仍是有效证据，但 causal-edge-cut 的主终点和 mediation 量需要新的科研决策；本记录不擅自修改指标定义。
 
 ## 主要指标
 
@@ -246,6 +528,8 @@ delay=5 下，`joint_transaction` 相对于 `independent_id_plus_supplement` 的
 不能根据 Formal 中某个最好看的指标选择参数或策略。MVE 只用于实现验证。
 
 # 12. 最小可行实验 MVE
+
+状态：`BLOCKED BY ADR-20260809-R4`。以下旧 joint-transaction MVE 仅保留用于审计，不得运行。
 
 - Pair：26、48。
 - 条件：Section 7 的 5 类管线，delay=1 和 delay=5，加同步 `d0`。
@@ -271,8 +555,10 @@ delay=5 下，`joint_transaction` 相对于 `independent_id_plus_supplement` 的
 
 # 13. Formal 实验
 
+状态：`BLOCKED BY ADR-20260809-R4`。原 126 pair-run Formal 未获授权。
+
 - 数据：全部 14 个官方测试 pair。
-- 条件：与 MVE 完全相同，MVE 后禁止修改窗口、阈值或消息定义。
+- 条件：与 MVE 完全相同，MVE 后禁止修改 observation-support 判据、reject-all fallback、阈值或消息定义。
 - Pair-runs：`126` 个，即 `9 条件 × 14 pair`。
 - 延迟：只做 delay=1 和 delay=5，本轮不扩展更大延迟矩阵。
 - Runtime seed：7；bootstrap：10000 次，seed=7。
@@ -314,7 +600,7 @@ delay=5 下，`joint_transaction` 相对于 `independent_id_plus_supplement` 的
 1. 联合事务获得了独立基线没有的额外信息；
 2. 联合等待改变了在线发布时刻；
 3. 把陈旧 Supplement 框当作当前框使用，实际上变成了另一个 late-recovery/重投影实验；
-4. 使用 Pair 26/48 或测试集选择 W、阈值或回退策略；
+4. 使用 Pair 26/48 或测试集选择 observation-support 判据、阈值、回退策略或未来 transaction window；
 5. 首帧 GT 初始化造成过高的状态稳定性；
 6. CARAFE 检测缓存和冻结结果发生漂移；
 7. 采用 frame-weighted 指标让长序列主导结果，而没有使用 pair-macro；
@@ -327,7 +613,7 @@ delay=5 下，`joint_transaction` 相对于 `independent_id_plus_supplement` 的
 - 实施提交：TBD。
 - 实施分支：TBD；当前分支名称落后于研究主线。
 - 配置文件：`configs/exp_20260808_001_mdmt_mia_id_supplement_joint_transaction.yaml`，TBD。
-- 运行命令：TBD；必须支持 `--mode`、`--pair-ids`、`--seed`、`--resume`、`--output-dir` 和固定事务窗口。
+- 运行命令：TBD；必须支持 `--mode`、`--pair-ids`、`--seed`、`--resume`、`--output-dir` 和 `transaction_wait_frames` 审计输出；E023 不暴露可调事务窗口。
 - 环境：`/mnt/data/yzm/experiments/mdmt_mia_official/.conda-env` 加当前研究仓库。
 - 检测器：CARAFE `epoch_12.pth`，绝对路径和 SHA256 为 TBD。
 - 种子：runtime 7，bootstrap 7。
@@ -352,6 +638,8 @@ delay=5 下，`joint_transaction` 相对于 `independent_id_plus_supplement` 的
 - 范围停止：需要 Local Track 延迟、H 预测、检测器重训、新 ReID、历史回放、抖动、丢包或新评价协议。
 
 # 20. 决策门
+
+状态：`SUSPENDED`。以下 gate 只适用于原 joint-transaction H1，不能授权新的 mechanism audit。
 
 ## 第一关：MVE 测量与方向门
 
@@ -384,7 +672,7 @@ delay=5 下，`joint_transaction` 相对于 `independent_id_plus_supplement` 的
 - 修改主要指标或 pair-macro 聚合方式；
 - 修改独立基线定义；
 - 改变迟到 Supplement 的含义；
-- 改变事务回退策略或窗口 `W=5`；
+- 改变 R3 固定的 reject-all 回退，或引入任何 E023 waiting/window 参数；
 - 允许延迟在线发布或回写历史；
 - 更换 detector、tracker、模型或首帧初始化方式；
 - 加入抖动、丢包、H 预测、ReID 或 detector error。
@@ -434,6 +722,8 @@ flowchart LR
 
 # 契约自审
 
+状态：以下检查描述原 joint-transaction 契约，仅用于审计历史；R4 后不能据此授权实现。
+
 - [x] 主假设可证伪，并列出了竞争解释。
 - [x] 本轮只改变一个主要因果变量：ID+Supplement 应用策略。
 - [x] 数据集、检测器、跟踪器、消息、延迟和评价器均已锁定。
@@ -444,5 +734,10 @@ flowchart LR
 - [x] MVE 约占 Formal pair-runs 的 14.3%，并有停止规则。
 - [x] 事实、推断、假设和未知项已区分。
 - [x] 其他编码 Agent 可以仅根据本契约理解实验边界和决策门。
-- [ ] 联合事务具体语义和 `W=5` 尚未获得明确的研究批准。
-
+- [x] R1 的迟到 Supplement 权限和 R3 的 reject-all fallback 已获明确批准。
+- [x] R2 已明确移除 `W=5` scientific claim。
+- [x] R4 已显式暂停原 joint-transaction 推断与实现。
+- [x] R6 条件、contrasts、解释规则和 oracle 边界已显式记录。
+- [x] I4-I7 源码/守恒/quarantine/logging 验证语义已定义。
+- [ ] 授权后实现 I4-I7 并通过测试。
+- [ ] 尚未建立替代性的可执行 Contract。
