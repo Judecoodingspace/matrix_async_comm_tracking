@@ -223,14 +223,17 @@ def test_variant_source_validation_detects_unrecorded_edits(tmp_path: Path) -> N
     runtime = tmp_path / "demo/utils/async_deadline_runtime.py"
     detector_cache = tmp_path / "mmtrack/models/mot/byte_track.py"
     model_init = tmp_path / "mmtrack/models/__init__.py"
+    api_init = tmp_path / "mmtrack/apis/__init__.py"
     changed.parent.mkdir(parents=True)
     runtime.parent.mkdir(parents=True)
     detector_cache.parent.mkdir(parents=True)
     model_init.parent.mkdir(parents=True, exist_ok=True)
+    api_init.parent.mkdir(parents=True, exist_ok=True)
     changed.write_text("original", encoding="utf-8")
     runtime.write_text("runtime", encoding="utf-8")
     detector_cache.write_text("cache", encoding="utf-8")
     model_init.write_text("init", encoding="utf-8")
+    api_init.write_text("api", encoding="utf-8")
     digest = lambda value: hashlib.sha256(value.read_bytes()).hexdigest()
     (tmp_path / "cascade_edge_manifest.json").write_text(json.dumps({
         "structure_audit": {"boundary": 1},
@@ -239,6 +242,7 @@ def test_variant_source_validation_detects_unrecorded_edits(tmp_path: Path) -> N
         "async_deadline_runtime_sha256": digest(runtime),
         "detector_cache_source_sha256": digest(detector_cache),
         "model_init_sha256": digest(model_init),
+        "api_init_sha256": digest(api_init),
     }), encoding="utf-8")
     module.validate_variant_source(tmp_path)
     changed.write_text("edited", encoding="utf-8")
@@ -261,6 +265,26 @@ def test_cascade_variant_guards_optional_missing_model_families(tmp_path: Path) 
     module.patch_optional_model_imports(tmp_path)
     patched = target.read_text(encoding="utf-8")
     assert all(f"try:\n    from .{name} import *" in patched for name in ("sot", "vid", "vis"))
+
+
+def test_cascade_variant_guards_optional_training_apis(tmp_path: Path) -> None:
+    path = ROOT / "scripts/prepare_mdmt_mia_cascade_edge_variant.py"
+    spec = importlib.util.spec_from_file_location("cascade_variant_api_guard", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    target = tmp_path / "mmtrack/apis/__init__.py"
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        "from .inference import inference_mot, init_model\n"
+        "from .test import multi_gpu_test, single_gpu_test\n"
+        "from .train import init_random_seed, train_model\n",
+        encoding="utf-8",
+    )
+    module.patch_optional_training_api_imports(tmp_path)
+    patched = target.read_text(encoding="utf-8")
+    assert "try:\n    from .test import multi_gpu_test, single_gpu_test" in patched
+    assert "try:\n    from .train import init_random_seed, train_model" in patched
 
 
 def test_cascade_audit_normalizes_output_and_cache_parent_paths(tmp_path: Path, monkeypatch) -> None:

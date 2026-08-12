@@ -78,3 +78,10 @@ answer those questions with byte-identical prediction and async-state traces.
   reproduces all three detector-class arrays exactly; repository tests pass.
 - Provenance: the failed v5 attempt remains `ABORTED` and cannot be promoted as
   evidence. A new generated variant, run ID and output directory are required.
+- Follow-up import gate: v6 correctly selected its own `mmtrack`, exposing a
+  second released-fork defect before inference: `mmtrack.apis` unconditionally
+  imported training/test APIs whose SOT dataset files are absent. The builder
+  now applies the same inference-only compatibility guard as the accepted
+  upstream workspace and records the API-init hash. v6 remains `ABORTED`; the
+  next evidence variant must pass an explicit `from mmtrack.apis import
+  inference_mot, init_model` preflight.

@@ -27,6 +27,7 @@ def audit_variant_structure(root: Path) -> dict[str, int]:
     supplement = (root / "demo/utils/supplement.py").read_text(encoding="utf-8")
     transform = (root / "demo/utils/trans_matrix.py").read_text(encoding="utf-8")
     model_init = (root / "mmtrack/models/__init__.py").read_text(encoding="utf-8")
+    api_init = (root / "mmtrack/apis/__init__.py").read_text(encoding="utf-8")
     byte_track = (root / "mmtrack/models/mot/byte_track.py").read_text(encoding="utf-8")
     capture = entry.find("cascade_runtime.capture_prebranch(")
     first_frame_end = entry.find("# 第一帧结束")
@@ -64,6 +65,9 @@ def audit_variant_structure(root: Path) -> dict[str, int]:
         "optional_model_imports_guarded": int(all(
             f"try:\n    from .{name} import *" in model_init
             for name in ("sot", "vid", "vis"))),
+        "optional_training_api_imports_guarded": int(
+            "try:\n    from .test import multi_gpu_test, single_gpu_test" in api_init
+            and "try:\n    from .train import init_random_seed, train_model" in api_init),
         "detector_cache_hook_present": int(
             "def _load_or_compute_mdmt_detections(" in byte_track
             and "MIA_DETECTION_CACHE_ROOT" in byte_track
@@ -96,6 +100,31 @@ def patch_optional_model_imports(root: Path) -> None:
             continue
         if direct not in source:
             raise RuntimeError(f"optional model import is neither direct nor guarded: {name}")
+        source = source.replace(direct, guarded, 1)
+    path.write_text(source, encoding="utf-8")
+
+
+def patch_optional_training_api_imports(root: Path) -> None:
+    """Keep inference importable when the released fork omits SOT datasets."""
+    path = root / "mmtrack/apis/__init__.py"
+    source = path.read_text(encoding="utf-8")
+    replacements = (
+        (
+            "from .test import multi_gpu_test, single_gpu_test",
+            "try:\n    from .test import multi_gpu_test, single_gpu_test\n"
+            "except ModuleNotFoundError:\n    pass",
+        ),
+        (
+            "from .train import init_random_seed, train_model",
+            "try:\n    from .train import init_random_seed, train_model\n"
+            "except ModuleNotFoundError:\n    pass",
+        ),
+    )
+    for direct, guarded in replacements:
+        if guarded in source:
+            continue
+        if direct not in source:
+            raise RuntimeError(f"optional training API import is neither direct nor guarded: {direct}")
         source = source.replace(direct, guarded, 1)
     path.write_text(source, encoding="utf-8")
 
@@ -398,6 +427,7 @@ def patch_variant(root: Path, runtime_source: Path) -> dict[str, object]:
     if not (root / "demo/supplement_MIA.py").is_file():
         raise FileNotFoundError("missing copied packetized_async_deadline source")
     patch_optional_model_imports(root)
+    patch_optional_training_api_imports(root)
     patch_common_lineage(root)
     patch_supplement_diagnostics(root)
     patch_homography_fallback(root)
@@ -409,6 +439,7 @@ def patch_variant(root: Path, runtime_source: Path) -> dict[str, object]:
         "demo/utils/trans_matrix.py",
         "demo/utils/cascade_runtime.py",
         "mmtrack/models/__init__.py",
+        "mmtrack/apis/__init__.py",
     )
     structure_audit = audit_variant_structure(root)
     if not all(structure_audit.values()):
@@ -425,6 +456,7 @@ def patch_variant(root: Path, runtime_source: Path) -> dict[str, object]:
         "async_deadline_runtime_sha256": sha256(root / "demo/utils/async_deadline_runtime.py"),
         "detector_cache_source_sha256": sha256(root / "mmtrack/models/mot/byte_track.py"),
         "model_init_sha256": sha256(root / "mmtrack/models/__init__.py"),
+        "api_init_sha256": sha256(root / "mmtrack/apis/__init__.py"),
     }
     (root / "cascade_edge_manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")

@@ -155,6 +155,9 @@ def validate_variant_source(cascade_source: Path) -> dict[str, object]:
     model_init = cascade_source / "mmtrack/models/__init__.py"
     if not model_init.is_file() or manifest.get("model_init_sha256") != sha256(model_init):
         raise RuntimeError("cascade variant model init digest mismatch")
+    api_init = cascade_source / "mmtrack/apis/__init__.py"
+    if not api_init.is_file() or manifest.get("api_init_sha256") != sha256(api_init):
+        raise RuntimeError("cascade variant API init digest mismatch")
     return manifest
 
 
