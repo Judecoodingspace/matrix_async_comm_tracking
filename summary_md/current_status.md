@@ -1,8 +1,23 @@
 # Current Status
 
-Updated: 2026-08-06
+Updated: 2026-08-14
 
 ## Latest Formal Result
+
+E023 ID-delay candidate-set cascade Formal 已完成。14 个 official test pair、40 项测量门全部通过，
+`Y00` 与冻结同步参考逐 JSON 等价。ID-state delay 在 d1/d5 均稳定损害 MDA：损失分别为
+`0.013350` 和 `0.025750`。d1 的候选集合路径与额外 Supplement 补偿均不可辨识；d5 则满足
+Pattern B：`R_edge=-0.018329`、`C_comp=0.049913`，说明延迟产生的 unmatched candidate 在
+较长延迟下为及时 Supplement 提供了净补偿机会。正式总决策为
+`heterogeneous_or_unresolved_mechanism`，表示机制随延迟改变，不表示测量无效或没有发现。
+
+本轮关闭原 joint-transaction 解释。下一步不得在 official test 上调 d2/d3 阈值；应先在非测试
+数据上验证补偿路径的出现边界，再设计不读取 oracle shadow 的版本感知 Supplement recovery。
+
+正式分析：
+`summary_md/experiments/2026-8-8/exp_20260808_001_mdmt_mia_id_supplement_joint_transaction/FORMAL_ANALYSIS_REPORT.md`
+
+## Previous Formal Result
 
 `exp_20260805_003_mdmt_mia_async_state_channel_audit` 已完成 14-pair Formal，测量门全部通过，
 正式决策为 `coupled_state_cascade_identified`。结果必须拆开解释：Local Track 的帧截止是最强

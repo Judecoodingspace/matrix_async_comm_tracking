@@ -1,73 +1,53 @@
 # RESULTS
 
-Status: `NO EXPERIMENT RUN - V2 STATIC RE-AUDIT PASSED`
+Status: `FORMAL COMPLETE`
 
-## Experiment ID
+## Experiment Identity
 
-`exp_20260808_001_mdmt_mia_id_supplement_joint_transaction`
+- Contract ID: `exp_20260808_001_mdmt_mia_id_supplement_joint_transaction`
+- Active hypothesis after R4 pivot: ID-delay candidate-membership cascade
+- Formal output: `outputs/20260813_mdmt_mia_id_supplement_cascade_formal_v8/`
+- Source variant: `packetized_id_supplement_cascade_v8`
+- Frozen commit: `7fcea6808bff2e17e435b39e3f44c00d73d92488`
+- Pairs: 14 official MDMT test pairs
+- Delays: 1 and 5 frames
+- Bootstrap: 10000 pair-level resamples, seed 7
 
-The filename is historical. ADR-20260809-R4 suspended the joint-transaction
-hypothesis. The active experiment is the R5/R6 ID-delay candidate-membership
-cascade mechanism audit.
+## Measurement Result
 
-## Implementation Provenance
+All 40 measurement gates passed. `Y00` exactly reproduces the frozen reference.
+There are zero runtime GT reads, future reads, source bypasses, aliases,
+feedback mismatches and published-history rewrites.
 
-- Base commit recorded by Contract: `09281aa`
-- Implementation commit: `PENDING`
-- Evaluation commit: `PENDING`
-- Rejected source variant: `packetized_id_supplement_cascade` (v1)
-- Current source variant: `packetized_id_supplement_cascade_v2`
-- Variant manifest: `/mnt/data/yzm/experiments/mdmt_mia_official/variants/packetized_id_supplement_cascade_v2/cascade_edge_manifest.json`
+## Confirmatory Results
 
-## Static Verification
+| Question | d1 | d5 |
+| --- | --- | --- |
+| ID delay harms MDA (`D_ID`) | supported: 0.013350, CI [0.003154, 0.023453] | supported: 0.025750, CI [0.012466, 0.039962] |
+| Candidate-set edge (`R_edge`) | inconclusive: 0.000355, CI crosses 0 | compensatory: -0.018329, CI [-0.036894, -0.004305] |
+| Extra timely-Supplement value (`C_comp`) | inconclusive: 0.021017, CI crosses 0 | supported: 0.049913, CI [0.014343, 0.096598] |
 
-### OBSERVATION
+R5d process evidence confirms that the edge-cut was active. At d5, Y10 has
+3520 disagreement candidates, 3506 High-score triggers and 2169 successful
+bbox write-ins; Yec has 4103 disagreements, 18 triggers and zero write-ins.
+Y10 has write-ins in all 14 pairs and Yec in none.
 
-- Focused cascade tests: passed.
-- Full repository regression: passed; no existing test failure.
-- Generated v2 source: structural audit passed for every registered boundary.
-- Generated changed files: Python AST/compile checks passed.
-- Generated file SHA256 values equal the v2 manifest.
-- No MVE or Formal condition was executed.
-
-### INTERPRETATION
-
-The implementation is eligible for a separately authorized MVE. Static
-verification is not evidence for or against the scientific hypothesis.
-
-## Active Conditions
+## Formal Decision
 
 ```text
-Y00: ID timely  + Supplement timely + synchronous membership
-Y10: ID delayed + Supplement timely + S_delay
-Y01: ID timely  + Supplement expired
-Y11: ID delayed + Supplement expired
-Yec: ID delayed + Supplement timely + oracle S_cf membership only
+heterogeneous_or_unresolved_mechanism
 ```
 
-Y10 and Yec both compute the same read-only shadow diagnostics. Only Yec may
-consume `S_cf` as High-score membership. Low-score receives no oracle input.
+Per-delay patterns:
 
-## Mandatory MVE Gates
+```text
+d1 -> Pattern E: predefined candidate mechanism not supported
+d5 -> Pattern B: candidate-set-mediated compensation
+```
 
-- Y00 equals the frozen synchronous reference JSON.
-- One complete pre-branch capture/consume per non-initial frame.
-- No missing, stale, double, wrong-frame or non-conserved snapshot.
-- No runtime GT, future read, NumPy alias, feedback mismatch or published rewrite.
-- Shadow export is membership-only and actual branch inputs remain unchanged.
-- Y10/Yec 各自 run 内的 actual/shadow candidate 使用 pre-branch row key；状态分叉后禁止跨 run 复用该 key。
-- Logging ON/OFF predictions and async state traces are byte-identical.
-- Shadow ON/OFF Y10 predictions and async state traces are byte-identical.
-- Packet emission equals packet consumption plus expiry.
-- Resume fingerprint matches variant, conditions, pairs, seed and reference.
+The result supports ID-delay harm at both delays and a compensatory
+candidate-set pathway at d5. It does not support a universal mechanism across
+delays or the original joint-transaction interpretation.
 
-## Missing Evidence
-
-- MVE measurement gate: `NOT RUN`
-- MVE R5d process trace: `NOT RUN`
-- MVE decision: `NOT RUN`
-- Formal 14-pair metrics and bootstrap: `NOT RUN`
-- Scientific decision: `PENDING`
-
-Formal is code-gated by `--mve-evidence-dir` and cannot proceed from static
-verification alone.
+Detailed analysis:
+`FORMAL_ANALYSIS_REPORT.md`

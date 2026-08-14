@@ -1,8 +1,8 @@
 # DECISION
 
-Status: `PENDING`
+Status: `FORMAL COMPLETE`
 
-> 这里的 `PENDING` 指实验结果决策尚未产生。以下 Research Decision Record 只锁定机制诊断语义；`START_FIX_AUDIT_FINDINGS` 仅授权修复实现，不授权 MVE 或 Formal。
+> 以下 Research Decision Record 保留实验执行前的语义演进；当前正式结果与最终科研决策以本文前半部分和 `FORMAL_ANALYSIS_REPORT.md` 为准。
 
 ## Research Decision Synchronization (2026-08-11)
 
@@ -18,7 +18,12 @@ Status: `PENDING`
 
 ## Evidence Summary
 
-`PENDING`
+All 40 Formal measurement gates pass and `Y00` exactly reproduces the frozen
+synchronous reference. Pair-level bootstrap over 14 official test pairs shows
+that ID-state delay harms MDA at both d1 and d5. The candidate-set edge is
+inconclusive at d1, while at d5 cutting delay-created candidate opportunities
+reduces MDA and timely Supplement has greater marginal value. The registered
+d5 interpretation is candidate-set-mediated compensation.
 
 ## Original Hypothesis
 
@@ -26,22 +31,33 @@ Status: `PENDING`
 
 ## Supported Evidence
 
-`PENDING`
+- `D_ID_d1=0.013350`, 95% CI `[0.003154, 0.023453]`, 13/14 positive.
+- `D_ID_d5=0.025750`, 95% CI `[0.012466, 0.039962]`, 13/14 positive.
+- `R_edge_d5=-0.018329`, 95% CI `[-0.036894, -0.004305]`, 10/14 negative.
+- `C_comp_d5=0.049913`, 95% CI `[0.014343, 0.096598]`, 10/14 positive.
+- R5d shows delay-only candidates reach High-score and produce 2169 Y10 bbox
+  write-ins at d5; Yec removes those opportunities and produces zero write-ins.
 
 ## Contradictory Evidence
 
-`PENDING`
+- `R_edge_d1` and `C_comp_d1` both have confidence intervals crossing zero.
+- Therefore the d5 compensation mechanism cannot be generalized to d1.
+- MOTA/IDF1 do not show the same edge-cut effect as MDA.
 
 ## Alternative Explanations
 
-- `H_alt1`: Supplement expiry 是控制机制。
-- `H_alt2`: interaction 是 evaluator 或闭环副作用。
-- `H_alt3`: partial late state 比等待完整事务更安全。
-- Evidence status: `PENDING`
+- `H_alt1`: Supplement expiry 是控制机制。`PARTLY OBSERVED`：所有非零
+  Supplement delay 均触发帧截止，因此 `Y01_d1 == Y01_d5`；这解释
+  Supplement 的 cliff，但不能解释 d5 的负向 `R_edge`。
+- `H_alt2`: interaction 是 evaluator 或闭环副作用。`WEAKENED`：40 项测量门、
+  Y00 等价和 R5d 传播日志排除了主要实现伪差；但 MDA 与次指标的机制敏感性不同，
+  必须继续分开报告。
+- `H_alt3`: partial late state 比等待完整事务更安全。`NOT TESTED`：本轮没有实现
+  deployable partial-late policy，不能据 oracle Yec 作出该方法结论。
 
 ## Decision
 
-Status: `PENDING`
+Status: `MODIFY`
 
 Allowed values only:
 
@@ -50,15 +66,24 @@ Allowed values only:
 - `PIVOT`
 - `STOP`
 
-Selected decision: `PENDING`
+Selected decision: `MODIFY`
+
+Reason: retain the R4 closed-loop cascade direction, but narrow the scientific
+claim to a delay-conditioned compensatory candidate-set pathway. Do not revive
+the original joint-transaction method from this evidence.
 
 ## Next Experiment
 
-`PENDING`
+Validate the onset of candidate-set compensation on non-test data and design a
+non-oracle, version-aware Supplement recovery mechanism that preserves safe
+unmatched-candidate opportunities under stale ID state.
 
 ## Contract Impact
 
-`PENDING`
+No new amendment to locked data, metrics, baselines or information boundaries.
+The result resolves the active R4-R6 hypothesis with a delay-conditioned claim
+and closes Formal execution. The original joint-transaction hypothesis remains
+suspended.
 
 ## Locked Implementation Requirements
 
@@ -108,3 +133,6 @@ mechanism-localization warning，未修改 logger。
 fresh Pair-26/48 MVE: ALLOWED
 14-pair Formal: BLOCKED until fresh MVE passes and readiness is re-audited
 ```
+
+该边界是 Formal 前的历史记录。v8 MVE 后已获得明确授权，14-pair Formal 现已完成；
+不得再按本段把当前状态标记为 blocked。

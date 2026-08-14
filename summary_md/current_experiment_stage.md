@@ -4,7 +4,17 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
 
 ## Current Mainline
 
-### Latest Update: Formal Channel Audit Completed (2026-08-08)
+### Latest Update: E023 Cascade Formal Completed (2026-08-14)
+
+- E023 已完成 14-pair Formal；40 项测量门全部通过，`Y00` 严格复现同步参考。
+- `ID state` 延迟在 d1/d5 均造成稳定 MDA 与 IDSW 伤害。
+- d1 的候选集合中介路径不可辨识；d5 支持
+  `candidate_set_mediated_compensation`：延迟产生的 unmatched candidate 为及时 Supplement
+  提供恢复机会，oracle edge-cut 反而降低 MDA。
+- 当前阶段不是实现 joint transaction。下一步是在非测试数据上验证该补偿机制的延迟边界，
+  然后设计不使用 oracle shadow、不可改写历史的版本感知恢复机制。
+
+### Previous Update: Formal Channel Audit Completed (2026-08-08)
 
 - Gate A (`exp_20260805_001`) 已完成 14-pair 严格同步等价：其 packet 仅为旁路审计，作者原始
   进程内对象仍驱动 MIA。
