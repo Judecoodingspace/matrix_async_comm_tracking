@@ -4,6 +4,18 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
 
 ## Current Mainline
 
+### Next Planned Gate: Non-Test Compensation Onset Validation (2026-08-17)
+
+- 新实验契约：`exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation`。
+- 本轮只验证 E023 候选集合补偿在 MDMT 非测试序列上的复现性与 d1-d5 出现区间；不实现
+  version-aware recovery，不重新读取 official test 选择 delay。
+- 当前状态为 `PROPOSED / BLOCKED_PENDING_RESEARCH_DECISIONS`。R1 非测试 MDA GT 协议、
+  R2 development/holdout cohort 和 R3 delay/onset rule 必须先显式批准。
+- 执行顺序冻结为：Research Decisions -> GT protocol gate -> infrastructure -> two-pair MVE ->
+  development sweep -> locked holdout confirmation -> scientific decision。
+- Contract：
+  `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/EXPERIMENT_CONTRACT.md`
+
 ### Latest Update: E023 Cascade Formal Completed (2026-08-14)
 
 - E023 已完成 14-pair Formal；40 项测量门全部通过，`Y00` 严格复现同步参考。

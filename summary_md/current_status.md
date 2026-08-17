@@ -1,6 +1,25 @@
 # Current Status
 
-Updated: 2026-08-14
+Updated: 2026-08-17
+
+## Next Planned Experiment
+
+`exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation` 已完成研究计划与文件骨架，
+当前未进入实现。该实验遵循 E023 的 P0 决策：先在非测试数据上验证 d1-d5 候选集合补偿的
+出现边界，再决定是否为非 oracle、版本感知 Supplement recovery 建立独立方法契约。
+
+当前三个科研阻塞项：
+
+```text
+R1: train/val MDA GT 的确定性构造与 official-test 等价门
+R2: 15 train development / 10 train holdout / 5 val external holdout
+R3: d1-d5 扫描与 earliest-onset 预注册规则
+```
+
+在 R1-R3 明确批准前，不实现代码、不运行 MVE，也不进入 Terra。
+
+计划目录：
+`summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/`
 
 ## Latest Formal Result
 
