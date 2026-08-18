@@ -3,7 +3,7 @@
 ## 实验身份
 
 - 实验 ID：`exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation`
-- 状态：`拟定完成，等待 R1-R3 科研决策`
+- 状态：`R1-R3 已解决 / 契约修订已落盘 / 等待 GT 协议门`
 - 父实验：E023 ID-delay candidate-set cascade Formal
 - 输出目录：`outputs/20260817_mdmt_mia_candidate_compensation_onset_validation/`
 
@@ -76,7 +76,7 @@ seed：7
 
 official test 14 pairs 完全冻结，不再用于选择 delay。
 
-拟定使用：
+批准并冻结：
 
 ```text
 25 train pairs
@@ -84,10 +84,39 @@ official test 14 pairs 完全冻结，不再用于选择 delay。
   -> 10 train holdout
 
 5 val pairs：22, 36, 46, 49, 72
-  -> external holdout
+  -> MDMT val holdout
 ```
 
-划分只由 sequence ID 和 seed=7 决定，在读取性能结果前生成并冻结。
+先固定 25 个 train pair ID 的 canonical ordering，再用固定算法和 `seed=7`
+一次性生成 15/10 划分；划分只能依赖 sequence identity、排序与 seed，并在读取
+任何 tracking outcome 前冻结。5 个 val pairs 只提供跨 MDMT train/val split 的
+方向一致性与 robustness evidence，不得称为 cross-dataset external validation。
+
+## R1 非测试 MDA GT 协议
+
+source annotation 是唯一权威。转换器只能做格式转换、预定义且确定性的 ID mapping
+以及到 MDA representation 的机械投影；没有语义修复权限。禁止依据图像、tracking
+result 或最终 MDA 修改身份，禁止人工修 ID 或 patch source annotation。
+
+在用于 train/val 前，同一转换规则必须精确复现全部 official-test MDA GT：
+
+```text
+official_test_row_mismatch = 0
+official_test_frame_mismatch = 0
+official_test_id_mismatch = 0
+```
+
+任一不一致均 fail closed。train/val 还必须独立满足：
+
+```text
+non_test_duplicate_identity_keys = 0
+non_test_missing_source_rows = 0
+frame_offset = 0
+```
+
+并单独审计跨视角同 ID 是否符合 train/val annotation convention。主结果使用完整、
+未经人工修正的确定性 GT；class-consistent sensitivity 只作 robustness evidence。
+若两者结论冲突，必须报告 measurement-validity 风险，不得选择性采用 sensitivity。
 
 ## 主要对比
 
@@ -102,11 +131,23 @@ C_comp(d)  = M_delay(d) - M_sync
 补偿起点要求同时满足：
 
 ```text
-R_edge(d) < 0，95% CI 上界 < 0
-C_comp(d) > 0，95% CI 下界 > 0
-两个对比均至少 10/15 pair 同方向
-delay-only candidates 确实产生 High-score write-in
+Gate A：R_edge(d) 的 pair-level bootstrap 95% CI 上界 < 0
+Gate B：C_comp(d) 的 pair-level bootstrap 95% CI 下界 > 0
+Gate C：至少 10/15 development pairs 的 R_edge(d) < 0
+Gate D：至少 10/15 development pairs 的 C_comp(d) > 0
+Gate E：实际出现 delayed ID -> delay-only candidate -> timely Supplement
+        consumption -> High-score Supplement bbox write-in
+Gate F：上述实际 write-in 路径至少出现在 10/15 development pairs
 ```
+
+bootstrap 的统计单位必须是 pair，不能把 frame 或 candidate 当成独立样本。按
+`d1 -> d2 -> d3 -> d4 -> d5` 顺序检查，`d*` 是最早通过 Gate A-F 的 delay，
+不是 magnitude 最大或数值最漂亮的 delay。更早的少数 responder 和 moderator pattern
+只能作为 descriptive / hypothesis-generating evidence。
+
+若 d1-d5 均未通过，正式结论为：在预注册 d1-d5 范围内没有识别到可靠的
+candidate-compensation onset；此时停止，不进入 holdout，不放宽门槛，也不在本实验
+中扩展到 d6 以上。
 
 ## 执行规模
 
@@ -118,6 +159,18 @@ Holdout：最多 15 pairs x 8 conditions = 120 runs
 
 MVE 只验证代码、协议和因果门，不产生机制结论。
 
+## 因果解释限制
+
+- `Yec` 始终是 oracle membership-only causal diagnostic，不是可部署方法，也不是
+  performance upper bound。
+- `R_edge < 0` 不表示 ID-state delay 有益；delay 可能仍有直接伤害，而 candidate
+  compensation 只抵消其中一部分。
+- MDA 是 primary endpoint；MOTA、IDF1、IDSW 必须作为 secondary metrics 分开解释，
+  不能由 MDA 补偿结果推导“overall tracking performance improves”。
+- mechanism write-in 只证明路径活跃且可重复，性能因果证据仍由 `R_edge` 与
+  `C_comp` 承担。
+- 本实验只验证 non-test compensation onset，不授权 version-aware recovery 实现。
+
 ## 决策
 
 - `compensation_onset_validated`：允许下一轮设计非 oracle、版本感知 Recovery。
@@ -126,11 +179,15 @@ MVE 只验证代码、协议和因果门，不产生机制结论。
 - `mechanism_heterogeneous_across_splits`：先解释 domain moderator。
 - `measurement_invalid`：只修复测量边界并重新跑 MVE。
 
-## 当前阻塞项
+## 已解决的科研决策
 
-1. R1：是否批准从 raw annotation 构造 train/val MDA GT，前提是转换器严格复现全部 official test GT。
-2. R2：是否批准 `15 train development + 10 train holdout + 5 val external holdout`。
-3. R3：是否批准 `d1..d5` 与预注册的 earliest-onset 规则。
+1. R1：`APPROVED / RESOLVED_CONDITIONAL`。
+2. R2：`APPROVED / RESOLVED`。
+3. R3：`APPROVED / RESOLVED_WITH_CONTRACT_AMENDMENT`。
 
-R1-R3 明确批准前，不进入 Terra，不实现代码，也不运行实验。
+本轮契约修订是把机制门从 pooled nonzero write-in 收紧为：至少 `10/15`
+development pairs 实际出现 delay-only candidate -> High-score Supplement write-in。
 
+Research Decision blocker 已解除，但实验尚未 implementation-ready 或 Formal-ready。
+下一道门是 R1 的 GT 协议门；在 official-test 精确复现和 non-test 结构/身份语义审计
+完成前，不实现 MVE、不运行实验，也不进入 version-aware recovery。

@@ -1,14 +1,13 @@
 flowchart TD
     A["E023 official test evidence<br/>d1 inconclusive; d5 compensation"] --> B["Do not tune on official test"]
-    B --> R["R1-R3 research decisions<br/>GT protocol, cohort split, delay rule"]
-    R -->|approved| C["Protocol equivalence gate<br/>official test XML -> official MDA GT exactly"]
-    R -->|unresolved| X["BLOCKED"]
+    B --> R["R1-R3 resolved + Contract amended<br/>Gate F: write-in in >=10/15 development pairs"]
+    R --> C["Protocol equivalence + non-test semantics gate<br/>official test exact; train/val independently audited"]
     C -->|fail| M["measurement_invalid"]
     C -->|pass| D["Two-pair MVE<br/>val 22 and 72; d1 d3 d5"]
     D -->|fail| M
     D -->|pass| E["Development cohort: 15 train pairs<br/>scan ID delay d1-d5"]
-    E --> F{"Earliest delay with<br/>R_edge < 0 and C_comp > 0?"}
-    F -->|none| G["No onset selected<br/>report endpoint evidence"]
+    E --> F{"Earliest delay passing Gate A-F?<br/>pair CI + 10/15 directions + 10/15 write-in"}
+    F -->|none| G["No reliable onset in d1-d5<br/>stop before holdout"]
     F -->|yes| H["Freeze onset d* and predecessor<br/>write immutable selection"]
     H --> I["Holdout: 10 train + 5 val pairs<br/>no refitting"]
     I --> J{"Holdout contrasts and<br/>process evidence pass?"}
@@ -17,4 +16,3 @@ flowchart TD
     K --> N["Next separate contract<br/>version-aware future-only recovery"]
     G --> O["Do not design hard delay gate"]
     L --> O
-

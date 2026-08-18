@@ -13,10 +13,12 @@ ID-state delay 增加会先扩大 `S_delay` 与 `S_cf` 的差异；当 delay-onl
 
 ## Setup
 
-- Data: MDMT train/val, split policy pending R1/R2 approval.
+- Data: MDMT train/val; approved frozen policy is 15 train development, 10
+  train holdout and 5 separately reported MDMT val holdout pairs.
 - Detector: paper-aligned CARAFE, frozen `epoch_12.pth`.
 - Tracker: ByteTrack + active packetized MIA.
-- Delays: ID state `1,2,3,4,5` frames; pending R3 approval.
+- Delays: ID state `1,2,3,4,5` frames; select the earliest delay passing the
+  frozen Gate A-F onset rule.
 - Local Track/Homography: timely.
 - Supplement: timely or existing nonzero-delay expiry.
 - Seed: `7`.
@@ -31,9 +33,16 @@ outputs/20260817_mdmt_mia_candidate_compensation_onset_validation/
 
 ## Current Decision
 
-`PROPOSED / BLOCKED_PENDING_R1_R2_R3`
+`RESEARCH_DECISIONS_RESOLVED / CONTRACT_AMENDED /
+BLOCKED_PENDING_GT_PROTOCOL_GATE`
+
+- R1: `APPROVED / RESOLVED_CONDITIONAL`.
+- R2: `APPROVED / RESOLVED`.
+- R3: `APPROVED / RESOLVED_WITH_CONTRACT_AMENDMENT`.
+- Amendment: actual delay-only candidate -> High-score Supplement write-in must
+  occur in at least `10/15` development pairs.
+- Implementation and MVE are not yet authorized.
 
 ## Flowchart
 
 `mermaid/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/onset_validation_flow.mmd`
-

@@ -1,10 +1,29 @@
 # RUN_PLAN
 
-Status: `NOT EXECUTABLE — implementation and R1-R3 approval pending`
+Status: `NOT EXECUTABLE — R1-R3 RESOLVED; IMPLEMENTATION AND GT PROTOCOL GATE
+PENDING`
 
 The commands below define the intended interface. They must not be run until
 the matching files exist, tests pass and the preceding gate is explicitly
 authorized.
+
+## Frozen Research Policy
+
+- R1: deterministic train/val MDA GT conversion is conditionally approved only
+  after exact official-test row/frame/ID reproduction and a separate non-test
+  structural and cross-view identity-semantics audit. The converter has no
+  semantic repair authority.
+- R2: canonically order the 25 train pairs, then use the fixed split algorithm
+  with `seed=7` once to freeze 15 development and 10 train-holdout pairs. Keep
+  the five MDMT val pairs as a separately reported cross-MDMT-split holdout.
+- R3: scan only `d1..d5` and select the earliest delay passing Contract Gate
+  A-F. Gate F requires actual delay-only candidate -> High-score Supplement
+  write-in in at least `10/15` development pairs.
+- If no delay passes Gate A-F, stop before confirmation and report no reliable
+  onset within d1-d5. A `d6+` sweep requires a new experiment registration.
+
+No command in this file was generated or executed as part of recording these
+decisions.
 
 ## 0. Environment
 
@@ -128,4 +147,3 @@ After the confirmation run finishes:
 3. Complete `RESULTS.md` and `DECISION.md`.
 4. Update current stage/status and the experiment index.
 5. Create a separate recovery contract only if the final decision permits it.
-

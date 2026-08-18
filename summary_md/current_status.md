@@ -8,15 +8,22 @@ Updated: 2026-08-17
 当前未进入实现。该实验遵循 E023 的 P0 决策：先在非测试数据上验证 d1-d5 候选集合补偿的
 出现边界，再决定是否为非 oracle、版本感知 Supplement recovery 建立独立方法契约。
 
-当前三个科研阻塞项：
+R1-R3 已完成研究设计答辩：
 
 ```text
-R1: train/val MDA GT 的确定性构造与 official-test 等价门
-R2: 15 train development / 10 train holdout / 5 val external holdout
-R3: d1-d5 扫描与 earliest-onset 预注册规则
+R1: APPROVED / RESOLVED_CONDITIONAL
+R2: APPROVED / RESOLVED
+R3: APPROVED / RESOLVED_WITH_CONTRACT_AMENDMENT
 ```
 
-在 R1-R3 明确批准前，不实现代码、不运行 MVE，也不进入 Terra。
+R3 的契约修订把机制门从 pooled nonzero write-in 收紧为：实际 delay-only
+candidate -> High-score Supplement write-in 至少出现在 `10/15` development pairs。
+冻结的 d1-d5 扫描选择最早通过完整 Gate A-F 的 onset，而不是幅度最大的 delay。
+
+当前状态为 `RESEARCH_DECISIONS_RESOLVED / CONTRACT_AMENDED /
+BLOCKED_PENDING_GT_PROTOCOL_GATE`。下一道门是 R1 条件批准要求的 official-test
+row/frame/ID 精确复现，以及 train/val 结构完整性和跨视角 identity semantics 审计。
+在该门完成前，不实现 MVE、不运行 development/holdout，也不进入 version-aware recovery。
 
 计划目录：
 `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/`

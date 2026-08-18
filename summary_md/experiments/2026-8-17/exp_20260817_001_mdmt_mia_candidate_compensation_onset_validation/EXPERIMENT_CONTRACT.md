@@ -4,7 +4,12 @@
 
 - Experiment ID: `exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation`
 - Short name: MDMT MIA candidate-set compensation onset validation
-- Status: `PROPOSED / BLOCKED_PENDING_RESEARCH_DECISIONS`
+- Status: `APPROVED / RESEARCH_DECISIONS_RESOLVED / CONTRACT_AMENDED /
+  BLOCKED_PENDING_GT_PROTOCOL_GATE`
+- Research decisions:
+  - R1: `APPROVED / RESOLVED_CONDITIONAL`
+  - R2: `APPROVED / RESOLVED`
+  - R3: `APPROVED / RESOLVED_WITH_CONTRACT_AMENDMENT`
 - Parent experiment: `exp_20260808_001_mdmt_mia_id_supplement_joint_transaction` (E023)
 - Output root: `outputs/20260817_mdmt_mia_candidate_compensation_onset_validation/`
 - Related evidence:
@@ -127,7 +132,7 @@ only after a parity gate proves delay-independent byte-identical predictions.
 
 Official test pairs are frozen and must not be rerun or used to choose an onset.
 
-Proposed non-test cohorts:
+Approved non-test cohorts:
 
 ```text
 MDMT train: 25 paired sequences
@@ -140,12 +145,21 @@ the 25 train pairs into:
 ```text
 development cohort: 15 pairs
 train holdout:       10 pairs
-external holdout:     5 val pairs
+MDMT val holdout:     5 val pairs
 ```
 
 The development cohort identifies the earliest qualifying delay. The combined
 15-pair holdout confirms only that locked delay and its immediately preceding
 delay. Results must also be reported separately for train-holdout and val.
+The val cohort is an external holdout only with respect to the MDMT train split;
+it provides cross-MDMT-split reproducibility evidence, not cross-dataset
+external validation.
+
+The 25 train pair IDs must first be placed in a canonical order. A single
+documented deterministic algorithm with `seed=7` then generates the 15/10
+assignment before any tracking outcome is read. The frozen manifest may depend
+only on sequence identity, canonical ordering and the seed. Pair membership
+cannot be exchanged after outcomes are observed.
 
 ### Detector / tracker / checkpoint
 
@@ -175,6 +189,20 @@ deadline semantics.
 - `Y10_d`: real delayed-ID/timely-Supplement behavior.
 - `Yec_d`: oracle edge-cut diagnostic, never a deployable upper bound.
 
+### Causal interpretation constraints
+
+- `Yec` is an oracle membership-only causal diagnostic, not a deployable method
+  or a performance upper bound.
+- `R_edge < 0` does not mean ID-state delay is beneficial. Delay may remain
+  directly harmful while candidate compensation partially offsets that harm.
+- MDA is the primary endpoint. MOTA, IDF1 and IDSW remain separate secondary
+  outcomes; an MDA compensation result cannot be generalized to an overall
+  tracking-performance improvement.
+- Mechanism write-in evidence and causal performance contrasts answer different
+  questions and must not be merged.
+- This contract validates non-test compensation onset only and does not
+  authorize version-aware recovery implementation.
+
 ## Measurement
 
 ### Primary metric
@@ -203,10 +231,20 @@ C_comp(d) = M_delay(d) - M_sync
 
 ### Measurement gates
 
-- Test-set XML conversion must exactly reproduce all available official
-  test-MDA GT before the converter is allowed on non-test annotations.
-- Non-test GT rows must reconcile to source annotations with zero missing rows,
-  duplicate identity keys or frame offsets.
+- The source annotation is authoritative. The converter may perform only format
+  conversion, the predefined deterministic ID mapping and mechanical projection
+  into the MDA representation. It has no semantic repair authority: no image-
+  based identity judgment, result-dependent identity change, manual ID fix or
+  source-annotation patch is allowed.
+- The same conversion rule must exactly reproduce all available official-test
+  MDA GT before the converter is allowed on non-test annotations:
+  `official_test_row_mismatch=0`, `official_test_frame_mismatch=0` and
+  `official_test_id_mismatch=0`. Any mismatch fails closed; GT cannot be
+  manually patched to continue.
+- Non-test GT must satisfy `non_test_duplicate_identity_keys=0`,
+  `non_test_missing_source_rows=0` and `frame_offset=0`, and must separately
+  audit whether equal cross-view IDs follow the train/val annotation convention.
+  Official-test equivalence alone does not prove train/val identity semantics.
 - Cohort assignment must depend only on sequence ID and seed, not metrics.
 - `Y00` must reproduce the non-test synchronous packetized reference.
 - Runtime GT/future/source-bypass reads must be zero.
@@ -219,8 +257,12 @@ C_comp(d) = M_delay(d) - M_sync
 
 ### Confounders and checks
 
-- Annotation inconsistency: report all-row and class-consistent sensitivity
-  results separately.
+- Annotation inconsistency: do not repair identities manually or drop an entire
+  sequence merely because a small conflict exists. The primary result uses the
+  full deterministic GT conversion, while a predefined class-consistent
+  sensitivity analysis is reported separately as robustness evidence. If their
+  conclusions conflict, report the conflict as a measurement-validity risk;
+  the sensitivity result cannot replace the primary GT.
 - Small val cohort: do not use val alone for a confidence-interval claim.
 - Pair heterogeneity: use sequence-pair bootstrap and pair direction counts;
   report train-holdout and val separately.
@@ -268,10 +310,11 @@ checkpoints/
 ### Holdout confirmation
 
 - Cohort: 10 train-holdout plus 5 val pairs.
-- Delays: locked onset `d*` and `max(1,d*-1)`; if no onset is selected, use
-  endpoint diagnostics `d1/d5` without declaring a boundary.
+- Delays: locked onset `d*` and `max(1,d*-1)`.
 - Maximum unique conditions per pair: 8.
 - Maximum pair-condition count: `120`.
+- If development selects no onset, no holdout confirmation is run; development
+  endpoint patterns may be reported only as descriptive evidence.
 
 ### Compute budget
 
@@ -293,17 +336,30 @@ may skip only attempts whose completion and measurement manifests pass.
 
 ### Development onset rule
 
-The earliest delay `d*` qualifies only if development data satisfy all of:
+The statistical unit for every bootstrap below is the sequence pair, never the
+frame or candidate. Check `d1` through `d5` in ascending order. A delay qualifies
+only if development data satisfy all six gates:
 
 ```text
-R_edge(d*) paired-bootstrap 95% CI upper < 0
-C_comp(d*) paired-bootstrap 95% CI lower > 0
-at least 10/15 pairs have R_edge < 0
-at least 10/15 pairs have C_comp > 0
-delay-only candidates produce nonzero actual High-score write-ins
+Gate A: R_edge(d) pair-level bootstrap 95% CI upper < 0
+Gate B: C_comp(d) pair-level bootstrap 95% CI lower > 0
+Gate C: at least 10/15 development pairs have R_edge(d) < 0
+Gate D: at least 10/15 development pairs have C_comp(d) > 0
+Gate E: delayed ID -> delay-only candidate -> timely Supplement consumption
+        -> actual High-score Supplement bbox write-in is observed
+Gate F: at least 10/15 development pairs contain that actual delay-only
+        candidate -> High-score Supplement write-in path
 ```
 
-No threshold or delay may be changed after this selection.
+Define `d*` as the earliest delay passing Gate A-F. It is not the delay with the
+largest compensation magnitude or the best operating point. Later delays remain
+descriptive delay-response evidence, and earlier minority responders are only
+hypothesis-generating heterogeneity evidence. No threshold, delay, gate or
+selected onset may be changed after this selection or after holdout inspection.
+
+Mechanism logs establish that the hypothesized path is active and recurrent;
+they do not establish the performance-effect magnitude. `R_edge` and `C_comp`
+remain the causal performance evidence.
 
 ### Holdout success pattern
 
@@ -331,10 +387,13 @@ must show the path from delay-only membership through actual High-score write-in
 
 ### Stop criteria
 
-- Stop before MVE if non-test GT equivalence is not approved or fails.
+- Stop before MVE if the approved conditional non-test GT protocol gate fails.
 - Stop after MVE if any scientific measurement gate fails.
-- Stop before holdout if development selects no onset; report endpoint evidence
-  without designing a delay threshold.
+- Stop before holdout if development selects no onset. The registered result is:
+  `Within the preregistered d1-d5 range, no reliable candidate-compensation
+  onset was identified.` Do not relax the 10/15 gates or confidence intervals,
+  remove unfavorable pairs, select the numerically strongest delay, or extend
+  this experiment to `d6+`; a wider sweep requires a new registration.
 - Never rerun official test pairs to resolve or tune the onset.
 
 ### Next action by decision
@@ -351,29 +410,36 @@ must show the path from delay-only membership through actual High-score write-in
 - `measurement_invalid`: repair only the failed measurement boundary and rerun
   the MVE from a fresh attempt root.
 
-## Research Decision Requests
+## Resolved Research Decisions
 
 ### R1 — Non-test MDA protocol extension
 
-Status: `NEEDS_RESEARCH_DECISION`.
+Status: `APPROVED / RESOLVED_CONDITIONAL`.
 
-Approve or reject the deterministic construction of train/val MDA GT from raw
-MDMT annotations, conditional on exact reproduction of all official test GT.
-This changes the evaluated split and must not be treated as engineering cleanup.
+Deterministic construction of train/val MDA GT is approved only under the
+converter-authority, official-test exact-equivalence, non-test structural and
+annotation-inconsistency gates above. The converter has no semantic repair
+authority. The next blocking gate is the unexecuted GT protocol gate.
 
 ### R2 — Cohort and holdout policy
 
-Status: `NEEDS_RESEARCH_DECISION`.
+Status: `APPROVED / RESOLVED`.
 
-Approve or reject the `15 train development / 10 train holdout / 5 val external
-holdout` sequence-level policy. The split manifest will be generated before any
-tracking outcomes are read and then frozen.
+Freeze `15 train development / 10 train holdout / 5 MDMT val holdout` at the
+sequence-pair level. Generate the 15/10 train assignment once from canonical
+pair ordering with the fixed algorithm and `seed=7`, before reading outcomes.
+The val cohort supports cross-MDMT-split reproducibility, not cross-dataset
+external validation.
 
 ### R3 — Delay schedule and onset rule
 
-Status: `PROPOSED / NOT YET APPROVED`.
+Status: `APPROVED / RESOLVED_WITH_CONTRACT_AMENDMENT`.
 
-Approve or amend the fixed `d1..d5` development sweep and the predefined
-earliest-onset rule. This decision must be closed before implementation.
+Freeze the `d1..d5` sweep and earliest delay passing Gate A-F. The amendment
+strengthens mechanism recurrence from a pooled nonzero write-in requirement to
+actual delay-only candidate -> High-score Supplement write-in in at least
+`10/15` development pairs.
 
-No implementation or run is authorized until R1-R3 are resolved explicitly.
+R1-R3 are resolved and the amendment is incorporated. This does not authorize
+implementation or MVE: the GT protocol gate and subsequent lifecycle gates in
+`EXEC_PLAN.md` remain pending.

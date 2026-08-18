@@ -9,9 +9,13 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
 - 新实验契约：`exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation`。
 - 本轮只验证 E023 候选集合补偿在 MDMT 非测试序列上的复现性与 d1-d5 出现区间；不实现
   version-aware recovery，不重新读取 official test 选择 delay。
-- 当前状态为 `PROPOSED / BLOCKED_PENDING_RESEARCH_DECISIONS`。R1 非测试 MDA GT 协议、
-  R2 development/holdout cohort 和 R3 delay/onset rule 必须先显式批准。
-- 执行顺序冻结为：Research Decisions -> GT protocol gate -> infrastructure -> two-pair MVE ->
+- R1-R3 已完成研究设计答辩并落盘：R1 `APPROVED / RESOLVED_CONDITIONAL`，R2
+  `APPROVED / RESOLVED`，R3 `APPROVED / RESOLVED_WITH_CONTRACT_AMENDMENT`。
+- 当前状态为 `RESEARCH_DECISIONS_RESOLVED / CONTRACT_AMENDED /
+  BLOCKED_PENDING_GT_PROTOCOL_GATE`；尚未进入实现或 MVE，也不是 Formal-ready。
+- R3 契约修订要求：实际 delay-only candidate -> High-score Supplement write-in 至少
+  出现在 `10/15` development pairs，不能只在 pooled 数据中非零。
+- 执行顺序冻结为：Research Decisions resolved -> GT protocol gate -> infrastructure -> two-pair MVE ->
   development sweep -> locked holdout confirmation -> scientific decision。
 - Contract：
   `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/EXPERIMENT_CONTRACT.md`
