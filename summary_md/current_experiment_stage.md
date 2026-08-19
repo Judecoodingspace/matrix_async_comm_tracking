@@ -11,14 +11,19 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
   version-aware recovery，不重新读取 official test 选择 delay。
 - R1-R3 已完成研究设计答辩并落盘：R1 `APPROVED / RESOLVED_CONDITIONAL`，R2
   `APPROVED / RESOLVED`，R3 `APPROVED / RESOLVED_WITH_CONTRACT_AMENDMENT`。
-- 当前状态为 `RESEARCH_DECISIONS_RESOLVED / CONTRACT_AMENDED /
-  BLOCKED_PENDING_GT_PROTOCOL_GATE`；尚未进入实现或 MVE，也不是 Formal-ready。
+- GT protocol gate 已在 2026-08-19 执行并以 `GT_PROTOCOL_GATE_FAIL` 结束：G1 通过，G2
+  仅 5/28 official-test 文件精确匹配，且 source-derived GT 多出 347 行；test XML 没有
+  `outside=1` 见证。G3-G6 未执行，MVE/tracking 未运行。
+- 当前仅允许独立、重新批准的 source annotation/export protocol 调查；不得以 tracker/MVE
+  结果修补转换规则，也不得继续 non-test GT 或 compensation-onset 实验。
 - R3 契约修订要求：实际 delay-only candidate -> High-score Supplement write-in 至少
   出现在 `10/15` development pairs，不能只在 pooled 数据中非零。
 - 执行顺序冻结为：Research Decisions resolved -> GT protocol gate -> infrastructure -> two-pair MVE ->
   development sweep -> locked holdout confirmation -> scientific decision。
 - Contract：
   `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/EXPERIMENT_CONTRACT.md`
+- Gate report:
+  `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/GT_PROTOCOL_GATE_REPORT.md`
 
 ### Latest Update: E023 Cascade Formal Completed (2026-08-14)
 

@@ -1,6 +1,6 @@
 # DECISION
 
-Status: `RESEARCH_DECISIONS_RECORDED / SCIENTIFIC_DECISION_PENDING`
+Status: `GT_PROTOCOL_GATE_FAIL / SCIENTIFIC_DECISION_PENDING`
 
 ## Current Planning Decision
 
@@ -28,13 +28,24 @@ in at least 10/15 development pairs
 Mechanism recurrence does not replace the causal MDA contrasts `R_edge` and
 `C_comp`.
 
+## GT Protocol Gate Execution (2026-08-19)
+
+G1 passed, but G2 failed strict official-test equivalence: only 5 of 28 files
+matched; the mechanically derived source rows contained 347 extra rows and the
+official test sources contain no `outside=1` witness. Therefore G3-G6 were not
+run and G7 is `GT_PROTOCOL_GATE_FAIL`. This is fail-closed: no non-test GT,
+MIA/tracking run, MVE, development selection, holdout, Formal, or recovery
+implementation is authorized.
+
+See `GT_PROTOCOL_GATE_REPORT.md` and `GT_PROTOCOL_GATE_ARTIFACT_SCHEMA.md`.
+
 ## Remaining Gate
 
-Research-decision blocking is cleared, but the experiment is not implementation-
-ready or Formal-ready. The next gate is the conditional R1 GT protocol gate:
-exact official-test reproduction followed by non-test structural and cross-view
-identity-semantics validation. Implementation and MVE remain unauthorized until
-that lifecycle gate is completed and audited.
+Research-decision blocking is cleared, but the failed conditional R1 GT protocol
+gate blocks implementation and MVE. The only admissible next work is a new,
+approved source-annotation/export protocol investigation; it must resolve the
+347 extra rows and the missing outside-rule witness before the lifecycle gate
+can be restarted.
 
 ## Final Decision
 

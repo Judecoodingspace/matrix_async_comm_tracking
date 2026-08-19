@@ -1,6 +1,6 @@
 # Current Status
 
-Updated: 2026-08-17
+Updated: 2026-08-19
 
 ## Next Planned Experiment
 
@@ -20,13 +20,19 @@ R3 的契约修订把机制门从 pooled nonzero write-in 收紧为：实际 del
 candidate -> High-score Supplement write-in 至少出现在 `10/15` development pairs。
 冻结的 d1-d5 扫描选择最早通过完整 Gate A-F 的 onset，而不是幅度最大的 delay。
 
-当前状态为 `RESEARCH_DECISIONS_RESOLVED / CONTRACT_AMENDED /
-BLOCKED_PENDING_GT_PROTOCOL_GATE`。下一道门是 R1 条件批准要求的 official-test
-row/frame/ID 精确复现，以及 train/val 结构完整性和跨视角 identity semantics 审计。
-在该门完成前，不实现 MVE、不运行 development/holdout，也不进入 version-aware recovery。
+GT protocol gate 已执行并以 `GT_PROTOCOL_GATE_FAIL` 结束。G1 严格来源审计通过（88 XML），
+但 G2 official-test 精确多重集复现仅 `5/28` 文件通过；其余 23 文件合计有 347 个
+source-derived extra rows，且 test XML 没有 `outside=1` 样本用于验证排除规则。依据
+fail-closed 协议，G3-G6 未执行，未运行 tracking/MVE、development/holdout 或 recovery。
+
+当前仅允许新的、独立批准的 source annotation/export protocol 调查，以解释 extra rows 并
+解决 outside-rule witness 缺失；不得根据任何 tracking/MVE 结果修补转换规则。
 
 计划目录：
 `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/`
+
+Gate 报告：
+`summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/GT_PROTOCOL_GATE_REPORT.md`
 
 ## Latest Formal Result
 
