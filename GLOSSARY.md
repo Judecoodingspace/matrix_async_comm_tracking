@@ -205,6 +205,112 @@
 
 ---
 
+### World-Coordinate Tracker Update / 世界坐标跟踪器更新
+
+> 就像不用看照片里人站在画面左边还是右边，而是把所有人先标到同一张地图上，再用地图距离更新轨迹。
+
+当前 `src/tracking/matrix_reanchoring.py` 中的 BEV/SORT-style tracker 使用 `MatrixObservation.world_xy` 更新状态。每条 track 的状态是：
+
+```text
+state = [x, y, vx, vy]
+```
+
+其中 `x, y` 是世界坐标平面位置，`vx, vy` 是速度。更新流程不是用 `person_id` 关联，而是用世界坐标距离、Hungarian assignment、nearest-track ranking、association margin 和 Kalman-style measurement update。
+
+ASCII 图解一：普通 frame update
+
+```text
+输入 observations:
+
+  primary obs:  D1 在当前帧看到的人
+  support obs:  D2-D8 已经可用的支撑观测
+  每条 obs 都有 world_xy = (x, y)
+
+当前 tracker state:
+
+  track 7: [x, y, vx, vy], covariance, miss_count, ...
+  track 8: [x, y, vx, vy], covariance, miss_count, ...
+
+每一帧:
+
+  1. predict_to(frame_id)
+
+       track state 按速度外推到当前帧
+
+       [x, y, vx, vy]  --->  [x + vx*dt, y + vy*dt, vx, vy]
+       covariance 增大
+
+  2. primary association
+
+       primary world_xy 和已有 track world_xy 计算距离矩阵
+
+                  track7     track8
+       obs A       0.3m       1.8m
+       obs B       1.5m       0.2m
+
+       Hungarian assignment + distance_threshold
+       距离 <= gate_radius 才更新，否则创建新 track
+
+  3. support association
+
+       support world_xy 找最近 track
+       residual = support_xy 到最近 track_xy 的距离
+       margin   = 第二近距离 - 最近距离
+
+       residual <= gate_radius 且 margin 足够大 -> update
+       否则 reject
+
+  4. Kalman-style update
+
+       innovation = observed_xy - predicted_xy
+       track state 向 observed_xy 拉近
+       covariance 下降
+       miss_count 清零
+```
+
+ASCII 图解二：fixed-lag delayed update 怎样使用 world-coordinate
+
+```text
+场景:
+  support 在 t1 拍到 world_xy=(4.2, 8.0)
+  通信延迟后在 t3 到达
+  lag = 3 frames, delay = 2 frames
+
+时间轴:
+
+  t0          t1          t2          t3
+  |-----------|-----------|-----------|
+              support拍到              support到达
+              capture=t1               arrival=t3
+
+fixed-lag 流程:
+
+  arrival at t3:
+
+    delay <= lag  ->  eligible
+
+    known_support_by_capture[t1].append(support_obs)
+
+    restore snapshot before t1
+            |
+            v
+    replay t1, t2, t3:
+
+      t1: primary(t1) + support(t1 world_xy) 更新 tracker
+      t2: primary(t2) + 已知 support 更新后的状态继续预测
+      t3: primary(t3) + 当前状态发布
+
+核心:
+  support 不是在 t3 当成当前位置使用
+  而是插回 t1 的 world-coordinate 状态里，再把 tracker 重放到 t3
+```
+
+这个过程解释了为什么[[#Support World-Coordinate Noise / 支撑世界坐标噪声]]会伤害 fixed-lag：如果 `support(t1).world_xy` 本身偏了，fixed-lag 会把这个偏差写进 t1 的历史状态，再一路传播到 t2/t3。
+
+相关术语：[[#Fixed-Lag OOSM Update / 固定窗口乱序更新]]、[[#Support World-Coordinate Noise / 支撑世界坐标噪声]]、[[#Temporal-Spatial Risk / 时间-空间联合风险]]。
+
+---
+
 ### GeM Pooling / 广义均值池化
 
 > 就像在多个评委的评分中选一个代表值——极端时取最大值（最亮眼），温和时取平均值（最平均）。
@@ -234,6 +340,27 @@ Generalized Mean Pooling，一种可学习的池化操作：`GeM(x) = (avg(x^p))
 > 就像快递如果迟到到已经可能送错人，就干脆不送这件迟到包裹，只保留现场可靠信息。
 
 一种安全基线：当 support UAV 的观测存在通信延迟时，融合端直接丢弃这些迟到 support 观测，只依赖主 UAV 或准时到达的信息维持轨迹。在当前 MATRIX GT 实验中，它不是性能上界，而是"不要被迟到观测污染"的安全参照。如果某个 delayed fusion 方法还不如 `drop-delayed`，说明该方法引入的身份污染或错误更新超过了 support 信息带来的收益。
+
+ASCII 图解：
+
+```text
+时间轴:        t0        t1        t2        t3
+主 UAV:       看到人     遮挡      遮挡      重新看到
+support UAV:           拍到人
+通信到达:                                support(t1) 到达
+
+drop_delayed:
+
+              t0        t1        t2        t3
+online 输出:  track A   预测A?    预测A?    用主UAV恢复
+support包:             [t1拍到] ---------> 到达后直接丢弃 X
+
+核心动作:
+  迟到 support 不进入 tracker state
+  不回放、不重连、不修正历史
+  优点: 不污染身份
+  缺点: 主视角遮挡期间 support 的正确信息也被浪费
+```
 
 ---
 
@@ -313,6 +440,77 @@ Generalized Mean Pooling，一种可学习的池化操作：`GeM(x) = (avg(x^p))
 > 就像你知道照片拍摄时间是对的，但拍摄地点或镜头朝向估错了一点，地图上的落点就会偏到隔壁人身上。
 
 由无人机位姿误差、位姿插值/外推误差、相机标定误差或重投影模型误差导致的世界坐标偏差。当前 MATRIX GT 实验用 support observation 的 world-XY 高斯扰动作为代理噪声，模拟这种误差对 capture-time association 的影响。结果显示，0.50m world-XY 噪声已经足以让 timestamped uncertain fusion 在 `fixed_2` 下低于 drop-delayed。
+
+---
+
+### Support World-Coordinate Noise / 支撑世界坐标噪声
+
+> 就像支援无人机没有认错拍摄时间，但把目标在地图上的落点标偏了几十厘米。
+
+本项目当前的 `support world-coordinate noise` 是一种受控代理变量：只对 support UAV 的 `world_xy` 坐标加高斯扰动，primary UAV 的观测保持干净。它模拟的是 support 侧位姿误差、重投影误差、标定误差或通信后姿态对齐误差，而不是 detector 漏检或 ReID 错误。
+
+形式上，本轮实验对每条 support observation 做：
+
+```text
+clean support world_xy = (x, y)
+
+noisy support world_xy =
+  (x + Gaussian(0, sigma),
+   y + Gaussian(0, sigma))
+```
+
+其中 `sigma = pose_xy_noise_m`，单位是米。
+
+0.10m、0.25m、0.50m 分别表示：
+
+```text
+0.10m noise:
+  support 的世界坐标 x/y 各自加入标准差约 10cm 的高斯误差
+  在本轮 high useful-window 中仍有正收益
+
+0.25m noise:
+  x/y 各自加入标准差约 25cm 的高斯误差
+  在本轮 high useful-window 中 survival delta 转负，IDSW 高于 drop
+
+0.50m noise:
+  x/y 各自加入标准差约 50cm 的高斯误差
+  fixed-lag 基本失去可用收益
+```
+
+ASCII 图解：
+
+```text
+真实目标位置:
+
+        A
+        |
+        |  clean world_xy = (10.00, 5.00)
+        v
+  ----- x --------------------------
+
+support 加 0.25m noise 后:
+
+        A
+        |
+        |  noisy world_xy 可能变成 (10.22, 4.86)
+        v
+  ----- x ---- o -------------------
+              ^
+              support 给 tracker 的位置
+
+如果旁边还有另一个 track:
+
+  track A predicted:      x
+  noisy support:          o
+  track B predicted:        x
+
+support 本来属于 A，但 noisy 落点可能更接近 B；
+fixed-lag 若接受它，就会把错误位置写回历史 tracker state。
+```
+
+本轮 `exp_20260726_002` 的关键结论是：在[[#Useful Support Window / 有效支撑窗口]]足够大的情况下，`0.10m` 仍可用，但 `0.25m` 已经开始破坏 fixed-lag identity continuity。因此失败不是“support 到太晚”，而是“support 到得够早但坐标不够准”。
+
+相关术语：[[#World-Coordinate Tracker Update / 世界坐标跟踪器更新]]、[[#Noise-to-Gate Ratio / 噪声-门半径比]]、[[#Temporal-Spatial Risk / 时间-空间联合风险]]。
 
 ---
 
@@ -436,6 +634,1524 @@ Group cross-validation。当前 temporal boundary 实验中的 group 是 `(delay
 
 ---
 
+### Lag / 固定回看窗口
+
+> 就像监控室只允许改最近几秒钟的值班记录：刚刚迟到的证据还能补进去，太早的证据只能做事后参考，不能改已经对外发布的记录。
+
+`lag_frames` 是 tracker 允许回到过去修正状态的最大窗口长度。它不是消息本身的通信延迟，而是系统策略中的“可修改历史范围”。如果 support observation 的 `delay_frames <= lag_frames`，它仍在可回看窗口内，可以触发 fixed-lag delayed update；如果 `delay_frames > lag_frames`，遮挡期间已经发布的 online prediction 通常被冻结，只能用于 recovery-only stitching 或直接 reject。
+
+在 MATRIX 当前 2 FPS 设置下：
+
+```text
+1 frame = 500 ms
+
+lag1 = 最近 1 帧可回看 = 500 ms
+lag2 = 最近 2 帧可回看 = 1000 ms
+lag3 = 最近 3 帧可回看 = 1500 ms
+lag5 = 最近 5 帧可回看 = 2500 ms
+```
+
+ASCII 图解一：`lag` 是“能往回改多远”
+
+```text
+当前发布时刻: t5
+设置: lag = 3 frames
+
+时间轴:
+
+  t0        t1        t2        t3        t4        t5
+  |---------|---------|---------|---------|---------|
+  冻结历史   冻结历史   可回看    可回看    可回看    当前
+                      <--------- lag window -------->
+
+含义:
+  t2-t5: 还在固定回看窗口里，可以被迟到 support 修正
+  t0-t1: 已经太旧，不再改写 online 历史输出
+```
+
+ASCII 图解二：`delay` 和 `lag` 的关系
+
+```text
+情况 A: support(t3) 在 t5 到达
+
+  capture=t3                         arrival=t5
+       |----------------------------------|
+              delay = 2 frames
+
+  lag = 3 frames
+  delay <= lag  ->  允许回到 t3 做 fixed-lag update
+
+
+情况 B: support(t1) 在 t5 到达
+
+  capture=t1                         arrival=t5
+       |----------------------------------|
+              delay = 4 frames
+
+  lag = 3 frames
+  delay > lag   ->  太晚，不改 t1-t2 已发布输出
+                    只能 recovery-only 或 reject
+```
+
+一句话抓重点：
+
+```text
+delay = 消息迟到了多久
+lag   = tracker 愿意回头修正多久
+
+delay <= lag: 迟到但还来得及修正
+delay >  lag: 来得太晚，不能硬改遮挡期在线输出
+```
+
+重要边界：`delay <= lag` 只表示“这条 support 有资格进入 fixed-lag update”，不表示它一定产生正收益。收益还取决于遮挡长度、support 到达时遮挡还剩多久、遮挡早期 identity 是否已经断开、以及候选关联是否歧义。
+
+ASCII 图解三：同样 `delay <= lag`，短遮挡和长遮挡的收益可能不同
+
+```text
+设置:
+  delay = 3 frames
+  lag   = 3 frames
+
+短遮挡:
+
+  t1        t2        t3        t4
+  |---------|---------|---------|
+  遮挡开始   遮挡结束             support(t1)到达
+  support(t1)拍到
+
+  delay <= lag 成立
+  但到达时遮挡已经结束，t1/t2 online 输出可能已经发布
+  如果系统不允许改历史输出，during gain 会被压缩
+
+
+长遮挡:
+
+  t1        t2        t3        t4        t5        t6
+  |---------|---------|---------|---------|---------|
+  遮挡开始                       support(t1)到达       遮挡仍在继续
+  support(t1)拍到
+
+  delay <= lag 成立
+  且到达时仍处于遮挡早期/中期
+  support 可以修正早期状态，并影响后续遮挡期跟踪
+```
+
+一句话补充：
+
+```text
+lag 决定“能不能回头改”
+遮挡长度决定“改回来以后还剩多少在线窗口可以受益”
+```
+
+相关术语：[[#Fixed-Lag OOSM Update / 固定窗口乱序更新]]、[[#Useful Support Window / 有效支撑窗口]]、[[#Recovery-Only Stitching / 仅恢复重连接]]、[[#Causal Timestamped Replay / 因果时间戳重放]]。
+
+---
+
+### Useful Support Window / 有效支撑窗口
+
+> 就像救援队不是只要到场就有用，还要看它到场时事故还剩多少可救的时间。
+
+Support observation 真正能影响 online identity continuity 的时间窗口。它不是单个变量，而是由 `delay_frames`、`lag_frames`、遮挡长度、消息到达时刻和 tracker 状态共同决定。当前实验中的 fixed-lag 结果说明，短窗口 delayed update 能显著缓解遮挡早期身份断裂；但它没有证明“只要 support 在 lag 内到达就一定有收益”。
+
+概念拆分：
+
+```text
+delay_frames:
+  support 消息从 capture 到 arrival 晚了几帧
+
+lag_frames:
+  tracker 最多愿意回头修正几帧
+
+occlusion_duration:
+  主 UAV 看不见目标持续几帧
+
+useful support window:
+  support 到达后，仍能修正或影响的有效跟踪窗口
+```
+
+当前 fixed-lag audit 中使用的 episode-level 近似诊断量是：
+
+```text
+remaining_after_first_arrival_frames =
+  max(episode_length - delay_frames, 0)
+
+useful_window_fraction =
+  remaining_after_first_arrival_frames / episode_length
+
+effective_fixed_lag_window_fraction =
+  useful_window_fraction if delay_frames <= lag_frames else 0
+```
+
+注意：这是事后诊断变量，不是在线 tracker 的输入。它回答的是“这条 support 到达后，这段遮挡理论上还剩多少帧可能受它影响”，而不是直接告诉 tracker 应该接受还是拒绝。
+
+ASCII 图解：
+
+```text
+主 UAV 遮挡 episode:
+
+  t0        t1        t2        t3        t4        t5        t6
+  |---------|---------|---------|---------|---------|---------|
+  可见       遮挡开始   遮挡      遮挡      遮挡      遮挡结束   可见
+
+support(t1) 到达得早:
+
+  t0        t1        t2        t3        t4        t5        t6
+  |---------|---------|---------|---------|---------|---------|
+             拍到  ----> 到达
+                        <------- 仍有多帧遮挡可被影响 ------->
+
+  有效支撑窗口大:
+    可以修正早期遮挡状态
+    可以影响后续遮挡期预测
+    identity survival 更可能提升
+
+
+support(t1) 到达得晚:
+
+  t0        t1        t2        t3        t4        t5        t6
+  |---------|---------|---------|---------|---------|---------|
+             拍到  -------------------------------> 到达
+                                                     遮挡已结束
+
+  有效支撑窗口小:
+    遮挡期 online 输出大多已经发布
+    during gain 被压缩
+    support 更可能只进入 recovery-only 或 spillover
+```
+
+判断式不是：
+
+```text
+delay <= lag  -> 一定有用
+```
+
+而应理解为：
+
+```text
+support 有用的可能性增加 ≈
+  delay <= lag
+  AND 有足够早期/中期遮挡帧仍可被影响
+  AND tracker 身份线尚未不可逆断开
+  AND association 候选不歧义
+```
+
+相关术语：[[#Lag / 固定回看窗口]]、[[#Online Support Coverage / 在线支撑覆盖率]]、[[#Early-Frame Gap Boundary / 早期帧缺口边界]]、[[#Spillover Gain / 遮挡后溢出增益]]。
+
+---
+
+### Fixed-Lag OOSM Update / 固定窗口乱序更新
+
+> 就像医院只允许修改最近几页病历：刚刚迟到的化验单还能补进去，太早的旧单子就不能再改已经发出的诊断。
+
+一种 bounded delayed update 机制。迟到 support observation 若在固定窗口 `lag_frames` 内到达，则允许回到 capture time 附近重放并修正 tracker state；若超过窗口，则不再改写遮挡期间已经发布的 online output。`exp_20260724_002` 显示，固定窗口是当前最强的遮挡支撑缓解机制：1000ms 对应 `lag2`，1500ms 对应 `lag3`。
+
+---
+
+### Tracker-State-Aware Re-anchoring / 跟踪器状态感知重锚定
+
+> 就像导航软件不只看新消息晚了多久，还看你现在是不是已经偏航、定位是否发散、前方路口是否容易走错。
+
+根据 tracker 当前状态决定 delayed support 的处理方式：短窗口内可做 fixed-lag update，超过窗口后可尝试 recovery-style re-anchoring，高歧义或低风险场景则 reject。状态变量包括 `miss_count`、`time_since_primary_seen`、协方差、速度不确定性、association margin、track age 等。当前结果显示，第一版规则没有超过最佳固定窗口，因此不能直接作为最终 proposed method。
+
+ASCII 图解：
+
+```text
+同一个 support(t1) 在 t3 到达时，先看 tracker 状态:
+
+                         support(t1) 到达
+                                |
+                                v
+                  +-------------+-------------+
+                  |                           |
+             track 状态危险?              track 状态稳定?
+        miss_count高 / 协方差大 /          主UAV刚看到 /
+        遮挡中 / margin清楚                候选歧义高
+                  |                           |
+                  v                           v
+          delay 是否在 lag 内?              reject
+             |           |
+             |是         |否
+             v           v
+       fixed-lag回放   recovery-only重连接
+
+核心动作:
+  不是只问“消息晚了多久”
+  还问“当前轨迹状态是否需要这条迟到信息”
+  当前实验结果: 第一版 state-aware 与最佳 fixed-lag 打平，没有额外胜出
+```
+
+---
+
+### Recovery-Only Stitching / 仅恢复重连接
+
+> 就像迟到的证人来得太晚，不能改庭审现场记录，但可以帮助确认庭审之后谁和谁是同一条线索。
+
+一种 late-support 策略：support 到得太晚时，不强行修改遮挡期间已经发布的 online prediction，而是用于遮挡后重连接 pre-occlusion tracklet、support tracklet 和 post-occlusion primary tracklet。当前 world-coordinate-only 实验中它单独使用较弱，说明只做恢复不能替代遮挡期间的 identity maintenance。
+
+ASCII 图解：
+
+```text
+时间轴:        t0        t1        t2        t3        t4
+主 UAV:       看到人     遮挡      遮挡      重新看到   继续跟踪
+support UAV:           拍到人
+通信到达:                                support(t1) 到达
+
+recovery-only:
+
+              t0        t1        t2        t3        t4
+online 输出:  track A   不改      不改      track B?   尝试把B接回A
+support包:             [t1拍到] ---------> 不改遮挡期，只辅助恢复
+
+核心动作:
+  遮挡期间已经发布的 t1/t2 输出不重写
+  support 只帮助 post-occlusion 的 tracklet stitching
+  优点: 不篡改 online 历史输出
+  缺点: 如果身份在遮挡早期已经断开，恢复期再接可能太晚
+```
+
+#### Drop-delayed、State-aware、Recovery-only 总对照
+
+```text
+场景:
+  D1 在 t1-t2 遮挡
+  support 在 t1 拍到目标
+  support(t1) 到 t3 才到达融合端
+
+时间轴:
+
+  t0             t1             t2             t3             t4
+  |--------------|--------------|--------------|--------------|
+  D1可见         D1遮挡         D1遮挡         D1恢复可见      后续跟踪
+                 support拍到                   support到达
+
+方法一: drop_delayed
+
+  t0             t1             t2             t3             t4
+  track A ------ 预测/丢失 ----- 预测/丢失 ----- 主UAV恢复 ---- 后续
+                 support(t1) ----------------> 到达后丢弃 X
+
+  作用位置:
+    不作用于 t1/t2
+    不作用于 t3/t4
+  研究含义:
+    安全基线。宁愿不用 support，也不让迟到信息污染身份。
+
+
+方法二: recovery-only
+
+  t0             t1             t2             t3             t4
+  track A ------ 已发布不改 ---- 已发布不改 ---- track B? ----- B接回A?
+                 support(t1) ----------------> 只用于恢复期重连接
+
+  作用位置:
+    不改 t1/t2 遮挡期 online 输出
+    只影响 t3 之后的恢复和重连接
+  研究含义:
+    适合“来得太晚”的 support，但不能维持遮挡期间 identity。
+
+
+方法三: state-aware reanchoring
+
+  t0             t1             t2             t3             t4
+  track A ------ 可能回放修正 -- 可能回放修正 -- 根据状态分流 -- 后续
+                 support(t1) ----------------> 到达后先看 tracker state
+
+  到达 t3 后:
+
+        +-- delay <= lag 且轨迹高风险且候选清楚 --> 回到 t1/t2 做 fixed-lag update
+        |
+  t3 ---+-- delay > lag 但需要恢复 ----------------> recovery-only stitching
+        |
+        +-- 轨迹稳定或候选歧义高 ------------------> reject
+
+  作用位置:
+    可能影响短窗口内的 recent tracker state
+    可能只影响恢复期
+    也可能拒绝 support
+  研究含义:
+    目标是比固定窗口更聪明；但当前第一版还只是打平最佳 fixed-lag。
+```
+
+---
+
+### Noise-to-Gate Ratio / 噪声-门半径比
+
+> 就像地图定位误差已经接近门口宽度的一半：即使导航方向没错，也很容易把人带到隔壁门。
+
+`noise_to_gate_ratio = pose_xy_noise_m / gate_radius`。它衡量 support world-coordinate 噪声相对关联门半径有多大。当前 fixed-lag robustness 实验使用 `gate_radius=1.0m`，因此 `0.10m` 噪声对应 `0.10`，`0.25m` 噪声对应 `0.25`，`0.50m` 噪声对应 `0.50`。
+
+本轮结论显示：高 [[#Useful Support Window / 有效支撑窗口]] 下，`0.10m` 仍有正收益，但 `0.25m` 时 fixed-lag 的 survival delta 已转负。这说明 support 不是来得太晚，而是来得足够早却不够准。
+
+---
+
+### Temporal-Spatial Risk / 时间-空间联合风险
+
+> 就像一张迟到的路况图不仅旧，而且定位也偏；旧一点和偏一点叠加后，可能比不用它更糟。
+
+当前诊断量：
+
+```text
+spatial_staleness_m = motion_m_per_frame * delay_frames
+noise_to_gate_ratio = pose_xy_noise_m / gate_radius
+temporal_spatial_risk = (spatial_staleness_m + pose_xy_noise_m) / gate_radius
+```
+
+它把两种风险放在同一个尺度上：
+
+```text
+时间风险:
+  人在 delay 期间移动了多远
+
+空间风险:
+  support world-coordinate 本身有多大噪声
+
+联合风险:
+  迟到造成的位置陈旧 + 坐标噪声
+  相对 tracker 关联门半径有多大
+```
+
+ASCII 图解：
+
+```text
+capture 时刻 support 看到的位置:
+
+  t1: 真实人 A 在 x=0.0
+      support noisy 坐标落在 x=0.25
+
+arrival / replay 时考虑的风险:
+
+  人在 delay 内移动:        0.8m
+  support 坐标噪声:         0.25m
+  gate radius:              1.0m
+
+  temporal_spatial_risk = (0.8 + 0.25) / 1.0 = 1.05
+
+含义:
+  即使 delay <= lag，回放观测也可能落到错误候选附近
+```
+
+相关术语：[[#Lag / 固定回看窗口]]、[[#Fixed-Lag OOSM Update / 固定窗口乱序更新]]、[[#Pose / Reprojection Noise / 位姿-重投影噪声]]。
+
+---
+
+### Simulated Identity Cue / 模拟身份线索
+
+> 就像给每个人临时发一张有噪声的会员卡：卡不是照片本身，但能模拟“这个人看起来像谁”的外观证据。
+
+一种受控的身份信息代理，用来回答“身份维度本身是否能补几何噪声边界”。在 `exp_20260726_003` 中，实验用 GT `person_id` 生成隐藏身份原型，再给每条 observation 生成带噪声的 embedding。**运行时 tracker 不读取 `person_id` 做关联**，只通过 `observation_sensor_key = (capture_time, drone_id, position_id, bbox)` 查到对应 embedding。
+
+ASCII 图解：
+
+```text
+离线生成阶段:
+
+  GT person_id A  ---> hidden prototype A ---> noisy embedding obs_1
+  GT person_id B  ---> hidden prototype B ---> noisy embedding obs_2
+
+运行时 tracker 看到的是:
+
+  obs_1 key + embedding vector
+  obs_2 key + embedding vector
+
+  不看到:
+    person_id A/B
+```
+
+它不是最终 ReID 方法，而是一个机制探针：如果模拟身份线索都救不回 0.25m 几何噪声边界，就不值得急着上真实 ReID；如果能救回，下一步才有理由替换为 CNN/ReID embedding。
+
+---
+
+### Embedding Separation / 嵌入分离度
+
+> 就像两个人的证件照相似不相似：同一个人的多张照片应该彼此更像，不同人的照片应该明显不像。
+
+在 appearance / identity cue 中，每个观测会有一个 embedding vector。嵌入分离度衡量的是：**同一身份的 embedding 相似度是否显著高于不同身份的 embedding 相似度**。分离度越大，tracker 越容易用身份线索纠正 noisy geometry；分离度越小，身份线索越接近随机噪声。
+
+常用计算：
+
+```text
+same_similarity      = mean(cosine(同一个人的 embedding 对))
+different_similarity = mean(cosine(不同人的 embedding 对))
+embedding_separation = same_similarity - different_similarity
+```
+
+ASCII 图解：
+
+```text
+好 embedding:
+
+  person A:  A1 ------ A2 ------ A3          same similarity 高
+
+  person B:                         B1 --- B2
+
+  A 和 B 之间距离远                  different similarity 低
+
+
+差 embedding:
+
+  A1 --- B1 --- A2 --- B2 --- A3
+
+  同人和异人混在一起
+  tracker 很难靠 appearance 判断谁是谁
+```
+
+在 `exp_20260726_003` 中，模拟 identity cue 的分离度为：
+
+```text
+strong:  same 0.754159, different -0.008598, margin 0.762758
+medium:  same 0.251248, different  0.004039, margin 0.247209
+weak:    same 0.076330, different  0.006376, margin 0.069954
+```
+
+下一轮 cue quality sweep 的核心问题就是：真实 ReID/CNN embedding 至少要达到多大的分离度，才能复现 `medium` simulated identity cue 的收益。
+
+相关术语：[[#Simulated Identity Cue / 模拟身份线索]]、[[#Same/Different Similarity Margin / 同人-异人相似度间隔]]、[[#Identity Accept Threshold / 身份接受阈值]]。
+
+---
+
+### Same/Different Similarity Margin / 同人-异人相似度间隔
+
+> 就像你看两组照片：如果“同一个人”的相似程度只比“不同人”高一点点，判断就很悬；如果高很多，判断就可靠。
+
+同人-异人相似度间隔是 [[#Embedding Separation / 嵌入分离度]] 的具体报告形式：
+
+```text
+margin = mean_same_similarity - mean_different_similarity
+```
+
+它回答的是身份线索是否有足够判别力：
+
+```text
+margin 大:
+  same pairs      similarity 高
+  different pairs similarity 低
+  identity gate 有可靠依据
+
+margin 小:
+  same 和 different 混在一起
+  identity gate 容易误拒或误接
+```
+
+ASCII 图解：
+
+```text
+相似度轴:  -1.0 -------------------- 0.0 -------------------- 1.0
+
+margin 大:
+  different pairs:  [----]
+  same pairs:                                  [----]
+                    <--------- margin -------->
+
+margin 小:
+  different pairs:             [---------]
+  same pairs:                    [---------]
+                                overlap 很大
+```
+
+论文中它适合作为“身份线索质量”的可解释横轴，而不是作为在线 tracker 直接可见的真值指标。在线系统能看到的是具体 message 与候选 track 的 similarity，不能提前知道全数据集的 same/different margin。
+
+---
+
+### Identity Accept Threshold / 身份接受阈值
+
+> 就像查证件照时设一条线：相似度超过这条线才放行，低于这条线就不让它改记录。
+
+identity accept threshold 是 [[#Identity Gate / 身份门控]] 使用的阈值。support observation 与候选 track 的 appearance embedding 计算 cosine similarity 后，只有满足：
+
+```text
+cosine_similarity(support_embedding, track_embedding) >= identity_accept_threshold
+```
+
+该 support 才能参与后续 fixed-lag update、identity-only update 或 recovery。
+
+阈值太低和太高都会出问题：
+
+```text
+threshold 太低:
+  很多不像的 support 也被接受
+  identity cue 失去过滤作用
+  IDSW 可能上升
+
+threshold 太高:
+  本来有用的 support 被拒绝
+  survival gain 被压缩
+  更像 drop_delayed
+```
+
+ASCII 图解：
+
+```text
+similarity:
+
+  0.05  0.12  0.24 | 0.31  0.48  0.70
+                   ^
+                   identity_accept_threshold = 0.25
+
+  左边: reject
+  右边: accept
+```
+
+`exp_20260731_001` 表明 threshold 不能只按全局 embedding pair 分布选择。`margin=0.056747` 时，全局校准偏向 `0.10`，但 tracking 真正通过的是 `0.20`。原因是 tracker 只在 geometry shortlist 中比较候选，而全局 pair 分布包含大量运行时不会同时竞争的身份。
+
+相关术语：[[#Embedding Separation / 嵌入分离度]]、[[#Identity Gate / 身份门控]]。
+
+---
+
+### Cue Quality Boundary / 线索质量边界
+
+> 就像问“照片要清楚到什么程度，才足够用来认人”：不是有照片就行，而是照片质量必须越过某条线。
+
+cue quality boundary 描述 appearance / identity cue 的质量达到什么程度，才能让 `geometry + covariance + identity` 在 `fixed_2/fixed_3 + 0.25m` 下保持正收益。
+
+它通常由三类量共同描述：
+
+```text
+embedding_separation:
+  同人 embedding 和异人 embedding 分得开吗？
+
+identity_accept_threshold:
+  tracker 接受 identity match 的门槛设在哪里？
+
+tracking outcome:
+  survival delta 是否 > 0
+  IDSW delta 是否 <= 0
+  fragmentation 是否下降
+```
+
+ASCII 图解：
+
+```text
+identity cue 质量从差到好:
+
+  weak -------- medium -------- strong
+    |              |              |
+    |              |              +-- 通常可救回 0.25m 边界
+    |              +----------------- 需要确认真实 ReID 能否达到
+    +-------------------------------- 可能只带来噪声，不能作为方法支柱
+
+目标:
+  找到 minimum useful cue quality
+```
+
+`exp_20260731_001` 的离散结果是：
+
+```text
+minimum passing tested margin:       0.056747, threshold 0.20
+largest fully-tested failing margin: 0.040019
+boundary interval:                   (0.040019, 0.056747]
+```
+
+该数值只适用于当前 simulated generator、MATRIX `0-999` 和固定压力设置。真实 ReID 应把它当作待验证目标，而不是通用常数。更关键的是同时报告候选条件下的 same accept rate 和 different accept rate。
+
+这个边界比“用了 ReID”更适合写进论文，因为它回答的是机制问题：身份维度需要多可靠，才足以补几何异步更新的噪声边界。
+
+---
+
+### Candidate-Conditioned Identity Calibration / 候选条件化身份校准
+
+> 就像不是拿一张照片和全城所有人比较，而是先按地点筛出附近几个人，再在这几个人中校准认人门槛。
+
+先用 geometry/covariance gate 得到 tracker 运行时真正会竞争的候选轨迹，再只在这些候选上统计同人和异人 similarity，并选择 `identity_accept_threshold`。它与全局 pair calibration 的区别是：全局统计包含大量永远不会同时进入关联候选集的人，可能高估或低估阈值的实际 tracking 代价。
+
+```text
+global calibration:
+  support embedding vs 全数据身份对
+  -> 分布容易统计，但不等于运行时竞争关系
+
+candidate-conditioned calibration:
+  world_xy + covariance -> candidate tracks
+  support embedding vs candidate tracks
+  -> threshold 直接对应误关联与拒绝风险
+```
+
+本轮发现：全局校准在边界质量选择 `0.10`，但 tracking 通过阈值是 `0.20`。因此真实 ReID readiness 必须优先使用候选条件化校准。
+
+---
+
+### GT-Box Real Appearance Experiment / GT 框真实外观实验
+
+> 就像先由人工准确圈出照片里的人，再只检查“认人特征”是否可靠；暂时不考察机器能不能把人圈出来。
+
+使用数据集提供的真实图像和 GT 投影 bbox 裁剪行人，再由冻结 CNN 提取 embedding。图像证据是真实的，但检测框是 oracle，因此它隔离测量 appearance/re-identification，不包含 detector 的漏检、误检和框偏移。
+
+```text
+MATRIX image + GT bbox
+          |
+          v
+     person crop ----> frozen CNN ----> real embedding
+
+包含: 视角差异、分辨率、遮挡外观、CNN 域偏移
+不含: detector 漏检、误检、bbox 定位噪声
+```
+
+相关术语：[[#Candidate-Conditioned Identity Calibration / 候选条件化身份校准]]、[[#Identity Gate / 身份门控]]。
+
+---
+
+### Cross-Fitted Identity Threshold / 交叉拟合身份阈值
+
+> 就像用甲组学生的答卷定及格线，再到乙组学生上检验；然后交换一次，避免拿同一批答卷既定线又证明自己正确。
+
+将目标身份稳定划分为两个互斥 fold。每次只用一个 fold 的候选 similarity 标签选择阈值，并只评价另一个 fold 的遮挡 episode；交换后合并 held-out 结果。阈值在一次 tracker run 内仍是全局常数，运行时不读取目标属于哪个 fold。
+
+```text
+Fold A pairs ----> calibrate T_A ----> tracker run ----> evaluate Fold B
+Fold B pairs ----> calibrate T_B ----> tracker run ----> evaluate Fold A
+                                                   |
+                                                   v
+                                      combine held-out metrics
+```
+
+这防止 `identity_accept_threshold` 直接针对 formal evaluation identities 调参，但不会把 fold 身份传给关联算法。
+
+---
+
+### Identity Gate / 身份门控
+
+> 就像快递地址有点偏时，再看收件人照片是否像本人；如果照片完全不像，就不要因为地图距离近而交出去。
+
+在 support observation 与候选 track 关联时，除了世界坐标距离，还比较 support embedding 与 track appearance embedding 的 cosine similarity。只有相似度超过阈值，support 才能参与几何更新或身份维度更新。
+
+```text
+support obs 到达:
+
+  geometry ranking:
+    track 5: residual 0.4m
+    track 8: residual 0.7m
+
+  identity similarity:
+    track 5: 0.05   不像
+    track 8: 0.62   像
+
+  结果:
+    不盲目选最近的 track 5
+    允许选择更像的 track 8，或拒绝更新
+```
+
+相关术语：[[#Simulated Identity Cue / 模拟身份线索]]、[[#Ambiguity Margin / 歧义间隔]]。
+
+`exp_20260801_001` 进一步确认：身份门控当前最可靠的作用是**候选授权**。也就是先用外观排除不像的轨迹，再允许通过者接受协方差感知的位置更新。OSNet 版本在 `fixed_2/fixed_3` 达到 occlusion IDF1 `0.386625/0.305918`，明显高于 covariance-only 的 `0.092749/0.072636`。
+
+当前最佳变体不把 support embedding 写回共享 appearance template。它仍允许主视角观测维护模板，因此更准确的说法是“主视角锚定的身份门控”，而不是“没有身份状态”。
+
+---
+
+### Local Tracklet / 本地轨迹片段
+
+> 就像每架无人机先在自己的笔记本里连续记录“这个人从哪里走到哪里”，再把这段记录交给全局系统，而不是每看到一帧就交一张互不相关的照片。
+
+由单个 UAV 的 local tracker 独立维护的一段时间连续轨迹。它拥有本视角自己的 `local_track_id`、运动历史、外观历史和生命周期；不同 UAV 的 local ID 不允许直接当成 global track ID。
+
+```text
+UAV D3 observations:
+  frame 10 bbox + embedding
+  frame 11 bbox + embedding
+  frame 12 bbox + embedding
+             |
+             v
+local tracklet D3:17
+  start=10, latest=12
+  bbox/velocity/covariance
+  pooled appearance
+  hit/miss history
+```
+
+当前 observation-level 旧管线没有 support local tracklet；support 单帧观测直接更新中心 tracker。`exp_20260801_002` 开始补齐这一层。
+
+---
+
+### Incremental Tracklet Update / 增量式轨迹片段更新
+
+> 就像导航车辆每秒上报“截至现在的路线状态”，而不是等整段行程结束后才上传完整轨迹。
+
+local tracker 在每个 capture frame 发出当前 tracklet 的因果状态。消息可以累计过去历史，但不能读取未来帧，也不需要等待 tracklet 终止。
+
+```text
+capture t:    tau_t   = history up to t      -> arrives t + delay
+capture t+1:  tau_t+1 = history up to t+1    -> arrives t+1 + delay
+capture t+2:  tau_t+2 = history up to t+2    -> arrives t+2 + delay
+```
+
+它与 completed-tracklet batching 不同：后者等待轨迹结束或累计 K 帧后再发送，会额外引入 aggregation waiting time。下一阶段默认使用逐帧增量 update，并要求 `history_length=1` 精确复现旧 observation packet 管线。
+
+相关术语：[[#Local Tracklet / 本地轨迹片段]]、[[#Useful Support Window / 有效支撑窗口]]。
+
+### History-1 Message Equivalence / 单历史消息等价性
+
+**生活类比**：把原来的一张纸条装进新信封，再拆出来后，纸条上的每个字和原来完全一样。只有先证明信封没有改内容，之后才能把变化归因于“多张纸条形成的历史”。
+
+**技术定义**：将旧 observation 包装为 `history_length=1` 的
+`IncrementalTrackletUpdate`，再适配回旧 runner。prediction、track ID、support
+action 必须逐行一致，指标误差必须为零或数值精度内为零。它只验证消息接口，不验证
+local association，也不把临时 local ID 当作 global ID。
+
+```text
+旧 observation
+      |
+      v
+history=1 message ----> 解包 ----> 旧 runner
+      |                              |
+      +--------- 必须零差异 ---------+
+```
+
+相关术语：[[#Incremental Tracklet Update / 增量式轨迹片段更新]]。
+
+### Tracklet Purity and Fragmentation / 轨迹片段纯度与碎片化
+
+**生活类比**：一本册子只收录同一个人的照片，说明“纯”；但如果同一个人的 50 张照片被拆成 40 本小册子，仍然无法形成连续档案。
+
+**技术定义**：purity 衡量一条 predicted local tracklet 中占比最高的 GT identity；
+fragmentation 衡量同一 GT identity 被拆到多少条 local tracklet。高 purity 不等于高质量，
+还必须同时有足够的 local IDF1 和较低碎片数。`exp_20260801_002` 中 bbox+OSNet
+purity 约 `0.96`，但 local IDF1 仅约 `0.074`，即典型“纯但过碎”。
+
+```text
+预测轨迹 T1: P1 P1 P1 P2
+purity(T1) = 3 / 4 = 0.75       # T1 有 25% 帧串入 P2
+
+真实人物 P1: 前半段 -> T1，后半段 -> T7 -> T9
+fragment count = 3
+fragmentation  = 3 - 1 = 2      # 一个身份被额外切成两段
+```
+
+本项目 CSV 中的 `weighted_purity` 按各预测轨迹包含的检测数量加权；
+`fragmentation_count` 是所有视角和人物的额外轨迹段总数，因此只能在相同数据范围、视角数
+和评价规则下直接比较。IDF1 会同时惩罚串人和碎片化，能防止只靠“每帧创建一个纯净新 ID”
+获得虚假的高 purity。
+
+相关术语：[[#Local Tracklet / 本地轨迹片段]]。
+
+---
+
+### Clean World-XY Diagnostic / 干净世界坐标诊断
+
+> 像暂时不用监控画面猜位置，而是拿一张没有测量误差的场地坐标表，检查失败究竟来自
+> 图像视角，还是轨迹关联与生命周期本身。
+
+在 `exp_20260802_003` 中，每个可见 detection 直接携带 MATRIX GT 的地面平面
+`(x,y)`，不加入 support noise，也不经过 bbox 射线、相机位姿或重投影误差。tracker
+仍然只能根据位置、常速度预测、1m 距离门和 Hungarian assignment 关联；运行时不读取
+`person_id`。
+
+```text
+MATRIX GT world (x,y)
+          |
+          v
+常速度预测 + 1m 距离门 + Hungarian
+          |
+          v
+local track ID
+```
+
+它是状态表达的诊断上限，不是可部署输入，也不是真值身份 oracle。当前版本仍有
+`max_age=5`，目标消失超过五帧后会终止 local ID；重新出现时没有长期 ReID，因此即使
+purity 接近 1，IDF1 也会因长间隔后的新 ID 而下降。
+
+相关术语：[[#World Coordinate Tracking / 世界坐标跟踪]]、
+[[#Tracklet Purity and Fragmentation / 轨迹片段纯度与碎片化]]。
+
+---
+
+### BoT-SORT / 成熟局部多目标跟踪器
+
+> 就像一个有完整交接制度的值班室：不仅看“人现在站在哪里”，还维护谁正在值班、谁暂时离开、谁可以在短时间内回来，以及何时正式注销档案。
+
+BoT-SORT 是基于检测结果维护多条局部轨迹的成熟 tracking-by-detection 方法。与本项目
+早期手写 bbox/KF tracker 相比，它提供更完整的 tracked/lost/removed 生命周期、两阶段
+关联、Kalman 预测、可选外观距离和[[#Global Motion Compensation (GMC) / 全局运动补偿]]。
+
+```text
+本帧 bbox + 可选 OSNet feature
+              |
+              v
+      BoT-SORT 生命周期
+  tracked <-> lost -> removed
+              |
+              v
+       每视角 local_track_id
+```
+
+在 `exp_20260802_001` 中，BoT-SORT 是研究基础设施，不是论文核心算法。GT bbox 的
+score 固定为 `1.0`，用于排除 detector error；每架 UAV 外部维护独立 local ID
+namespace，避免 Ultralytics 进程级内部编号泄漏到跨视角身份。
+
+Pilot 进一步揭示当前 Ultralytics 接入的两个边界：`proximity_thresh=0.5` 先将
+`IoU<0.5` 的候选屏蔽出外观比较；OSNet 在剩余候选中作为可降低匹配代价的软线索，
+不是“外观不通过就禁止几何匹配”的硬身份门。因此“启用 ReID”不等于外观可以跨越
+几何候选门，也不等于外观能够否决所有错误几何关联。
+
+相关术语：[[#Local Tracklet / 本地轨迹片段]]、[[#Tracklet Purity and Fragmentation / 轨迹片段纯度与碎片化]]。
+
+---
+
+### Proximity Candidate Gate / 邻近候选门
+
+> 像门卫先按“离得够不够近”筛人，再让工作人员核对证件。门开得太窄会漏掉本人，
+> 开得太宽又会让太多无关人员进入核验。
+
+在当前 BoT-SORT 图像平面关联中，`proximity_thresh` 是 GMC 补偿后的轨迹 bbox 与当前
+detection bbox 的最低 IoU。它决定哪些轨迹-检测对允许使用外观信息，不是 OSNet 相似度
+阈值，也不是 world-XY 距离门。
+
+```text
+旧轨迹 bbox --GMC--> 当前帧预测 bbox
+                              |
+当前 detection bbox ----------+--> IoU
+                                      |
+                IoU >= proximity ----+--> 外观比较候选
+                IoU <  proximity ----+--> 候选外
+```
+
+`exp_20260802_002` 表明：将门从 `0.5` 放宽到 `0.1` 可明显提高同人候选召回和 local
+IDF1；但门本身不能解决错误身份。`p=0.3` 的 hard-gate 候选精度约 `0.9503`，同时
+同人总召回仅 `0.4296`，说明高候选精度不等于长轨迹质量。
+
+相关术语：[[#BoT-SORT / 成熟局部多目标跟踪器]]、[[#Hard Identity Veto / 硬身份拒绝]]。
+
+---
+
+### Hard Identity Veto / 硬身份拒绝
+
+> 软建议是“证件照片不像，仍可按位置放行”；硬拒绝是“证件核验不通过，位置再近也不
+> 允许合并”。
+
+标准 BoT-SORT 中外观通常作为软匹配代价：相似外观可降低代价，但不相似不一定禁止
+几何匹配。本项目的 hard veto 要求候选同时通过几何和 OSNet 身份门：
+
+```text
+IoU 通过? ---- no ----> reject
+    |
+   yes
+    v
+OSNet similarity 通过? ---- no ----> reject
+    |
+   yes
+    v
+允许 BoT-SORT association
+```
+
+它控制的是“能否关联”，不是对 embedding 或 KF 状态施加连续权重。Pilot 中 hard veto
+显著降低串人并提高 purity，但门过严时会造成轨迹碎片化；`p=0.1` 是当前 BoT-SORT 的
+最佳折中，仍未达到 local-tracklet readiness。
+
+相关术语：[[#Proximity Candidate Gate / 邻近候选门]]、[[#Embedding Separation / 嵌入分离度]]。
+
+---
+
+### Global Motion Compensation (GMC) / 全局运动补偿
+
+> 就像在行驶的车上拍视频：画面里所有物体都向后移动，不代表所有人同时在倒着走；先扣掉摄像机自己的移动，才能判断人的真实相对运动。
+
+移动 UAV 会让整幅图像产生共同位移。GMC 从当前图像与历史图像估计相机引起的全局
+二维变换，并在 bbox 关联前先变换已有轨迹预测。本轮固定使用 BoT-SORT 的
+`sparseOptFlow`、`downscale=2`：
+
+```text
+上一帧图像 ---- 特征点匹配 ---- 当前帧图像
+                          |
+                          v
+                 仿射变换 H_camera
+
+旧 track bbox --H_camera--> 当前图像中的补偿预测
+                                  |
+当前 detection bbox --------------+--> BoT-SORT association
+```
+
+GMC 只允许读取当前与过去图像；它不读取 world XY、`person_id` 或 D1 遮挡标签。它
+处理的是相机自运动，不会自动解决目标交叉或长期身份重识别。
+
+相关术语：[[#BoT-SORT / 成熟局部多目标跟踪器]]、[[#Embedding Separation / 嵌入分离度]]。
+
+---
+
+### Mobile-Camera Local Tracklet Readiness / 移动相机局部轨迹就绪
+
+> 就像接力赛前先检查每个队员能否稳定握住自己的接力棒；本地编号都在不断丢失或拿错时，研究跨队交接只会把本地错误误判成通信问题。
+
+在进行异步 global tracklet fusion 前，对每个 UAV 的 local tracker 设置的基础设施门。
+它不是只看 purity，也不是只看平均 IDF1，而是同时要求：
+
+```text
+macro local IDF1                         >= 0.80
+weighted purity                          >= 0.95
+minimum per-view local IDF1              >= 0.70
+D1 遮挡帧正确 active support coverage    >= 0.90
+```
+
+前三项约束本地身份连续性、串人和最差视角；最后一项只在离线评价阶段使用 D1 GT
+遮挡标签，确认当主视角缺证据时确实存在可发送的正确 support tracklet。在线 local
+tracker 不知道 D1 是否遮挡。
+
+相关术语：[[#Local Tracklet / 本地轨迹片段]]、[[#Primary Reacquisition / 主视角重新关联]]。
+
+---
+
+### Appearance Template / 外观模板
+
+> 就像为每条轨迹保存一张“身份参考照”。新观测先和参考照比较，而不是每次都重新猜这个人是谁。
+
+外观模板是 tracker 为每条 track 保存的 embedding 原型，不是 OSNet 的网络权重，也不是 bbox 图像模板。当前代码用归一化向量和 `alpha=0.20` EMA 更新：
+
+```text
+new_template
+= normalize(0.80 * old_template + 0.20 * new_embedding)
+```
+
+当前最佳 `identity_gated_position_only` 是主视角锚定的滚动模板：primary embedding 可以更新模板，support embedding 只用于门控，不写回模板。current-joint 使用主/support 共享单模板；双模板和 gallery 仍是后续设计，尚未实现。
+
+“共享模板”表示不同来源写入同一个 embedding 状态；“相同权重”表示更新时使用相同 EMA `alpha`。当前代码两者同时成立，对 primary/support 都使用 `alpha=0.20`，但它们在设计上可以分开。
+
+```text
+主视角锚定:  D1 ------> template       support ---> gate only
+共享单模板:  D1 --+---> template
+                  |
+             support
+双模板:       D1 ------> primary template
+             support --> support template
+```
+
+完整图解：`ascii_diagrams/08_osnet_identity_gate_and_reacquisition.md`。
+
+---
+
+### Primary Reacquisition / 主视角重新关联
+
+> 就像一个人在拐角处短暂消失，重新出现时，要判断他是不是刚才那个人，而不是给他新建一份档案。
+
+主 UAV 遮挡结束后，将重新出现的 primary observation 接回遮挡前旧 track ID 的过程。成功则身份连续；失败可能新建 track，引起 ID switch 或 fragmentation。
+
+```text
+pre-occlusion track 42
+        |
+     occlusion
+        |
+D1 observation returns
+    |             |
+match track 42    create track 57
+continuity        IDSW / fragmentation
+```
+
+当前实现的 primary association 只使用 world-XY 距离和 Hungarian，阈值为 `1.0m`。appearance embedding 在关联完成后才更新模板，因此 identity-only support update 不能直接改变 primary reacquisition。OSNet 当前通过“选对 support 位置更新目标”间接保持 KF 位置，使旧 track 更容易被几何方式接回。
+
+完整图解：`ascii_diagrams/08_osnet_identity_gate_and_reacquisition.md`。
+
+---
+
+### Covariance-Aware Support Update / 协方差感知支撑更新
+
+> 就像一张地图标注了“这个位置可能误差 25 厘米”，你就不会让它一票否决现场最新记录。
+
+在 Kalman-style tracker update 中，support observation 的 measurement noise 越大，更新位置状态的权威越低。当前 `world_xy + covariance` 变体使用 support pose/world-coordinate noise 作为 measurement noise proxy，让 noisy support 少改 `[x, y, vx, vy]`。
+
+ASCII 图解：
+
+```text
+同一条 support world_xy:
+
+  low noise:
+    support 位置可信
+    tracker state 被明显拉向 support
+
+  high noise:
+    support 位置不太可信
+    tracker state 只被轻微拉动
+
+  作用:
+    降低 noisy coordinate 写回历史状态的破坏力
+```
+
+本轮结论：covariance-only 可以减轻伤害，但不足以跨过 0.25m 边界；它需要和 [[#Identity Gate / 身份门控]] 联合使用。
+
+当前 covariance 只调节 world-XY 对 `[x,y,vx,vy]` 的更新权威。它不调节 identity gate threshold，也不改变 appearance-template EMA 权重。若未来需要控制外观权威，应另设 appearance uncertainty、source-aware alpha 或 gallery admission rule。
+
+---
+
+### Strict Identity-Only Update / 严格只更新身份线索
+
+> 就像你确认“这确实是张三的消息”，但不把消息里的位置直接写进地图，因为位置可能偏了。
+
+当 support observation 的身份相似度通过，但几何 residual 太大、不适合移动 track 位置时，只更新 appearance template 和 identity timestamp。严格版本不修改 `[x, y, vx, vy]`、协方差、`hit_count`、`miss_count`、`last_frame` 或位置生命周期。
+
+```text
+support obs:
+  identity similarity 高
+  geometry residual 大
+
+普通 world_xy update:
+  直接把 noisy 坐标写入 track 位置  -> 风险高
+
+identity-only update:
+  更新 appearance / last_identity_seen
+  不移动 x,y,vx,vy
+  不重置 miss_count
+  不把消息算作一次位置命中
+```
+
+旧代码中的 `identity_only_update` 同时刷新生命周期，因此不能单独证明收益来自身份模板。`exp_20260801_001` 将严格身份更新和生命周期刷新拆开比较。它仍不等价于完整 ReID tracklet stitching。
+
+---
+
+### Track Lifecycle Refresh / 轨迹生命周期刷新
+
+> 就像收到一条“他还在”的消息，档案暂时不归档；这不代表消息里的位置或身份模板一定被采用。
+
+更新 tracker 的存活 bookkeeping，包括 `hit_count`、`miss_count`、`last_frame`、`last_support_seen_frame` 和更新来源。它与 KF 位置更新、appearance template 更新是三个不同动作。
+
+```text
+位置更新:       改 x,y,vx,vy 和 covariance
+身份更新:       改 appearance template
+生命周期刷新:   hit + 1, miss -> 0, 记录最近支撑时刻
+
+三者可以一起发生，也可以严格分开。
+```
+
+生命周期刷新不会重新分配 `track_id`。它是在原 track ID 上记录“又收到一次有效命中”，通常令 `miss_count -> 0` 并推迟轨迹删除。新建 ID 只发生在 observation 无法关联到已有轨迹、tracker 调用 `create_track()` 时。
+
+如果“identity-only + lifecycle”明显优于严格 identity-only，收益可能主要来自让轨迹继续存活，而不是身份模板本身。
+
+---
+
+### Separated Identity-Position Update / 身份与位置分离更新
+
+> 就像一封信里的签名可信但地址模糊：把签名存入身份档案，但只有地址也通过核验时才修改地图。
+
+对同一条 delayed support message 分别判断身份和位置维度，不再整条消息统一接受或丢弃。
+
+```text
+identity gate fail
+    -> reject
+
+identity pass
+    -> update appearance template
+    -> position gate pass?
+         yes: covariance-aware KF update + lifecycle refresh
+         no:  keep identity update only
+```
+
+当前审计保持主视角几何 Hungarian 不变，因此严格 identity-only 失败可能表示“身份状态没有影响输出的通路”，而不是身份信息本身无效。
+
+`exp_20260801_001` 的 formal 结果显示，`separated_update` 没有稳定超过 current-joint；`identity-only + lifecycle` 与 strict identity-only 的差异为 0。与此同时，不写 support 模板的 identity-gated-position-only 最强。这说明“分开更新”只是结构条件，真正需要控制的是 support 外观模板的权威，以及身份状态是否进入后续主视角重关联。
+
+---
+
+### Zero-Noise Headroom Recovery / 零噪声性能空间恢复率
+
+> 就像满分上限是 100、最低基线是 20；新方法得 60 分，真正追回的是剩余 80 分空间中的 40 分，也就是 50%。
+
+用于比较 noisy 方法追回了多少 zero-noise fixed-lag 上限：
+
+```text
+headroom recovery
+= (variant IDF1 - drop IDF1)
+  / (zero-noise fixed-lag IDF1 - drop IDF1)
+```
+
+它比只看绝对 IDF1 更适合判断 tracker 是否仍存在结构上限。本项目当前规则是：simulated-medium 最佳变体在任一过渡延迟恢复率低于 60%，则把简单 KF/Hungarian 与身份输出通路视为下一阶段重点。
+
+---
+
+### Track Fragmentation / 轨迹碎片化
+
+> 就像同一个人的档案被拆成了好几个文件夹，虽然每个文件夹里都有几页对的材料，但整体身份线断了。
+
+同一 GT identity 在一个 episode 或窗口内被分配到多个 `pred_id` 的程度。它和 IDSW 相关但不完全相同：IDSW 关注连续帧之间的身份切换次数，fragmentation 更关注一个目标被拆成多少段轨迹。在遮挡恢复实验中，它用于衡量 re-anchoring 是否减少了 tracklet 断裂。
+
+---
+
+### GitHub CLI Experiment Management / 用 GitHub CLI 管理实验进度
+
+> 就像给每轮实验开一张工单：代码、命令、结果、结论都挂在同一个编号下面，之后回看时不会迷路。
+
+GitHub CLI (`gh`) 适合管理实验推进的“过程记录”和“协作状态”，但不适合直接管理大体积 raw outputs。当前项目里应该用 Git/GitHub 管理：
+
+```text
+应该提交:
+  src/                         实验代码
+  scripts/                     正式 runner / analysis CLI
+  tests/                       回归测试
+  summary_md/                  实验卡、分析报告、当前状态
+  mermaid/                     路线图和实验流程图
+  GLOSSARY.md                  术语定义
+
+不应该提交:
+  outputs/                     大量生成 CSV / 中间输出
+  data/                        数据集
+  weights/                     权重
+  runs/                        临时运行产物
+```
+
+推荐节奏：
+
+```text
+1. 开实验 issue:
+   gh issue create --title "exp_YYYYMMDD_NNN: ..." --label experiment
+
+2. 开分支:
+   git switch -c exp/YYYYMMDD-NNN-short-name
+
+3. 提交实验实现:
+   code + tests + experiment card
+
+4. 跑 smoke / formal:
+   outputs 留在本地或服务器
+
+5. 提交 durable conclusion:
+   summary_md analysis + INDEX/current_status + mermaid/GLOSSARY
+
+6. push / PR:
+   gh pr create 或直接 git push
+```
+
+核心原则：GitHub 记录“你为什么这样做、怎么做、结论是什么”；`outputs/` 保存“原始证据”，但通常不进 GitHub。
+
+---
+
+### OC-SORT / 观测中心排序跟踪
+
+> BoT-SORT 更像“根据上一段运动继续往前猜”；OC-SORT 除了预测，还会回看最近真正看见
+> 目标的位置和方向，在短时漏检后用观测历史重新校正运动。
+
+OC-SORT 是本项目用于区分“BoT-SORT 特定失败”和“数据本身无法跟踪”的成熟局部 tracker
+对照。它仍使用图像 bbox 和 Hungarian 风格关联，但增加 observation-centric momentum 和
+遮挡恢复更新。`delta_t` 控制计算历史观测方向时回看的间隔，`inertia` 控制该方向与当前
+IoU 代价之间的相对影响。
+
+```text
+历史真实 bbox o----o          最近观测方向
+                   \
+漏检帧              x         不把预测框当成真实观测
+                     \
+当前 detection -------?----> OC-SORT 关联与恢复
+```
+
+本轮同时比较 Deep OC-SORT：在 OC-SORT 运动/恢复机制上加入 GMC 和冻结 OSNet 外观代价。
+clean world-XY tracker 只是离线诊断上限，不属于 OC-SORT 的部署输入。
+
+相关术语：[[#Global Motion Compensation (GMC) / 全局运动补偿]]、
+[[#Hard Identity Veto / 硬身份拒绝]]。
+
+---
+
+### Observation-Centric Re-Update (ORU) / 观测中心恢复更新
+
+> 像人从隧道重新出现后，不直接相信隧道里每一步的猜测，而是用“进入隧道前最后一次
+> 看见”和“重新出现”这两个真实位置，重新校正中间的运动方向。
+
+ORU 是 OC-SORT 的遮挡恢复机制。轨迹从 lost 状态重新匹配到 detection 时，它利用最后
+可信观测与当前观测构造虚拟观测序列，逐步重新更新运动状态，降低纯 KF 外推在遮挡后的
+状态偏差。
+
+```text
+最后观测 o ---- 预测 ---- 预测 ---- x 重新出现
+         \_____ ORU 虚拟观测重更新 _____/
+                         |
+                         v
+                 修正后的运动状态
+```
+
+ORU 不等于跨 UAV ReID，也不等于异步 global tracklet fusion。它只是在单 UAV 局部 tracker
+内改善短时漏检后的运动状态与原 ID 恢复。
+
+相关术语：[[#OC-SORT / 观测中心排序跟踪]]、
+[[#Track Fragmentation / 轨迹碎片化]]。
+
+---
+
+### Active Visible Run / 连续活跃可见段
+
+> 像把一场比赛按“运动员仍在场内的连续时间”评分；离场很久后重新入场，不应算作原来
+> 那一段跑动中的失误。
+
+在同一 UAV、同一目标内，将可见检测之间的缺失长度不超过局部轨迹缓存阈值的连续区间
+定义为一个 active visible run。本轮阈值为 `5` 帧：缺失 `5` 帧仍属于同一段，缺失
+`6` 帧及以上则开始新的局部轨迹段。
+
+```text
+可见  可见  缺2帧  可见  缺5帧  可见   缺6帧   可见
+ |----- 同一个 active visible run -----|          |-- 新 run
+                  局部 tracker 负责                 长 gap 后重新开始
+```
+
+该单位用于评价局部 tracker 在“仍应维持短时连续性”的区间内是否串人或碎片化，避免把
+长时间离场后的旧 ID 恢复强行计入 local readiness。阈值应按秒解释；MATRIX 的 5 帧在
+2 FPS 下等于 2.5 秒。
+
+相关术语：[[#Track Fragmentation / 轨迹碎片化]]、
+[[#Observation-Centric Re-Update (ORU) / 观测中心恢复更新]]。
+
+---
+
+### Support Bridge / 跨视角支撑桥
+
+> 主视角看不见某人时，另一台摄像机始终看得见，相当于两段断开的记录之间存在一座可用
+> 的证据桥；有桥不代表系统已经知道怎样正确过桥。
+
+对某个 UAV 的 long gap，如果目标在 gap 内的缺失帧被至少一个其他 UAV 看见，则这些
+跨视角观测形成 support bridge。`support_bridge_coverage_fraction` 是被其他视角覆盖的
+gap 帧数除以 gap 总帧数。
+
+```text
+Primary:  tracklet A ---- X X X X ---- tracklet B
+Support:                 o o o o
+                         \_____/
+                      support bridge
+
+bridge 可用性 = 证据存在
+global stitching = 还要用时间、位置、外观判断 A 和 B 是否同人
+```
+
+`exp_20260802_004` 中 `537/537` 个 long gap 的 coverage 都是 `1.0`。这是 MATRIX
+多视角覆盖带来的离线上限证据，不是 global stitching 成功率，也不能直接推广到双 UAV
+数据。
+
+相关术语：[[#Reacquisition / 重捕获]]、[[#Tracklet / 局部轨迹段]]。
+
+---
+
+### MDMT Dataset / 双无人机多目标跟踪数据集
+
+> 像两架无人机同时拍摄同一片区域，重点检查一侧被遮挡时，另一侧是否能提供身份与轨迹
+> 证据。
+
+本项目本地 MDMT 数据包含 `44` 组双视角序列、`39,678` 张 `1920x1080` 图像和逐轨迹
+XML bbox/遮挡标注。它适合验证真实双无人机 local tracklet 与部分 support bridge，公开
+包中未发现世界坐标、相机位姿、时间戳或 FPS 元数据，因此不能直接替代 MATRIX 的
+world-coordinate OOSM 实验。
+
+当前预检还发现两个视角同号 XML track ID 存在类别冲突。在获得权威跨视角 ID 映射前，
+XML ID 只能用于单视角评价，不能作为 global stitching 的同人真值。
+
+相关术语：[[#Active Visible Run / 连续活跃可见段]]、
+[[#Support Bridge / 跨视角支撑桥]]。
+
+### Dataset-Neutral Tracklet Packet / 数据集无关轨迹消息
+
+> 就像统一规格的快递箱：里面可以装坐标、外观或只装 bbox，但箱子本身不要求货物一定来自某个仓库。
+
+一种不绑定 MATRIX、MDMT 或某种标注格式的固定大小增量消息。必需字段是视角内
+`local_track_id`、捕获帧、最新 bbox、bbox 速度、轨迹长度和生命周期状态；world XY、
+协方差及外观 embedding 均为可选字段。运行时键只定位“哪个序列、哪个视角、哪一帧、
+第几个检测”，不得包含 `person_id` 或 XML identity。
+
+相关术语：[[#Incremental Tracklet Update / 增量式轨迹片段更新]]、
+[[#MDMT Dataset / 双无人机多目标跟踪数据集]]。
+
+### Global Fusion Wire Packet / 全局融合线缆消息
+
+> 就像快递箱过安检后只允许保留一张照片和一张固定格式的运单；仓库内部档案再丰富，也不能偷偷塞进箱子。
+
+`IncrementalTrackletUpdate` 是 local tracker 的内部状态，其中可以同时存在 latest 和
+pooled embedding；wire packet 是真正允许跨 UAV 发送的投影。本轮每包严格包含一个
+embedding，避免 history>1 方法靠发送更多向量获得不公平优势：
+
+```text
+history1 packet:    latest embedding + history_length=1 + 无稳定支撑轨迹身份
+incremental packet: pooled embedding + history_length>1 + 稳定 support local track ID
+共同约束:           每个 active support track 每帧一包，每包一个 float32 向量
+禁止字段:           XML ID、official ID、GT 遮挡标签、world XY
+```
+
+相关术语：[[#Dataset-Neutral Tracklet Packet / 数据集无关轨迹消息]]、
+[[#History-1 Message Equivalence / 单历史消息等价性]]。
+
+### Latest vs Pooled Appearance / 单帧外观与历史聚合外观
+
+> 就像用今天的一张证件照认人，和用过去多张照片合成一份档案认人；后者信息更稳定，但也可能积累早期错误。
+
+`latest appearance` 是 capture frame 当前检测框的 OSNet embedding；`pooled appearance`
+是同一 local tracklet 截至 capture frame 的多个归一化 embedding 均值再归一化。二者都只
+发送一个向量，因此 pooled 的潜在收益来自历史聚合和稳定 local track ID，不来自更高字节
+预算。`has_measurement=false` 的预测帧不得刷新外观证据。
+
+### Primary ReID Stitching / 主视角同视角重连接
+
+> 就像主摄像头自己翻旧相册，把重新出现的人接回旧档案；这件事不需要另一架无人机帮忙。
+
+当主视角 local tracklet 在长 gap 后终止并产生新 local ID 时，只使用主视角冻结 OSNet
+gallery 尝试恢复旧 global ID。它是异步跨视角实验的强基线：只有 support 方法超过它，
+收益才能归因于跨视角信息，而不是普通长期 ReID。
+
+### Published Online ID vs Corrected Internal State / 已发布身份与内部修正状态
+
+> 就像直播字幕已经播出，后台可以修正后续讲稿，但不能假装观众没看过前面的错误字幕。
+
+`published online ID` 是每个 frame 对外输出后不可修改的主视角 global ID；
+`corrected internal state` 是迟到消息按 capture time 重放后得到的内部映射，可改变当前及
+未来输出。完整或 fixed-lag replay 都必须满足 `published_history_rewrites=0`。超过 lag 的
+late recovery 只能从 arrival frame 开始影响后续重连接，不能回写 gap 内已经发布的 ID。
+
+相关术语：[[#Track Replay / 关联重放]]、[[#Fixed-Lag OOSM Update / 固定窗口乱序更新]]。
+
+### Cross-View Identity Mapping / 跨视角身份映射
+
+> 就像两家医院各有自己的病历号；号码相同不代表是同一个人，必须有经过核验的对照表。
+
+将每个视角内部的 local identity 映射到同一 global identity 的评价真值。它只用于训练或
+离线评价，不应直接进入待评算法的在线关联。MDMT 官方 `mango_eval.py` 以两个视角官方
+GT 中的同号 ID 定义真实跨机关联；官方 test GT 的 ID 经坐标核验等于 XML ID `+1`。
+因此 test split 可按官方协议评价 global stitching。官方 test 同号行仍有约 `3.47%`
+类别冲突，需作为标注噪声做敏感性报告，不能把冲突误判为“完全没有映射”。
+
+相关术语：[[#Dataset-Neutral Tracklet Packet / 数据集无关轨迹消息]]。
+
+### MIA-Net / 多重匹配身份认证网络
+
+> 像两名巡逻员各自认人，再拿着一张会随画面变化的地图核对：谁在两个视角中可能是同一个人、哪里缺了一个人、是否需要把另一边的线索补进来。
+
+MDMT 作者提出的同步多无人机跟踪基线。它不是只比较两个 CNN embedding，而是把本地
+ByteTrack 的轨迹、已确认的跨视角公共 ID、[[#Homography / 单应矩阵]]、新旧未匹配
+轨迹的投影关联、[[#Target Supplementation / 目标补全]]和 NMS 串成逐帧闭环。它的同步
+表现先作为异步研究的可信上限；只有 `delay=0` 能复现，才讨论任何延迟消息如何进入
+global tracker。
+
+### Packet Interface Equivalence / 消息接口同步等价
+
+> 像先把两人面对面交接的纸质流程拆成四份可邮寄的单据，再确认同城即时送达时，结果和原来手递手完全一样；否则以后看到的差异无法判断是邮寄慢造成的，还是拆单据时把流程改坏了。
+
+把集中式同步 MIA-Net 中的跨视角信息显式投影为 `LocalTrackPacket`、
+`HomographyPacket`、`IDStatePacket` 和 `SupplementPacket`，并强制
+`arrival_frame = capture_frame` 的验证。它要求 packetized 运行与冻结作者运行在每个 pair、
+每个视角的 JSON 文件、MOTA、IDF1、IDSW 和 MDA 上都精确相同。
+
+这个门检验的是接口重构是否保持算法语义，**不**检验通信延迟是否有害。消息负载必须可独立
+复制和序列化，且不含 XML/官方 GT identity；不过作者 ByteTrack 的跨视角 ID 写回存在历史
+进程内状态反馈，因此零延迟兼容路径必须首先保留该原始反馈语义。完成同步等价后，才能逐一
+把 Local Track、单应矩阵、ID state 和 supplementation 改成真正的延迟状态通道。
+
+相关术语：[[#MIA-Net / 多重匹配身份认证网络]]、[[#Homography / 单应矩阵]]、[[#Target Supplementation / 目标补全]]。
+
+### Active Packet Runtime / 主动消息运行时
+
+> 像不只是把交接单复印一份存档，而是要求下一位工作人员只能按这份复印后再还原的单据继续办事。
+
+Gate A 的 packet trace 只证明“生成并记录单据不影响原流程”；主动消息运行时进一步要求
+状态经过 `JSON serialization -> deserialization` 后，解码对象成为后续 MIA 计算的唯一输入。
+它在 `delay=0` 下仍必须逐 JSON 等价，才可以在后续将 Local Track、单应矩阵、ID state 或
+补全消息各自延迟。为保持作者 ByteTrack 的跨帧语义，NMS 后的融合 ID 与 bbox 必须显式写成
+下一帧 ByteTrack 的 feedback input，而不能依赖 NumPy 数组的共享引用。
+
+相关术语：[[#Packet Interface Equivalence / 消息接口同步等价]]、[[#MIA-Net / 多重匹配身份认证网络]]。
+
+### State-Channel Delay / 状态通道延迟
+
+> 像把一项面对面协作拆成四种不同的快递：现场名单、地图、已确认的同名对照表和临时补单。它们即使都“晚到一帧”，后果也不相同。
+
+在 MIA-Net 中，`Local Track`、`Homography`、`ID state` 与 `Supplement` 分别是本地目标证据、
+跨视角投影几何、跨视角身份映射和当前帧检测补全。异步审计不把它们简化成同一种“延迟观测”：
+
+```text
+Local Track late  -> 当前帧缺远端目标证据，跳过跨视角步骤
+H late            -> 使用最近已到达 H，几何状态随年龄变旧
+ID state late     -> 延迟 ID remap，只允许改变到达后仍存活的轨迹
+Supplement late   -> 帧级补框过期，不能插入已经发布的帧
+```
+
+这一定义用于定位伤害源和级联路径，并不代表四种消息具有相同字节量或同一部署频率。
+
+### Frame Deadline / 帧截止语义
+
+> 像直播字幕：这一秒的字幕来不及就空着，不能把上一秒的字幕当成现在的话，也不能回头篡改已经播出的画面。
+
+对 `Local Track` 和 `Supplement`，capture frame 的内容只在该 frame 的在线截止前有资格参与。
+远端 Local Track 迟到时，本机仍可正常发布自己的结果，但该帧跳过跨视角关联；Supplement 迟到时
+直接过期。这样将“当前帧没有及时证据”的信息损失与“拿旧 bbox 冒充当前 bbox”的错误明确分离。
+
+相关术语：[[#Published Online ID vs Corrected Internal State / 已发布身份与内部修正状态]]。
+
+### Versioned ID Remap / 版本化身份重映射
+
+> 像员工更名通知：晚到的旧通知不能把一个人又改回已经废弃的名字，只能在仍有效的档案上按版本顺序更新。
+
+MIA 的跨视角 ID 统一被编码为 `(view_id, source_track_id, target_track_id, state_version)` 事件，
+而不是可以整体覆盖的旧状态快照。接收端只接受单调递增版本；目标 local track 已终止时，该事件标记
+为 `obsolete`，不创建历史重写。这使 ID-state delay 成为可审计的未来状态更新，而不是隐藏的回放。
+
+### Homography / 单应矩阵
+
+> 像把一张倾斜拍摄的平面地图拉正并贴到另一张地图上：它告诉你 A 视角中的一个点，在 B 视角的大致哪里。
+
+一个 `3×3` 的二维投影变换 `H_AB`，将视角 A 图像平面中的点投影到视角 B 的图像平面。
+MIA-Net 优先用已确认公共 ID 的 bbox 中心点经 RANSAC 估计；公共点不足时回退到全局
+图像特征匹配或上一帧的 `H`。它解决的是“目标可能在哪里”，不直接证明“目标是谁”。在
+异步研究中，`H` 的 capture-time 与 arrival-time 差异是独立于 tracklet 消息延迟的一类
+几何状态陈旧问题。
+
+### Target Supplementation / 目标补全
+
+> 像一名巡逻员暂时看不到目标时，另一名巡逻员把自己看到的人按地图投影到他这边；只有这边的检测也支持这个位置，才补上一条记录。
+
+MIA-Net 将一个视角的未匹配 bbox 投影到另一视角，并以与该视角检测结果的 IoU 验证后
+加入 tracking results，再通过 NMS 去重。它会改变当前帧的检测/轨迹集合，因此与只改变
+跨视角 ID 映射不同：异步补全会同时影响漏检、误检、MOTA 和身份指标。后续必须单独研究
+它的延迟，不能和 `H` 或 ID state 延迟混成一个结论。
+
+### MDMT XML ID and Official TXT ID / MDMT XML 与官方 TXT 身份号
+
+> 就像同一名学生在原始花名册编号为 0，在提交给考试系统时编号改成 1；人没有变化，只是编号格式变了。
+
+MDMT `new_xml/<view>/<sequence>-<view>.xml` 中，`track id` 是原始 GT 身份号，通常从
+`0` 开始。官方 `demo/eval/test/*.txt` 和 `demo/txt/gt_true/*.txt` 的第二列也是 GT
+身份号，但从 `1` 开始。对官方 test 的 28 个文件、`600,923` 行做帧与 bbox 精确回连后：
+
+```text
+official_txt_id = xml_track_id + 1
+global_evaluation_key = (sequence_id, official_txt_id)
+```
+
+ID 会在不同 sequence 重新使用，所以不能脱离 `sequence_id` 当作全数据集唯一身份。
+算法产生的 `local_track_id` 或预测 global ID 是另一套编号，不能和 GT ID 混为一谈。
+GT ID 只能用于离线评价，不进入在线关联。
+
+### MDA Protocol / 多设备目标关联评价协议
+
+> 就像核对两家分店的会员合并结果：不只检查各自认人是否正确，还检查两家是否把同一个会员连到了一起。
+
+MDA 是 MDMT 用于评价跨设备身份关联的协议。官方 `mango_eval.py` 在每帧先用两个视角
+GT 中的相同 ID 建立真实关联对，再用两个视角预测结果中的相同 ID 建立预测关联对；只有
+预测框在两个视角都与对应 GT 框达到 `IoU >= 0.5`，该预测关联才算正确。代码中的逐帧
+关联分数为：
+
+```text
+TA = 正确跨视角关联数
+FA = 预测了但关联错误的数量
+MA = GT 中存在但没有正确关联的数量
+AAS_frame = TA / (GA + FA + MA)
+```
+
+最后对帧求平均。官方文档称整体能力为 MDA，代码把核心输出命名为 AAS；两者在仓库中
+存在命名不完全一致，论文撰写时应明确写成“official MDA evaluation, implemented by
+`mango_eval.py` AAS”。
+
+相关术语：[[#Cross-View Identity Mapping / 跨视角身份映射]]、
+[[#MDMT XML ID and Official TXT ID / MDMT XML 与官方 TXT 身份号]]。
+
+### Reject-All Threshold / 全拒绝阈值
+
+> 就像门禁无法找到可靠的识别分数线时，先把门锁住，而不是把所有人都放进来。
+
+当校准数据中不存在满足最低 precision 的相似度阈值时，使用高于余弦相似度上限的
+sentinel（当前为 `1.000001`），使所有候选都被拒绝。它把“外观线索不可校准”与
+“低阈值强行融合”分开，避免失败的 embedding 污染 global ID。相关术语：
+[[#Identity Accept Threshold / 身份接受阈值]]。
+
+### Receiver-Side Appearance Gallery / 接收端外观库
+
+> 就像每次只寄一张证件照，但收件人把最近几张照片留在相册中，之后可以逐张比对。
+
+Support 每条消息仍只传一个 embedding；global tracker 在接收端保存最近 `K` 个历史
+向量，并使用最大相似度或 Top-k 平均相似度关联候选。它增加接收端状态量，但不增加
+单包 embedding 数量，区别于一次发送多个外观向量。
+
+### Synchronous Support Headroom / 同步支撑性能空间
+
+> 就像先确认面对面递交资料确实有帮助，再研究快递晚到会损失多少价值。
+
+在 `delay=0` 时，跨视角 support 相对最强主视角基线仍可获得的 gap survival、AAS 或
+IDF1 净增量。如果 Oracle identity 都没有同步性能空间，继续研究 timestamped replay、
+fixed-lag 或 delay boundary 无法回答有效问题，应先修复 global fusion 或评价通路。
+
+---
+
 ## 当前实验结论速查
 
 | 发现 | 通俗解释 |
@@ -451,7 +2167,45 @@ Group cross-validation。当前 temporal boundary 实验中的 group 是 `(delay
 | 成对反事实测量通过但边界仍未定 | 同一张答卷的 A/B 对照证明提示确实有用，但题目数量还不够，不能画出稳定分数线 |
 | 当前时间边界判为早期帧缺口 | 支撑消息不是只要在遮挡结束前到就够；如果前几帧在线结果已经发布且身份断开，后到的支撑只能影响恢复期 |
 | 在线代理目前还弱 | 它能帮你调阈值，但还不能单独支撑一个复杂策略学习器 |
+| 固定窗口 OOSM 是当前最强缓解机制 | 迟到消息如果还在短窗口内，就补进最近几步；太晚的消息不要硬改已经发布的遮挡期结果 |
+| 固定窗口收益受有效支撑窗口调节 | `delay <= lag` 只是入场资格；如果到达时遮挡期已经快结束或身份线已断，收益仍会被压缩 |
+| 固定窗口存在时间-空间联合边界 | support 来得够早但坐标不准时，fixed-lag 会把噪声写回历史状态；0.10m 仍有收益，0.25m 开始不可靠 |
+| 身份维度能补 0.25m 几何噪声边界 | `world_xy` 和 `covariance-only` 仍不够；`world_xy + covariance + simulated identity` 同时提高 survival 并降低 IDSW |
+| 模拟身份线索存在可测质量边界 | 当前离散边界为 `(0.040019, 0.056747]`，但阈值必须在几何候选内校准 |
+| 身份门控的主要收益是候选授权 | OSNet 用来筛选哪条轨迹可以接受位置更新时最有效；把 support 外观写回共享模板反而降低 survival |
+| 下一阶段采用增量式 local tracklet | 每架 UAV 独立维护轨迹并逐帧发送累计状态；旧 observation 管线作为 history-length-1 机制基线 |
+| 高候选精度不等于持续成轨 | `IoU>=0.3 + hard veto` 的候选精度约 0.95，但只召回约 43% 同人连续对，最终 IDF1 反而更低 |
+| BoT-SORT 最小候选修复仍未就绪 | 放宽到 IoU 0.1 并硬拒绝异人能改善 IDF1/purity，但绝对 IDF1 仍仅约 0.138，应换运动/关联模型对照 |
+| OC-SORT 审计用于定位而非预设胜出 | 同一 GT bbox 下替换运动与恢复机制；clean world-XY 只判断图像状态表达的性能空间，不能授权部署 Formal |
+| 局部就绪不能混同长期重识别 | 当可见性间隔超过 local track buffer 时，新 local ID 可能是合理终止；应把 active-run 连续性与跨长间隔 stitching 分开评价 |
+| 生命周期分层修正了评价但未修好 tracker | clean world-XY active-run IDF1 达到 0.936，但最佳图像 tracker 仍只有 0.373；长 gap 混杂与局部关联失败同时存在 |
+| 跨视角支撑桥不等于拼接成功 | 537 个长 gap 都有完整其他视角覆盖，只证明信息存在；还需单独验证全局时空与外观拼接 |
+| GitHub CLI 应管理实验脉络而非大输出 | issue/branch/PR 管实验进度，summary_md 管 durable conclusion，outputs 只作本地证据 |
+| MDMT 下一阶段比较单帧与增量轨迹消息 | 同发送频率、每包一个向量；只改变稳定 local ID 与历史聚合外观，并以主视角 ReID 作为强基线 |
+| MDMT 异步 Pilot 暴露跨视角外观阻塞 | latest 只有近零召回，cumulative pooled 精度约 0.015；先回到同步条件验证候选与外观记忆 |
+| MIA-Net 同步复现是当前闸门 | 先复现作者的轨迹、几何、身份状态与补全闭环；同步基线可信后，才分开注入 Tracklet、H、ID state 和补全的异步 |
+| 论文对齐复现先于延迟消融 | 同一份代码的阈值、低分补全和宏平均协议都可能改变同步结果；若同步基线不可信，异步增量没有可解释的参照 |
 
 ---
 
-*最后更新: 2026-07-24 | 当前术语数: 48*
+### Paper-Aligned Reproduction / 论文对齐复现
+
+> 就像先确认两份菜谱用的是同一份配方和同一把量勺，再比较哪家厨房做得更好。
+
+对同一公开方法，分别冻结 released code 和只包含论文明确参数的独立副本。它不等于
+“调参追论文分数”：每一个差异都记录 source hash、运行 manifest 和机制影响。当前
+CARAFE+ByteTrack 对齐包含 global homography 的 `>=10` 点条件、新/旧 ID 的
+`50/100 px` 距离、低分检测的 `IoU>0.01` 补全，以及统一的 `0.3` NMS。
+
+### MDA / AAS 宏平均
+
+> 就像先给每一对无人机单独打分，再让每对无人机拥有相同的一票；不能让目标很多的一对把其他对的声音淹没。
+
+作者的 MDA/AAS 先在每个同步帧计算跨设备公共 ID 的正确、错误和漏掉关联，再对帧
+平均为 pair 分数，最后对 14 个 official test pairs 做宏平均。每视角 MOTA/IDF1 同理
+先按序列评估，再对 Drone1、Drone2 和 28 个视角序列分别宏平均。它与
+[[#IDF1 (Identification F1 Score)]]不同，不能互相替代。
+
+---
+
+*最后更新: 2026-08-05 | 当前术语数: 113*

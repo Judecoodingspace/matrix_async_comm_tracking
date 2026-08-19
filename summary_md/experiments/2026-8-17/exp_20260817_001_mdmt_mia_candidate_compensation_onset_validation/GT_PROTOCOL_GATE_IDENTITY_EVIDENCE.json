@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "scope": "Source-only G4 evidence; no tracking or MVE outputs are admissible.",
+  "sources": [
+    {
+      "authority": "official_benchmark_repository",
+      "url": "https://github.com/VisDrone/Multi-Drone-Multi-Object-Detection-and-Tracking/blob/551f90d998087ea2d02df75700e3c7739c4ecbe1/README.md",
+      "sha256": "5e746b5298382fd9e8023f7074184fa22c28fd46fd4e43d4d78700219a53f23e",
+      "observed_fact": "The official README describes the MDMT task as associating identities of objects from different drones and defines MDA as the cross-view association evaluation task."
+    },
+    {
+      "authority": "official_benchmark_evaluator",
+      "url": "https://github.com/VisDrone/Multi-Drone-Multi-Object-Detection-and-Tracking/blob/551f90d998087ea2d02df75700e3c7739c4ecbe1/demo/eval/mango_eval.py",
+      "sha256": "2b9f36a6951b0aad9b2e1e03f5d10273d8c6d99171b1895e8735ad48a69c5fcd",
+      "observed_fact": "The official MDA evaluator forms cross-view ground-truth association pairs only when the two GT target IDs are equal."
+    }
+  ],
+  "claims": {
+    "mdmt_cross_view_identity_association": true,
+    "mda_uses_shared_gt_identity": true,
+    "ids_not_view_local": true
+  },
+  "classification": {
+    "FACT": [
+      "The official task description declares cross-view identity association.",
+      "The official MDA evaluator uses equal GT IDs across the two views when constructing ground-truth association pairs."
+    ],
+    "INFERENCE": [
+      "For this official MDA protocol, IDs participating in equal-ID cross-view pairs are not merely independent per-view labels."
+    ]
+  }
+}

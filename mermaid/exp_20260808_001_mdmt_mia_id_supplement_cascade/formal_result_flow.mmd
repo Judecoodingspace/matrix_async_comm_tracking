@@ -1,0 +1,19 @@
+flowchart LR
+    A["E023 Formal<br/>14 pairs, d1 / d5"] --> G{"40 measurement gates"}
+    G -->|"all pass"| B["ID state delay<br/>harms MDA and IDSW"]
+
+    B --> D1["d1<br/>candidate pathway inconclusive"]
+    B --> D5["d5<br/>candidate-set compensation supported"]
+
+    D1 --> E["Do not claim a universal mechanism"]
+    D5 --> F["Delay-created unmatched candidates<br/>give timely Supplement recovery opportunities"]
+    F --> E
+
+    E --> N["Next<br/>validate the delay boundary on non-test data<br/>then design deployable version-aware compensation"]
+
+    classDef pass fill:#e8f5e9,stroke:#2e7d32,color:#111;
+    classDef mixed fill:#fff3e0,stroke:#ef6c00,color:#111;
+    classDef result fill:#e3f2fd,stroke:#1565c0,color:#111;
+    class G,B pass;
+    class D1,E mixed;
+    class D5,F,N result;

@@ -1,0 +1,27 @@
+flowchart LR
+    A["上一轮<br>0.25m 坐标噪声<br>fixed-lag 变负收益"]:::prev
+    B["本轮 Step 1<br>模拟身份线索消融"]:::current
+
+    B --> C1["world_xy only<br>坐标直接写回"]:::bad
+    B --> C2["world_xy + covariance<br>降低位置权威"]:::partial
+    B --> C3["world_xy + identity<br>帮助选对身份"]:::partial
+    B --> C4["world_xy + covariance + identity<br>身份筛选 + 权威控制"]:::good
+
+    C1 --> E1["结果<br>survival 仍为负<br>IDSW 增加"]:::evidence
+    C2 --> E2["结果<br>伤害变小<br>但仍不稳定"]:::evidence
+    C3 --> E3["结果<br>survival 转正<br>1500ms IDSW 偏高"]:::evidence
+    C4 --> E4["结果<br>survival 转正<br>IDSW 低于 drop"]:::evidence
+
+    E4 --> D["结论<br>身份维度能补<br>0.25m 几何噪声边界"]:::decision
+    D --> N["下一步<br>真实外观线索<br>cue 质量边界<br>checkpoint/resume"]:::next
+
+    A --> B
+
+    classDef prev fill:#fff4df,stroke:#b77a22,color:#332100
+    classDef current fill:#ffe6cc,stroke:#cc5500,stroke-width:3px,color:#241000
+    classDef bad fill:#fff1f1,stroke:#b65757,color:#351616
+    classDef partial fill:#fff8e8,stroke:#b77a22,color:#332100
+    classDef good fill:#eef8ed,stroke:#4f8a54,color:#143018
+    classDef evidence fill:#ffffff,stroke:#999999,color:#222222
+    classDef decision fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#143018
+    classDef next fill:#eef5ff,stroke:#4f78a8,color:#172536

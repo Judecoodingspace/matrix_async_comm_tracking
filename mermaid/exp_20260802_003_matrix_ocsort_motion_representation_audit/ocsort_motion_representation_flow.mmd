@@ -1,0 +1,17 @@
+flowchart LR
+    A[世界常速度诊断] -->|通过| B[GMC 加常速度候选]
+    B -->|召回 0.826| C{Deep OC-SORT 外观权限}
+    C -->|软代价| D[连续性提高<br>身份合并严重]
+    C -->|硬拒绝| E[纯度提高<br>轨迹严重碎片化]
+
+    W[clean world XY] --> X[纯度 0.996<br>IDF1 0.548]
+    G[超过五帧的可见性间隔] -. 解释多数碎片 .-> X
+
+    D --> F[当前配置不就绪]
+    E --> F
+    X --> H[原 readiness 混入长期恢复]
+    F --> I[禁止 Formal]
+    H --> J[当前位置<br>按 active run 与长间隔分层评价]:::current
+
+    classDef current fill:#ffe6cc,stroke:#cc5500,stroke-width:3px,color:#241000
+

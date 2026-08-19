@@ -1,0 +1,27 @@
+flowchart LR
+    subgraph A["闸门A 消息接口"]
+        O["旧单帧 observation"] --> H["history-1 tracklet adapter"]
+        H --> EQ{"逐行精确复现"}
+        EQ -->|失败| X["measurement invalid"]:::fail
+    end
+
+    subgraph B["闸门B 本地轨迹"]
+        I["每架 UAV<br>GT bbox + OSNet"] --> L["独立 local tracker"]
+        L --> T["因果 incremental tracklet"]:::current
+        T --> Q{"IDF1 / purity / causality"}
+        Q -->|Smoke 未通过| Y["当前位置<br>先修移动相机 local tracker"]:::current
+    end
+
+    EQ -->|通过| R["观测级参考已锁定"]:::pass
+    Q -->|通过| S["Tracklet 消息层就绪"]:::pass
+    R --> N["下一轮<br>fixed-lag global tracklet fusion"]:::plan
+    S --> N
+
+    P["聚合信号<br>运动误差下降或外观 margin 提升"] -.-> S
+
+    COV["缓存审计<br>25.59% -> 补齐至 100%"] -.-> I
+
+    classDef current fill:#ffe6cc,stroke:#cc5500,stroke-width:3px,color:#241000
+    classDef pass fill:#eef8ed,stroke:#4f8a54,stroke-width:2px,color:#143018
+    classDef fail fill:#fff1f1,stroke:#b65757,stroke-width:2px,color:#351616
+    classDef plan fill:#eef5ff,stroke:#4f78a8,stroke-width:1px,color:#172536

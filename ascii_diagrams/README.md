@@ -8,9 +8,12 @@
 
 ```text
 Stage A 几何门控        已关闭：作为 harm-boundary 结果保留
-遮挡场景支撑价值        当前主线：D1 被遮挡时，support 是否真的维持身份
-成对反事实测量          已通过 0-199 校准：测量有效，但边界欠定
-下一步                  扩展到 0-999，判断 delay 与遮挡相对时机的联合边界
+遮挡时间机制            fixed-lag 是当前最强简单机制；收益受 useful window 调节
+时间-空间边界           0.10m support noise 仍有益，0.25m geometry-only 转为有害
+身份维度                covariance + simulated identity 可补 0.25m 几何边界
+最新质量边界            margin 离散区间 (0.040019, 0.056747]，依赖当前压力设置
+当前结论                旧管线是 observation-to-track 机制，不是完整 MVMOT
+下一步                  每架 UAV 独立维护并逐帧发送 incremental tracklet update
 ```
 
 ## 文档顺序
@@ -21,6 +24,8 @@ Stage A 几何门控        已关闭：作为 harm-boundary 结果保留
 4. [成对反事实测量](04_paired_counterfactual.md)
 5. [为什么同一 rho 桶内绝对 delay 仍然重要](05_same_rho_different_delay.md)
 6. [时间边界模型](06_temporal_boundary_model.md)
+7. [当前 Idea 逻辑主线](07_current_idea_mainline.md)
+8. [OSNet 身份门控、外观模板与主视角重新关联](08_osnet_identity_gate_and_reacquisition.md)
 
 ## 通用符号
 

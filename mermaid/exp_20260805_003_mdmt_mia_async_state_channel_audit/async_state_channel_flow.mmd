@@ -1,0 +1,22 @@
+flowchart TD
+  REF[Gate B: active packet sync equivalence] --> CACHE[d0 detector-cache equivalence]
+  CACHE --> P{Pilot: pair 26 and 48}
+  P --> L[Delay Local Track]
+  P --> H[Delay Homography]
+  P --> I[Delay ID state]
+  P --> S[Delay Supplement]
+  L --> LM[Miss deadline: skip cross-view frame]
+  H --> HM[Hold newest arrived H]
+  I --> IM[Apply versioned remap only to live future tracks]
+  S --> SM[Expire stale frame supplement]
+  LM --> C[Measure MDA, MOTA, IDF1, IDSW and packet actions]
+  HM --> C
+  IM --> C
+  SM --> C
+  C --> X[H+ID, ID+S, H+ID+S, all-channel interactions]
+  X --> G{Measurement and repeat gates pass?}
+  G -->|yes| F[Formal: 14 test pairs]
+  G -->|no| D[Repair async semantics; no boundary claim]
+  F --> R{Independent effect or cascade?}
+  R -->|single channel| A[Report channel boundary]
+  R -->|combined loss exceeds singles| B[Report MIA state cascade]

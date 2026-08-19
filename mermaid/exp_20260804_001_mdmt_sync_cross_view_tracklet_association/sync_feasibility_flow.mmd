@@ -1,0 +1,14 @@
+flowchart LR
+    A[可靠本地轨迹] --> B[同步单向量消息]
+    B --> C{Oracle有增量?}
+    C -->|否| D[修复全局融合或评价]
+    C -->|是| E[候选与外观记忆审计]
+    E --> F{精度不低于0.95<br>召回不低于0.10?}
+    F -->|否| G[跨视角外观未就绪]
+    F -->|是| H[真实同步跟踪]
+    H --> I{超过主视角基线?}
+    I -->|否| G
+    I -->|是| J[允许正式测试]
+    N[当前位置<br>代码完成 等待Pilot]:::current --> C
+    classDef current fill:#ffe6cc,stroke:#cc5500,stroke-width:3px,color:#241000
+

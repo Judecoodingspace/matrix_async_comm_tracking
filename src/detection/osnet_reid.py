@@ -14,6 +14,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def strip_checkpoint_prefix(key: object) -> str:
+    """Remove common wrapper prefixes while remaining compatible with Python 3.8."""
+    cleaned = str(key)
+    for prefix in ("module.", "model."):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix) :]
+    return cleaned
+
+
 def _conv_bn_relu(in_channels: int, out_channels: int, *, kernel_size: int, stride: int = 1, padding: int | None = None) -> nn.Sequential:
     if padding is None:
         padding = kernel_size // 2
@@ -119,7 +128,7 @@ def build_osnet_x025(*, checkpoint: Path | None = None, embedding_dim: int = 256
     if checkpoint is not None:
         payload = torch.load(checkpoint.expanduser(), map_location="cpu")
         state_dict = payload.get("state_dict", payload) if isinstance(payload, Mapping) else payload
-        cleaned = {str(k).removeprefix("module.").removeprefix("model."): v for k, v in state_dict.items()}
+        cleaned = {strip_checkpoint_prefix(k): v for k, v in state_dict.items()}
         missing, unexpected = model.load_state_dict(cleaned, strict=False)
         if unexpected:
             raise RuntimeError(f"Unexpected OSNet checkpoint keys: {unexpected[:8]}")
@@ -188,7 +197,7 @@ def build_torchreid_osnet_x025(
         model_dict = model.state_dict()
         loadable = {}
         for key, value in state_dict.items():
-            clean = str(key).removeprefix("module.").removeprefix("model.")
+            clean = strip_checkpoint_prefix(key)
             if clean in model_dict and torch.is_tensor(value) and model_dict[clean].shape == value.shape:
                 loadable[clean] = value
         if not loadable:

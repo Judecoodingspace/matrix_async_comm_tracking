@@ -1,0 +1,19 @@
+flowchart LR
+    A[MDMT 每视角 bbox SORT] --> B[每帧固定大小消息]
+    B --> C1[单帧 latest 外观]
+    B --> C2[增量 pooled 外观和稳定 local ID]
+    C1 --> D1[到达时刻融合]
+    C1 --> D2[捕获时刻重放]
+    C2 --> D3[完整时间戳重放]
+    C2 --> D4[固定窗口更新]
+    C2 --> D5[超窗后仅恢复]
+    D1 --> E[在线主视角 global ID]
+    D2 --> E
+    D3 --> E
+    D4 --> E
+    D5 --> E
+    E --> F{增量消息是否优于单帧?}
+    F -->|通过| G[进入 detector 和通信预算鲁棒性]
+    F -->|不通过| H[审计跨视角外观与同步性能空间]
+    N[当前位置: Val Pilot完成<br>外观校准失败 Formal阻塞]:::current --> H
+    classDef current fill:#ffe6cc,stroke:#cc5500,stroke-width:3px,color:#241000

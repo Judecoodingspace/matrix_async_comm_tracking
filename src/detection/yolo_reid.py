@@ -22,7 +22,10 @@ if str(SRC_ROOT) not in sys.path:
 try:
     from jetson_split_executor import YoloSplitExecutorJetson as YoloSplitExecutor
 except ImportError:
-    from jetson_split_executor import YoloSplitExecutor
+    try:
+        from jetson_split_executor import YoloSplitExecutor
+    except ImportError:  # Optional legacy backend is not part of this repository.
+        YoloSplitExecutor = None  # type: ignore[assignment,misc]
 
 
 BoxXYWH = Tuple[float, float, float, float]
@@ -216,6 +219,11 @@ def feature_roi_xywh(
 
 class FrozenYoloLayerExtractor:
     def __init__(self, *, weights: Path, device: str, layer: int) -> None:
+        if YoloSplitExecutor is None:
+            raise RuntimeError(
+                "Legacy jetson_split_executor is unavailable. Use the direct "
+                "Ultralytics extractor for new experiments."
+            )
         self.layer = int(layer)
         self.executor = YoloSplitExecutor(model_path=weights.expanduser().resolve(), device=torch.device(device))
         self.device = self.executor.device

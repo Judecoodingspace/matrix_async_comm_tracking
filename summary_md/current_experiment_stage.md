@@ -4,6 +4,51 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
 
 ## Current Mainline
 
+### Next Planned Gate: Non-Test Compensation Onset Validation (2026-08-17)
+
+- 新实验契约：`exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation`。
+- 本轮只验证 E023 候选集合补偿在 MDMT 非测试序列上的复现性与 d1-d5 出现区间；不实现
+  version-aware recovery，不重新读取 official test 选择 delay。
+- R1-R3 已完成研究设计答辩并落盘：R1 `APPROVED / RESOLVED_CONDITIONAL`，R2
+  `APPROVED / RESOLVED`，R3 `APPROVED / RESOLVED_WITH_CONTRACT_AMENDMENT`。
+- GT protocol gate 已在 2026-08-19 执行并以 `GT_PROTOCOL_GATE_FAIL` 结束：G1 通过，G2
+  仅 5/28 official-test 文件精确匹配，且 source-derived GT 多出 347 行；test XML 没有
+  `outside=1` 见证。G3-G6 未执行，MVE/tracking 未运行。
+- 当前仅允许独立、重新批准的 source annotation/export protocol 调查；不得以 tracker/MVE
+  结果修补转换规则，也不得继续 non-test GT 或 compensation-onset 实验。
+- R3 契约修订要求：实际 delay-only candidate -> High-score Supplement write-in 至少
+  出现在 `10/15` development pairs，不能只在 pooled 数据中非零。
+- 执行顺序冻结为：Research Decisions resolved -> GT protocol gate -> infrastructure -> two-pair MVE ->
+  development sweep -> locked holdout confirmation -> scientific decision。
+- Contract：
+  `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/EXPERIMENT_CONTRACT.md`
+- Gate report:
+  `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/GT_PROTOCOL_GATE_REPORT.md`
+
+### Latest Update: E023 Cascade Formal Completed (2026-08-14)
+
+- E023 已完成 14-pair Formal；40 项测量门全部通过，`Y00` 严格复现同步参考。
+- `ID state` 延迟在 d1/d5 均造成稳定 MDA 与 IDSW 伤害。
+- d1 的候选集合中介路径不可辨识；d5 支持
+  `candidate_set_mediated_compensation`：延迟产生的 unmatched candidate 为及时 Supplement
+  提供恢复机会，oracle edge-cut 反而降低 MDA。
+- 当前阶段不是实现 joint transaction。下一步是在非测试数据上验证该补偿机制的延迟边界，
+  然后设计不使用 oracle shadow、不可改写历史的版本感知恢复机制。
+
+### Previous Update: Formal Channel Audit Completed (2026-08-08)
+
+- Gate A (`exp_20260805_001`) 已完成 14-pair 严格同步等价：其 packet 仅为旁路审计，作者原始
+  进程内对象仍驱动 MIA。
+- `exp_20260805_002_mdmt_mia_active_packet_runtime_equivalence` 已在 Pair-26、Pair-48 与 14-pair
+  Formal 逐 JSON 等价通过；`packetized_active_sync` 的 Local Track、H、ID state 与 Supplement
+  均经过 JSON roundtrip，并显式将 NMS 后 ID/bbox 写回下一帧 ByteTrack。
+- `exp_20260805_003_mdmt_mia_async_state_channel_audit` 已完成 14-pair Formal，测量门全部通过，
+  决策为 `coupled_state_cascade_identified`。Local 与 Supplement 使用帧截止语义；H 使用最近
+  已到达矩阵；ID 使用版本化、未来生效的 remap 事件。
+- Formal 结果需要分开解释：Local Track 是上游流程阻断，`all_channels` 近似 `local_only`；
+  ID state 对 IDSW/IDF1 最敏感；Supplement 主要影响 MDA；5 帧延迟下 ID state 与 Supplement
+  出现稳定组合级级联。当前下一步是联合状态事务与有限窗口更新，不是继续扩大同一套延迟矩阵。
+
 - The old M3OT ReID-only Backfill direction was rejected.
 - The active question is how asynchronous communication of pose/world-coordinate
   observations affects persistent multi-UAV multi-object tracking.
@@ -18,6 +63,92 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
   margin is the best geometry-only variant, but support marginal value remains
   negative under noisy world-coordinate support. The geometry-only Stage A
   condition is now closed as a harm-boundary result.
+- Scope transition on 2026-08-01: the completed line is explicitly classified
+  as observation-level asynchronous fusion. The active next stage is
+  **incremental local-tracklet update**: every UAV independently maintains a
+  causal local tracklet and emits its current state every frame. It does not
+  wait for tracklet termination.
+- Incremental-tracklet foundation smoke is implemented. Gate A exactly
+  reproduces the observation-level reference, and no-GT/causality checks pass.
+  Gate B is currently blocked: bbox-only local tracking merges identities
+  (IDF1/purity `0.248/0.329`), while bbox+OSNet is pure but highly fragmented
+  (IDF1/purity `0.074/0.959`). The active task is therefore mobile-camera
+  local-tracker repair, not global asynchronous tracklet fusion.
+- The first repair experiment is implemented as
+  `exp_20260802_001_matrix_mobile_camera_local_tracklet_readiness`. It compares
+  mature BoT-SORT lifecycle with GMC and frozen OSNet in a 2x2 ablation. Pilot
+  Pilot is complete and all measurement gates pass, but no mature configuration
+  reaches the purity gate. GMC improves IDF1/coverage strongly; OSNet adds
+  almost nothing because the default `IoU>=0.5` proximity mask excludes about
+  `74.3%` of same-person consecutive pairs before appearance comparison.
+  The candidate-generation repair `exp_20260802_002` is now also complete.
+  `IoU>=0.1 + OSNet hard veto` improves IDF1/purity to `0.137546/0.946417`,
+  but no configuration passes readiness. `IoU>=0.3 + hard veto` confirms the
+  precision-recall failure: purity `0.973078`, IDF1 only `0.077409`.
+  The OC-SORT motion/state representation Pilot is complete. World CV error
+  p90 is `0.269m` and GMC+CV IoU>=0.1 candidate recall is `0.826`, so neither
+  non-linear pedestrian motion nor candidate reachability alone explains the
+  failure. Deep OC-SORT soft raises IDF1 to `0.337` but purity falls to `0.479`;
+  hard veto restores purity and severe fragmentation. Clean world-XY reaches
+  purity `0.996` but only IDF1 `0.548`, because the current readiness gate also
+  penalizes local-ID termination across LoS gaps longer than `track_buffer=5`.
+  Lifecycle-stratified readiness is now complete. Clean world-XY active-run
+  IDF1 is `0.935778`, confirming that the old full-sequence gate mixed local
+  continuity with long-gap identity recovery. No image tracker passes the
+  corrected active-run gate: the best continuity variant reaches IDF1
+  `0.373450` with purity `0.433254`, while high-purity variants remain severely
+  fragmented. All `537` long gaps have complete support-view evidence, but no
+  global stitching method has been implemented yet.
+  **Current position: current local Formal remains blocked. Compare one public
+  mobile-camera tracker under the corrected gate and, in parallel, start a
+  minimum asynchronous global-stitching audit.**
+- MDMT transition Gate 0 is now implemented. `tracklet_packets.py` defines a
+  dataset-neutral fixed-size message, and the MDMT adapter runs paired views
+  without runtime identity/world-XY access. Official MDA GT was located for all
+  14 test pairs and imported under `data/MDMT_official_mda_gt/`. Current decision
+  is `adapter_ready_official_mapping_available`. Test global evaluation is
+  authorized, with the 3.47% cross-view class-conflict rate reported as label noise.
+- MDMT person local-tracklet readiness `exp_20260803_001` has completed Pilot and
+  locked official-test Formal. All measurement gates pass. On `124824` visible
+  person detections and `912` active runs, `bbox_sort` reaches IDF1 `0.997229`,
+  purity `0.997500`, IDSW `22`, and fragmentation `20`. Current decision is
+  `person_local_tracklet_ready`. Local tracking no longer blocks the mainline;
+  the active task is a minimum person-only asynchronous incremental-tracklet
+  fusion audit. Cross-view category-conflict sensitivity remains a required
+  evaluation gate.
+- `exp_20260803_002_mdmt_async_incremental_tracklet_fusion` full val Pilot is
+  complete. All 14 implementation-level measurement gates pass, but appearance
+  calibration is blocked: pooled cue precision is `0.014642` in both directions,
+  V2-primary same-view ReID precision is `0.022989`, and latest cross-view recall
+  is effectively zero (`0.000079/0.000119`). The current output label
+  `measurement_invalid` conflates valid measurement plumbing with failed cue
+  calibration. **Current position: official-test Formal is not authorized. Fix
+  reject-all fallback and run a candidate-conditioned tracklet appearance audit
+  before any delay sweep.**
+- `exp_20260804_001_mdmt_sync_cross_view_tracklet_association` remains an
+  appearance-only negative baseline. The V1->V2 val branch also needs an empty
+  primary-person stream guard before it can be formally closed, but it is no
+  longer a mainline blocker.
+- The active mainline is `exp_20260804_003_mdmt_mia_carafe_paper_alignment_reproduction`.
+  It keeps `delay=0` and audits the published CARAFE+ByteTrack parameter
+  protocol in an isolated source copy before any full-test or async conclusion.
+  Pair-26 is a mechanism/evaluator audit; only the 14-pair macro result can be
+  compared with Table III. `Tracklet`, homography, ID-state and supplementation
+  delay ablations remain explicitly blocked.
+- The preceding `exp_20260804_002_mdmt_author_mia_sync_reproduction`.
+  It first freezes and reproduces the authors' synchronous MIA-Net under its
+  required legacy stack, using the existing MDMT data and detector checkpoint.
+  No delay, custom ReID replacement, or message-interface refactor is allowed
+  until the local/global/no-supplementation/full-MIA synchronous comparison is
+  deterministic and evaluated with the author MDA/AAS protocol.
+  The isolated environment and one-image tracker smoke are valid. The author
+  local, global-matching, and full-MIA entries all completed test pair 26 with
+  two 300-frame JSON outputs. The author-compatible evaluator reports AAS/MDA
+  `0.226674` for local/global and `0.266068` for full MIA. This is only a
+  pair-level functional result: full MIA improves cross-view association but
+  lowers view-2 IDF1 and raises view-2 IDSW. Batch evaluation over all official
+  test pairs is required before accepting the synchronous baseline or injecting
+  delay.
 
 ## Current Data
 
@@ -45,12 +176,27 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
   - `scripts/analyze_occlusion_temporal_boundary.py`
   - `scripts/analyze_occlusion_temporal_boundary_matched.py`
   - `scripts/analyze_occlusion_online_proxy_readiness.py`
+  - `scripts/phase2_matrix_tracker_state_aware_reanchoring.py`
+  - `scripts/phase2_matrix_identity_cue_quality_boundary.py`
+  - `scripts/phase2_matrix_identity_position_update_separation.py`
+  - `scripts/prepare_matrix_local_tracklet_osnet_cache.py`
+  - `scripts/phase3_matrix_incremental_tracklet_foundation.py`
+  - `scripts/phase3_matrix_mobile_camera_local_tracklet_readiness.py`
+  - `scripts/phase3_matrix_botsort_candidate_gate_repair.py`
+  - `scripts/phase3_matrix_ocsort_motion_representation_audit.py`
+  - `scripts/analyze_matrix_local_tracklet_lifecycle_stratified.py`
 - Support audit helpers:
   `src/tracking/support_audit.py`
 - Tests:
   - `tests/test_matrix_gt.py`
   - `tests/test_temporal_boundary_matched.py`
   - `tests/test_online_proxy_readiness.py`
+  - `tests/test_matrix_reanchoring.py`
+  - `tests/test_matrix_identity_cue_quality_boundary.py`
+  - `tests/test_matrix_incremental_tracklet.py`
+  - `tests/test_matrix_mobile_camera_local_tracklet.py`
+  - `tests/test_matrix_ocsort_motion_representation.py`
+  - `tests/test_matrix_local_tracklet_lifecycle_stratified.py`
 
 ## Latest Result
 
@@ -63,6 +209,15 @@ summary_md/experiments/2026-7-5/exp_20260705_001_matrix_occlusion_counterfactual
 summary_md/experiments/2026-7-22/exp_20260722_001_matrix_occlusion_temporal_boundary_expansion.md
 summary_md/experiments/2026-7-22/exp_20260722_002_matrix_temporal_boundary_matched_diagnostics.md
 summary_md/experiments/2026-7-24/exp_20260724_001_matrix_early_frame_online_proxy_readiness.md
+summary_md/experiments/2026-7-24/exp_20260724_002_matrix_tracker_state_aware_reanchoring.md
+summary_md/experiments/2026-7-26/exp_20260726_001_matrix_fixed_lag_useful_window_audit.md
+summary_md/experiments/2026-7-26/exp_20260726_002_matrix_fixed_lag_temporal_spatial_robustness.md
+summary_md/experiments/2026-7-26/exp_20260726_003_matrix_fixed_lag_simulated_identity_cue_ablation.md
+summary_md/experiments/2026-7-31/exp_20260731_001_matrix_identity_cue_quality_boundary.md
+summary_md/experiments/2026-8-2/exp_20260802_001_matrix_mobile_camera_local_tracklet_readiness.md
+summary_md/experiments/2026-8-2/exp_20260802_002_matrix_botsort_candidate_gate_repair.md
+summary_md/experiments/2026-8-2/exp_20260802_003_matrix_ocsort_motion_representation_audit.md
+summary_md/experiments/2026-8-2/exp_20260802_004_matrix_local_tracklet_lifecycle_stratified_readiness.md
 ```
 
 Latest causal/counterfactual result:
@@ -103,6 +258,54 @@ Latest causal/counterfactual result:
   `0.889655`, but episode-level AUC improves only from `0.964606` to
   `0.967811`. Frame-level M5 AUC is strong (`0.969113`), but this is not enough
   to justify full policy learning yet.
+- Tracker-state-aware delayed re-anchoring formal `0-999` is complete. Current
+  decision is `fixed_lag_sufficient`: at `1000ms`, state-aware and
+  `fixed_lag_oosm_lag2/3/5` all reach occlusion IDF1 `0.870100` / IDSW `829`,
+  versus drop-delayed IDF1 `0.052011` / IDSW `5084`; at `1500ms`, state-aware
+  and `fixed_lag_oosm_lag3/5` reach IDF1 `0.724058` / IDSW `2101`. The method
+  signal is strong, but the current state-aware rule does not exceed the best
+  fixed-lag ablation.
+- Fixed-lag useful support window audit is complete. Current decision is
+  `useful_window_modulated_fixed_lag`: eligible useful-window buckets have
+  survival delta spread `0.382940`, with `[0,0.25)` at `0.000000`,
+  `[0.5,0.75)` at `0.203212`, and `[0.75,1]` at `0.382940`. Therefore
+  `delay <= lag` is an eligibility condition, not a guarantee of gain.
+- Fixed-lag temporal-spatial robustness audit is complete. Current decision is
+  `temporal_spatial_boundary_identified`: high useful-window fixed-lag remains
+  useful at `0.10m` support world-coordinate noise (`fixed_2` occlusion IDF1
+  delta `0.107354`, `fixed_3` `0.094543`), but at `0.25m` survival delta turns
+  negative (`fixed_2` `-0.077936`, `fixed_3` `-0.078924`) and IDSW becomes
+  worse than drop-delayed.
+- Simulated identity cue ablation is complete. Current decision is
+  `identity_dimension_supported`: at `0.25m` support noise, high useful-window
+  `world_xy` fixed-lag remains harmful (`fixed_2` survival delta `-0.077936`,
+  `fixed_3` `-0.078924`), covariance-only is still insufficient, while
+  `world_xy + covariance + simulated identity` restores positive survival and
+  lowers IDSW below drop at both transition delays. Medium cue gives
+  `fixed_2` survival delta `0.289408` / IDSW delta `-4.327869` and `fixed_3`
+  `0.167618` / `-1.333333`.
+- Identity cue quality boundary formal is complete. Current decision is
+  `quality_boundary_identified`. All measurement gates pass, all `30/30`
+  condition checkpoints are complete, and the previous medium condition is
+  reproduced exactly. The minimum passing tested mean same/different margin is
+  `0.056747` at threshold `0.20`; the next lower fully tested margin `0.040019`
+  fails at all five thresholds. The discrete boundary is therefore
+  `(0.040019, 0.056747]` under the current simulated generator and MATRIX
+  pressure setting.
+- Real embedding quality transfer formal is complete. Current decision is
+  `tracking_transfer_supported` and `boundary_consistent`. M3OT-GeM margin
+  `0.032300` is below the simulated boundary and fails. OSNet margin `0.124401`
+  is above it; covariance + appearance passes both 1000ms and 1500ms with
+  survival delta `0.185434/0.090150` and IDSW delta
+  `-2.931694/-0.338798`.
+- Identity/position/lifecycle update separation formal is complete. Decision is
+  `identity_gate_only_supported`; all `34/34` checkpoints and measurement gates
+  pass. `identity_gated_position_only` is best: OSNet occlusion IDF1 is
+  `0.386625/0.305918`, and simulated-medium is `0.638227/0.509608` at
+  `fixed_2/fixed_3`. Separated update has no stable gain, lifecycle-only has
+  exactly zero effect, and simulated-medium recovers `71.66%/68.09%` of the
+  zero-noise headroom. The current evidence points to identity candidate
+  selection and support-template authority, not lifecycle bookkeeping.
 
 Previous Stage A result:
 
@@ -171,14 +374,12 @@ boundary reference**, not as a required IDF1 lower bound.
 
 Immediate next action:
 
-1. Run a threshold-calibrated action-readiness audit using M1 and M5
-   out-of-fold probabilities. The question is whether M5 can keep more helpful
-   support at the same harmful-accept rate, especially around 1000ms and
-   1500ms.
-2. Keep `rho_episode` as a post-hoc diagnostic only; it is not an online gate
-   input.
-3. After action-threshold calibration, add pose/world-coordinate noise and test
-   whether `v*delay/gate_radius` becomes a third boundary dimension.
+1. Keep GMC fixed and audit `proximity_thresh={0.1,0.3,0.5}` candidate recall.
+2. Compare standard BoT-SORT soft appearance cost with an explicit OSNet hard veto.
+3. Rerun the `0-199` Pilot; do not use the fallback config as a passing config.
+4. Only after at least one mature variant passes all four readiness thresholds,
+   compare history-1 observation packets with history>1 incremental tracklet
+   packets in asynchronous global fusion.
 
 Deferred multi-cue mainline:
 

@@ -55,7 +55,7 @@ flowchart TD
         E8["结论<br>500ms 有强在线价值<br>1000ms 后快速下降"]:::evidence
         S8 -.-> E8
 
-        S9["成对反事实测量校准"]:::pass
+        S9["成对反事实测量校准"]:::passbriefing:
         E9["标准<br>Run A 复现 mismatch 0<br>mask mismatch 0<br>不使用真值身份修轨迹"]:::evidence
         S9 -.-> E9
     end
@@ -74,35 +74,117 @@ flowchart TD
         E11["结论<br>当前机制为 early-frame gap<br>早期发布帧缺 support 是主因"]:::evidence
         S11 -.-> E11
 
-        CURRENT["当前位置<br>online proxy readiness 已执行<br>结论 online_proxy_weak"]:::current
-        EC["证据<br>M5 F1 提升 0.076<br>AUC 只提升 0.003<br>frame proxy 强但 episode ranking 增量不足"]:::currentEvidence
-        CURRENT -.-> EC
+        S12["online proxy readiness 完成"]:::partial
+        E12["结论<br>online_proxy_weak<br>proxy 可校准阈值<br>但不足以直接进入 policy learning"]:::evidence
+        S12 -.-> E12
     end
 
     S10 --> S11
-    S11 --> CURRENT
-    CURRENT --> N1
+    S11 --> S12
+    S12 --> T1
 
-    subgraph G5["下一步计划"]
-        N1["动作阈值校准审计"]:::plan
-        EN1["标准<br>同等 harmful accept 下<br>M5 保留更多 helpful support<br>重点 1000ms 和 1500ms"]:::planEvidence
-        N1 -.-> EN1
+    subgraph G5["阶段C 跟踪机制缓解"]
+        T1["tracker-state-aware reanchoring 已执行<br>结论 fixed_lag_sufficient"]:::pass
+        ET1["证据<br>1000ms fixed-lag/state-aware IDF1 0.870 IDSW 829<br>1500ms IDF1 0.724 IDSW 2101<br>state-aware 与最佳 fixed-lag 打平"]:::evidence
+        T1 -.-> ET1
 
-        N2["加入坐标噪声和空间陈旧"]:::plan
-        EN2["标准<br>验证 v delay 除以 gate radius<br>是否成为第三维边界"]:::planEvidence
-        N2 -.-> EN2
+        T2["fixed-lag useful-window audit 已执行<br>结论 useful_window_modulated_fixed_lag"]:::pass
+        ET2["证据<br>eligible bucket survival spread 0.383<br>delay 小于等于 lag 只是资格<br>不是收益保证"]:::evidence
+        T2 -.-> ET2
 
-        N3["消息内容消融"]:::plan
-        EN3["标准<br>坐标 bbox pose 身份线索<br>作为信息维度贡献不同"]:::planEvidence
-        N3 -.-> EN3
+        T3["fixed-lag 加坐标噪声 已执行<br>结论 temporal_spatial_boundary_identified"]:::pass
+        ET3["证据<br>0.10m 仍有正收益<br>0.25m survival delta 转负<br>说明窗口足够也会被坐标噪声污染"]:::evidence
+        T3 -.-> ET3
+
+        T4["模拟身份线索消融 已执行<br>结论 identity_dimension_supported"]:::pass
+        ET4["证据<br>world_xy 在0.25m仍为负<br>covariance加identity 转正<br>并降低 IDSW"]:::evidence
+        T4 -.-> ET4
+
+        T5["身份质量边界 已完成<br>边界 (0.0400, 0.0567]"]:::pass
+        ET5["证据<br>最低通过 margin 0.0567<br>完整失败 margin 0.0400"]:::evidence
+        T5 -.-> ET5
+
+        T6["真实外观迁移 已完成"]:::pass
+        ET6["证据<br>M3OT 低于边界并失败<br>OSNet 高于边界并通过<br>covariance 加 appearance 两个延迟均有效"]:::evidence
+        T6 -.-> ET6
+
+        CURRENT["身份位置生命周期审计完成<br>身份门控位置更新最佳"]:::pass
+        EC["证据<br>OSNet IDF1 0.387 / 0.306<br>模拟身份恢复 72% / 68% 性能空间<br>生命周期效应为零"]:::evidence
+        CURRENT -.-> EC
     end
 
-    N1 --> N2
-    N2 --> N3
+    T1 --> T2
+    T2 --> T3
+    T3 --> T4
+    T4 --> T5
+    T5 --> T6
+    T6 --> CURRENT
+    subgraph G6["阶段D 增量式本地轨迹更新"]
+        N1["增量消息接口已通过<br>local tracklet 质量未通过"]:::partial
+        EN1["history=1 零差异<br>bbox-only 串人<br>bbox+OSNet 严重碎片化"]:::evidence
+        N1 -.-> EN1
 
-    SUMMARY["一眼结论<br>已证实迟到观测影响身份跟踪<br>已证实遮挡中短延迟 support 有在线价值<br>已证实 episode rho 过粗<br>当前不直接进入 policy learning<br>下一步做动作阈值校准"]:::summary
+        N_FIX["成熟局部跟踪适配已实现"]:::partial
+        EN_FIX["BoT-SORT 生命周期<br>GMC 与 OSNet 消融"]:::evidence
+        N_FIX -.-> EN_FIX
 
-    CURRENT --> SUMMARY
+        N_READY["首轮 Pilot 未通过<br>暂缓 Formal"]:::partial
+        EN_READY["GMC 有效但不足<br>默认候选门挡住多数正确对"]:::evidence
+        N_READY -.-> EN_READY
+
+        N2["最小候选修复仍未就绪"]:::partial
+        EN2["p 0.1 改善但 IDF1 仅 0.138<br>p 0.3 高纯度但过碎"]:::evidence
+        N2 -.-> EN2
+
+        N_OC["OC-SORT 审计完成<br>当前配置仍未就绪"]:::partial
+        EN_OC["世界运动与候选召回通过<br>软外观串人 硬外观过碎"]:::evidence
+        N_OC -.-> EN_OC
+
+        N_MOBILE["生命周期分层审计完成<br>局部方法仍未就绪"]:::partial
+        EN_MOBILE["clean world active IDF1 0.936<br>最佳图像方法 0.373<br>537 个长 gap 均有支撑桥"]:::evidence
+        N_MOBILE -.-> EN_MOBILE
+
+        N_MDMT["切换 MDMT 行人局部轨迹"]:::pass
+        EN_MDMT["bbox SORT test IDF1 0.997<br>purity 0.998<br>本地轨迹不再阻塞"]:::evidence
+        N_MDMT -.-> EN_MDMT
+
+        N3["异步增量轨迹 Pilot 阻塞"]:::partial
+        EN3["测量实现通过<br>latest 近零召回<br>pooled 精度仅 0.015"]:::evidence
+        N3 -.-> EN3
+
+        N_SYNC["同步 MIA 论文对齐复现通过<br>Gate A 消息旁路等价通过"]:::pass
+        EN_SYNC["14 pair 宏平均对齐 Table III<br>旁路消息 JSON 严格等价<br>仍禁止 delay"]:::evidence
+        N_SYNC -.-> EN_SYNC
+
+        N_ACTIVE["Gate B 主动消息同步等价通过"]:::pass
+        EN_ACTIVE["14 pair 逐 JSON 等价<br>显式写回下一帧 ByteTrack"]:::evidence
+        N_ACTIVE -.-> EN_ACTIVE
+
+        N4["当前位置<br>分通道异步状态审计"]:::current
+        EN4["Local H ID Supplement<br>固定延迟与级联效应"]:::currentEvidence
+        N4 -.-> EN4
+
+        N5["后续<br>按主导通道设计缓解机制"]:::plan
+        EN5["H 预测或重估<br>ID 固定窗口更新<br>late supplement recovery"]:::planEvidence
+        N5 -.-> EN5
+    end
+
+    CURRENT --> N1
+    N1 --> N_FIX
+    N_FIX --> N_READY
+    N_READY --> N2
+    N2 --> N_OC
+    N_OC --> N_MOBILE
+    N_MOBILE --> N_MDMT
+    N_MDMT --> N3
+    N3 --> N_SYNC
+    N_SYNC --> N_ACTIVE
+    N_ACTIVE --> N4
+    N4 --> N5
+
+    SUMMARY["一眼结论<br>MATRIX 已给出单帧时间风险边界<br>MDMT MIA 同步接口已冻结<br>当前定位四类异步状态的伤害与级联"]:::summary
+
+    N4 --> SUMMARY
 
     classDef title fill:#f2f2f2,stroke:#222222,stroke-width:2px,color:#111111
     classDef pass fill:#eef8ed,stroke:#4f8a54,stroke-width:1px,color:#143018

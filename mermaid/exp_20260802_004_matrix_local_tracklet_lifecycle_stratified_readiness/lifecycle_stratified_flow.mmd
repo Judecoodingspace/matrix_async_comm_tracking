@@ -1,0 +1,20 @@
+flowchart LR
+    A[每视角人物可见帧] --> B{缺失超过五帧}
+    B -->|否| C[Active run]
+    B -->|是| D[Long gap]
+
+    C --> E[局部连续性评价]
+    E --> F[clean world 通过]
+    E --> G[image tracker 未通过]
+
+    D --> H[新 local ID 合理]
+    H --> I[检查其他 UAV 支撑]
+    I --> J[537 个 gap 全覆盖]
+
+    G --> K[比较移动相机 tracker]
+    J --> L[最小 global stitching 实验]
+    K --> M[当前位置<br>两条准备线并行]:::current
+    L --> M
+
+    classDef current fill:#ffe6cc,stroke:#cc5500,stroke-width:3px,color:#241000
+
