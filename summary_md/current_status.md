@@ -1,8 +1,210 @@
 # Current Status
 
-Updated: 2026-08-02
+Updated: 2026-08-19
+
+## Next Planned Experiment
+
+`exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation` 已完成研究计划与文件骨架，
+当前未进入实现。该实验遵循 E023 的 P0 决策：先在非测试数据上验证 d1-d5 候选集合补偿的
+出现边界，再决定是否为非 oracle、版本感知 Supplement recovery 建立独立方法契约。
+
+R1-R3 已完成研究设计答辩：
+
+```text
+R1: APPROVED / RESOLVED_CONDITIONAL
+R2: APPROVED / RESOLVED
+R3: APPROVED / RESOLVED_WITH_CONTRACT_AMENDMENT
+```
+
+R3 的契约修订把机制门从 pooled nonzero write-in 收紧为：实际 delay-only
+candidate -> High-score Supplement write-in 至少出现在 `10/15` development pairs。
+冻结的 d1-d5 扫描选择最早通过完整 Gate A-F 的 onset，而不是幅度最大的 delay。
+
+GT protocol gate 已执行并以 `GT_PROTOCOL_GATE_FAIL` 结束。G1 严格来源审计通过（88 XML），
+但 G2 official-test 精确多重集复现仅 `5/28` 文件通过；其余 23 文件合计有 347 个
+source-derived extra rows，且 test XML 没有 `outside=1` 样本用于验证排除规则。依据
+fail-closed 协议，G3-G6 未执行，未运行 tracking/MVE、development/holdout 或 recovery。
+
+当前仅允许新的、独立批准的 source annotation/export protocol 调查，以解释 extra rows 并
+解决 outside-rule witness 缺失；不得根据任何 tracking/MVE 结果修补转换规则。
+
+计划目录：
+`summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/`
+
+Gate 报告：
+`summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/GT_PROTOCOL_GATE_REPORT.md`
+
+## Latest Formal Result
+
+E023 ID-delay candidate-set cascade Formal 已完成。14 个 official test pair、40 项测量门全部通过，
+`Y00` 与冻结同步参考逐 JSON 等价。ID-state delay 在 d1/d5 均稳定损害 MDA：损失分别为
+`0.013350` 和 `0.025750`。d1 的候选集合路径与额外 Supplement 补偿均不可辨识；d5 则满足
+Pattern B：`R_edge=-0.018329`、`C_comp=0.049913`，说明延迟产生的 unmatched candidate 在
+较长延迟下为及时 Supplement 提供了净补偿机会。正式总决策为
+`heterogeneous_or_unresolved_mechanism`，表示机制随延迟改变，不表示测量无效或没有发现。
+
+本轮关闭原 joint-transaction 解释。下一步不得在 official test 上调 d2/d3 阈值；应先在非测试
+数据上验证补偿路径的出现边界，再设计不读取 oracle shadow 的版本感知 Supplement recovery。
+
+正式分析：
+`summary_md/experiments/2026-8-8/exp_20260808_001_mdmt_mia_id_supplement_joint_transaction/FORMAL_ANALYSIS_REPORT.md`
+
+## Previous Formal Result
+
+`exp_20260805_003_mdmt_mia_async_state_channel_audit` 已完成 14-pair Formal，测量门全部通过，
+正式决策为 `coupled_state_cascade_identified`。结果必须拆开解释：Local Track 的帧截止是最强
+的上游阻断，导致 `all_channels` 在所有延迟下近似 `local_only`；ID state 对 IDSW/IDF1 最敏感；
+Supplement 主要影响 MDA。5 帧延迟下，`ID state + Supplement` 与 `H + ID state + Supplement`
+的 interaction loss 分别为 `0.064116` 和 `0.056203`，bootstrap CI 下界分别为 `0.022113` 和
+`0.019310`，同方向 pair 分别为 `12/14` 和 `11/14`。因此支持存在状态级联，但不支持把
+`all_channels` 解释为四通道均等协同。
+
+正式分析：
+`summary_md/experiments/2026-8-5/exp_20260805_003_mdmt_mia_async_state_channel_audit_analysis.md`
+
+下一步优先研究 `ID state + Supplement` 的联合状态事务、版本冲突和有限窗口更新；保持 Local
+Track timely，避免 Local 上游截止效应掩盖下游机制。之后再处理 Supplement 的 late recovery，
+最后再评估 H 预测/不确定性。
 
 ## Latest Research Focus
+
+`exp_20260805_002_mdmt_mia_active_packet_runtime_equivalence` 已完成 Pair-26、Pair-48 与
+14-pair Formal。Gate B 通过：28 个视角 JSON SHA256 全等，MOTA/IDF1/IDSW/MDA delta 全为 0，
+主动 packet emission/consumption 为 `58718/58718`，feedback chain mismatch 为 0。
+
+当前开始 `exp_20260805_003_mdmt_mia_async_state_channel_audit`：在独立
+`packetized_async_deadline` 变体中对 `Local Track`、`Homography`、`ID state`、`Supplement`
+分别注入 `0/1/2/5/10` 帧固定延迟。Local/Supplement 采用帧截止语义，H 使用最近到达状态，
+ID 使用仅作用未来存活轨迹的版本化 remap。Pilot 已完成，`pilot_ready_formal`；测量门、d0 JSON
+等价和 pair-26/48 的 `all_channels_d5` 重复确定性均通过。当前仅有 2 个 pair 的机制信号，不能
+替代 14-pair Formal。
+
+首次 Pilot 在 `id_state_only_d1` 的 pair-26 第 2 帧中断。根因是作者 `get_matched_ids()` 将
+历史确认但已不在另一视角当前帧出现的 ID 加入 H 的 source 点，却未加入 destination 点，导致
+`cv2.findHomography` 收到不等长点集。异步变体现仅将双侧当前帧均可见的确认 ID 作为 H 对应点。
+旧 Pilot 结果仅保留为失败诊断，不能与修复后条件混合；下一次 Pilot 使用新的 `run-id` 全量重跑，
+并重新通过 `d0` JSON 等价门。
+
+`exp_20260804_003_mdmt_mia_carafe_paper_alignment_reproduction` is the active
+mainline. It extends the completed author pair-26 run without adding delay: an
+isolated paper-aligned source variant audits `>=10` global matches, `50/100 px`
+ID distances, and the paper's low-score supplementation. Pair-26 is first used
+only to validate the patch and evaluator; the decision then depends on a macro
+evaluation over all 14 official test pairs. No asynchronous `Tracklet`, `H`,
+`ID state`, or supplementation message experiment is authorized before this
+synchronous gate completes.
+
+The pair-26 Pilot wrapper stall is fixed. The old live-log monitor launched
+`tail -F | tr | grep` in the background but terminated only `grep`, so the
+wrapper waited after each author condition and never returned control to the
+six-condition Python loop. The wrapper now streams through foreground
+`tee | tr | grep`, preserves the author exit code, and exits naturally at EOF.
+A regression test reproduces the old hang and now passes. The first three
+conditions (`released_mia`, `paper_thresholds_only`, `paper_low_score_only`)
+already have complete two-view JSON outputs; resume should start from
+`paper_aligned_mia`.
+
+The first 14-pair Formal attempt stopped at `paper_aligned_local`, pair 48,
+frame 640 because the released local transform helper called
+`cv2.findHomography` with only three correspondence pairs. A compatibility
+guard now enforces the paper's five-local-match minimum and reuses the previous
+homography when evidence is insufficient or RANSAC is degenerate. The isolated
+variant manifest records this patch and its SHA256. The runner input is also
+isolated by `condition/pair/test`; the previous shared input root had caused
+later tasks to reprocess earlier pairs. Pair 48 local-only validation is the
+next command; the complete Formal must then be rerun from pair-isolated inputs.
+
+The prior `exp_20260804_002_mdmt_author_mia_sync_reproduction` established the
+legacy environment and pair-26 baseline. The alignment Pilot is now complete:
+all six pair-26 conditions have valid two-view JSON/TXT outputs and the released
+MDA/AAS regression is within tolerance. The Pilot is a measurement and mechanism
+audit only; its pair-26 result does not establish full-paper reproduction.
+The isolated 14-pair Formal is complete: all 42 paper-aligned conditions
+finished. Overall paper-aligned MIA reaches MOTA `0.513848`, IDF1 `0.666922`,
+and MDA `0.383154`, within the predefined Table III tolerance. The numerical
+reproduction therefore passes, but the measurement gate remains pending: pair
+55 view 1 has one prediction frame beyond the official GT range, and the
+determinism audit has not yet been run. Do not start asynchronous ablations
+until these two checks are explicitly closed.
+Frozen OSNet cannot supply a usable cross-view appearance-only candidate signal on
+MDMT, so the next gate is an isolated reproduction of the authors' synchronous
+MIA-Net before any further delay sweep. The compatibility workspace is separate
+from this repository, uses Python 3.8 / Torch 1.10 / MMCV 1.5 / MMDetection 2.25.1,
+references the existing data and `epoch_12.pth`, and does not retrain a detector.
+The isolated environment, one-image author tracker smoke, author local/global
+matching, and full MIA pair-26 runs are complete. Each pipeline has two complete
+300-frame JSON outputs. The author-compatible evaluator reports pair-26 AAS/MDA
+`0.226674` for local/global and `0.266068` for MIA. MIA improves the
+cross-view score but lowers view-2 IDF1 and raises view-2 IDSW, so this is a
+functional pair-level result, not yet an accepted synchronous baseline. Batch
+evaluation over all official test pairs is the next action; no delay should be
+injected before that gate is complete.
+
+Verification:
+
+```text
+PYTHONPATH=src:scripts python -m pytest tests/ -q -> 206 passed, 2 skipped
+py_compile shared fusion, sync association module, packet schema and CLI -> passed
+```
+
+The latest evaluation command was:
+
+```bash
+PYTHONPATH=src python scripts/evaluate_mdmt_author_sync.py \
+  --dataset-root /mnt/data/yzm/datasets/Multi-Drone-Multi-Object-Detection-and-Tracking \
+  --official-mda-gt-root data/MDMT_official_mda_gt \
+  --output-dir outputs/20260804_mdmt_author_mia_sync_reproduction_pair26
+```
+
+The evaluator uses only completed author JSON outputs and official MDA GT. It
+does not inject delay or alter the MIA method. Durable details are in
+`summary_md/experiments/2026-8-4/exp_20260804_002_mdmt_author_mia_sync_reproduction_analysis.md`.
+
+The first Pilot attempt stopped during tracking because validation sequence `49`
+has no visible person annotations in V1 after person-only filtering, so the
+`V1->V2` primary packet stream is empty and `min(primary_packets)` raises
+`ValueError`. This is an unhandled empty-stream edge case, not an Oracle or
+appearance result. Calibration checkpoints and 36 tracking checkpoints for
+sequences `22, 36, 46` are preserved. After adding an explicit
+`skipped_no_primary_person` audit row, rerun the same Pilot with `--resume`; do
+not interpret the partial output as a completed experiment.
+
+`exp_20260803_002_mdmt_async_incremental_tracklet_fusion` is implemented on the
+stacked branch `exp/20260803-002-mdmt-async-tracklet-fusion`. It adds a
+dataset-neutral one-embedding wire packet, separate primary/support appearance
+galleries, arrival-time fusion, capture-time replay, fixed-lag update, and
+future-only late recovery. Published online global IDs are immutable.
+
+The complete five-sequence MDMT val Pilot has now finished. All 14 implementation
+measurement checks pass and embedding coverage is `1.0`, but only 3/6 threshold
+rows pass precision `>=0.95`. Both pooled cross-view directions have precision
+`0.014642`; V2-primary same-view ReID has precision `0.022989`; latest cross-view
+cues pass precision only at effectively zero recall (`0.000079/0.000119`). The
+final `measurement_invalid` therefore means calibration failure, not GT leakage,
+causality failure, or packet-schema failure. Formal remains unauthorized
+(`selected_config.json.formal_allowed=false`). Durable analysis:
+`summary_md/experiments/2026-8-3/exp_20260803_002_mdmt_async_incremental_tracklet_fusion_analysis.md`.
+
+The next action is not the official-test command. First separate measurement and
+calibration gates, make failed calibration reject all rather than fall back to a
+near-all-accept threshold, fix the independent AAS bootstrap branch in H1, and
+audit candidate-conditioned latest/pooled/gallery appearance quality.
+
+Verification:
+
+```text
+PYTHONPATH=src python -m pytest tests/ -q -> 195 passed, 2 skipped
+py_compile MDMT dataset/message/fusion/CLI modules -> passed
+git diff --check -> passed
+```
+
+The first full-val Pilot attempt exposed a threshold-search complexity bug after
+printing `sequence=5/5`: each unique similarity threshold rescanned every pair,
+giving near-quadratic work. Implementation version 2 replaces this with one
+stable sort plus cumulative TP/FP counts (`O(N log N)`) and prints each
+direction/cue pair count. A one-million-pair benchmark completes in `0.830s`.
+The old running process must be stopped and restarted because Python has already
+loaded implementation version 1.
 
 `exp_20260803_001_mdmt_local_tracklet_readiness` Formal is complete. The scope is
 MDMT person-only tracking with GT bbox and active-visible-run evaluation. All

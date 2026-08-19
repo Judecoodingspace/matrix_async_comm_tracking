@@ -95,6 +95,7 @@ class _LocalTrack:
     def __init__(self, track_id: int, detection: LocalDetection) -> None:
         self.track_id = int(track_id)
         self.view_id = int(detection.drone_id)
+        self.sequence_id = str(detection.sequence_id)
         self.start_frame = int(detection.frame_id)
         self.last_frame = int(detection.frame_id)
         self.age = 1
@@ -201,6 +202,9 @@ class _LocalTrack:
             miss_count=self.miss_count,
             has_measurement=self.has_measurement,
             sensor_key=self.last_sensor_key,
+            sequence_id=self.sequence_id,
+            capture_time_ms=None,
+            arrival_time_ms=None,
         )
 
 
@@ -239,6 +243,7 @@ class LocalTrackletTracker:
                 {
                     "track_id": track.track_id,
                     "view_id": track.view_id,
+                    "sequence_id": track.sequence_id,
                     "start_frame": track.start_frame,
                     "last_frame": track.last_frame,
                     "age": track.age,
@@ -295,6 +300,7 @@ class LocalTrackletTracker:
             )
             track = _LocalTrack(int(row["track_id"]), synthetic)  # type: ignore[index]
             track.view_id = int(row["view_id"])  # type: ignore[index]
+            track.sequence_id = str(row.get("sequence_id", ""))  # type: ignore[union-attr]
             track.start_frame = int(row["start_frame"])  # type: ignore[index]
             track.last_frame = int(row["last_frame"])  # type: ignore[index]
             track.age = int(row["age"])  # type: ignore[index]

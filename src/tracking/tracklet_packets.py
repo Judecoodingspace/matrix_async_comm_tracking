@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Hashable
+from typing import Hashable, Literal
 
 import numpy as np
 
@@ -66,6 +66,85 @@ class IncrementalTrackletUpdate:
     sequence_id: str = ""
     capture_time_ms: float | None = None
     arrival_time_ms: float | None = None
+
+
+@dataclass(frozen=True)
+class GlobalFusionPacket:
+    """Dataset-neutral wire packet consumed by global tracklet fusion.
+
+    A packet carries exactly one appearance vector. Evaluation identities and
+    dataset annotations deliberately remain outside this schema.
+    """
+
+    sequence_id: str
+    view_id: int
+    source_track_id: int
+    tracklet_id_persistent: str
+    capture_frame: int
+    arrival_frame: int
+    tracklet_start_frame: int
+    history_length: int
+    latest_bbox: tuple[float, float, float, float]
+    bbox_velocity: tuple[float, float, float, float]
+    appearance_vector: np.ndarray | None
+    appearance_kind: str
+    appearance_count: int
+    hit_count: int
+    miss_count: int
+    has_measurement: bool
+    sensor_key: SensorKey | None = None
+
+    @property
+    def age_frames(self) -> int:
+        return int(self.arrival_frame - self.capture_frame)
+
+    @property
+    def embedding_count(self) -> int:
+        return int(self.appearance_vector is not None)
+
+
+def global_fusion_packet_from_update(
+    update: IncrementalTrackletUpdate,
+    *,
+    appearance_kind: Literal["latest", "pooled"],
+    delay_frames: int,
+    persistent_tracklet: bool,
+) -> GlobalFusionPacket:
+    """Project an internal local-tracklet update onto the deployed wire schema."""
+    if appearance_kind == "latest":
+        appearance = update.latest_embedding
+        history_length = 1
+        appearance_count = int(appearance is not None)
+    else:
+        appearance = update.pooled_embedding
+        history_length = int(update.history_length)
+        appearance_count = int(update.appearance_count)
+    persistent_id = (
+        f"{update.sequence_id}:V{int(update.view_id)}:T{int(update.local_track_id)}"
+        if persistent_tracklet
+        else ""
+    )
+    return GlobalFusionPacket(
+        sequence_id=str(update.sequence_id),
+        view_id=int(update.view_id),
+        source_track_id=int(update.local_track_id),
+        tracklet_id_persistent=persistent_id,
+        capture_frame=int(update.capture_time),
+        arrival_frame=int(update.capture_time) + int(delay_frames),
+        tracklet_start_frame=(
+            int(update.tracklet_start_frame) if persistent_tracklet else int(update.capture_time)
+        ),
+        history_length=history_length,
+        latest_bbox=tuple(float(value) for value in update.latest_bbox),
+        bbox_velocity=tuple(float(value) for value in update.bbox_velocity),
+        appearance_vector=None if appearance is None else np.asarray(appearance, dtype=np.float64).copy(),
+        appearance_kind=appearance_kind,
+        appearance_count=appearance_count,
+        hit_count=int(update.hit_count),
+        miss_count=int(update.miss_count),
+        has_measurement=bool(update.has_measurement),
+        sensor_key=update.sensor_key,
+    )
 
 
 @dataclass(frozen=True)

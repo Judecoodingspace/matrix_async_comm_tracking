@@ -1,0 +1,126 @@
+flowchart LR
+    TITLE["实验总路线<br>从回填是否有效<br>收紧为迟到支撑何时值得在线使用"]:::title
+
+    TITLE --> P0
+
+    subgraph G0["阶段0 旧路线证伪"]
+        P0["M3OT 回填主线<br>已关闭"]:::closed
+        P0H["收紧假设<br>全局回填应超过丢弃"]:::note
+        P0T["验证目标<br>确认旧路线是否有净收益"]:::note
+        P0C["结论<br>未超过 drop-delayed"]:::evidence
+        P0R["推进原因<br>排除错误研究起点"]:::reason
+        P0 -.-> P0H
+        P0 -.-> P0T
+        P0 -.-> P0C
+        P0 -.-> P0R
+    end
+
+    P0 --> P1
+
+    subgraph G1["阶段1 MATRIX 机制隔离"]
+        P1["MATRIX GT<br>世界坐标基线"]:::closed
+        P1H["收紧假设<br>先排除 detector / ReID 噪声"]:::note
+        P1T["验证目标<br>分离延迟、遮挡和坐标噪声"]:::note
+        P1C["结论<br>capture-time 优于 arrival-time"]:::evidence
+        P1R["推进原因<br>先确认时间机制存在"]:::reason
+        P1 -.-> P1H
+        P1 -.-> P1T
+        P1 -.-> P1C
+        P1 -.-> P1R
+    end
+
+    P1 --> P2
+
+    subgraph G2["阶段2 遮挡时间边界"]
+        P2["主视角遮挡<br>delay-ratio 审计"]:::closed
+        P2H["收紧假设<br>延迟价值取决于遮挡内到达时机"]:::note
+        P2T["验证目标<br>区分绝对延迟与有效支撑窗口"]:::note
+        P2C["结论<br>rho 是事后诊断量<br>early-frame gap 更关键"]:::evidence
+        P2R["推进原因<br>从整体平均转向可解释时间量"]:::reason
+        P2 -.-> P2H
+        P2 -.-> P2T
+        P2 -.-> P2C
+        P2 -.-> P2R
+    end
+
+    P2 --> P3
+
+    subgraph G3["阶段3 跟踪缓解机制"]
+        P3["fixed-lag + 身份线索<br>已完成"]:::closed
+        P3H["收紧假设<br>lag 只是资格，不保证收益"]:::note
+        P3T["验证目标<br>检验有效窗口、坐标噪声和身份质量"]:::note
+        P3C["结论<br>几何存在时空边界<br>身份线索可恢复部分收益"]:::evidence
+        P3R["推进原因<br>从解释伤害转向缓解伤害"]:::reason
+        P3 -.-> P3H
+        P3 -.-> P3T
+        P3 -.-> P3C
+        P3 -.-> P3R
+    end
+
+    P3 --> P4
+
+    subgraph G4["阶段4 增量 Tracklet 转向"]
+        P4["MATRIX 局部轨迹<br>无法支撑主线"]:::closed
+        P4H["收紧假设<br>support 应先形成稳定 local tracklet"]:::note
+        P4T["验证目标<br>确认移动相机局部轨迹是否可靠"]:::note
+        P4C["结论<br>MATRIX 图像局部方法未就绪<br>MDMT bbox SORT 已就绪"]:::evidence
+        P4R["推进原因<br>避免把 global fusion 失败归因于 local tracker"]:::reason
+        P4 -.-> P4H
+        P4 -.-> P4T
+        P4 -.-> P4C
+        P4 -.-> P4R
+    end
+
+    P4 --> P5
+
+    subgraph G5["阶段5 同步 MIA 与消息接口"]
+        P5["MDMT MIA 同步复现<br>Gate A / Gate B 已通过"]:::closed
+        P5H["收紧假设<br>消息化不能改变作者同步结果"]:::note
+        P5T["验证目标<br>冻结 detector、tracker 和四类状态接口"]:::note
+        P5C["结论<br>14-pair 逐 JSON 等价<br>可安全注入延迟"]:::evidence
+        P5R["推进原因<br>把接口差异与通信延迟分开"]:::reason
+        P5 -.-> P5H
+        P5 -.-> P5T
+        P5 -.-> P5C
+        P5 -.-> P5R
+    end
+
+    P5 --> CURRENT
+
+    subgraph G6["阶段6 当前：异步状态通道审计"]
+        CURRENT["当前阶段<br>Local / H / ID state / Supplement<br>延迟与级联审计已完成"]:::current
+        CH["收紧假设<br>四类消息不是同一种观测<br>应按状态语义处理迟到"]:::note
+        CT["验证目标<br>定位单通道伤害和组合级联"]:::note
+        CC["Formal 结论<br>Local 是上游截止瓶颈<br>ID 对身份最敏感<br>ID+Supplement 在 5 帧有级联"]:::evidence
+        CR["推进原因<br>从现象测量进入针对性缓解"]:::reason
+        CURRENT -.-> CH
+        CURRENT -.-> CT
+        CURRENT -.-> CC
+        CURRENT -.-> CR
+    end
+
+    CURRENT --> NEXT
+
+    subgraph G7["阶段7 下一步：联合状态缓解"]
+        NEXT["计划阶段<br>联合状态事务与有限窗口更新"]:::plan
+        NH["拟收紧假设<br>ID remap 与补全不能独立迟到更新"]:::note
+        NT["拟验证目标<br>降低 conflict / obsolete / expired<br>同时保持在线结果不可回写"]:::note
+        NC["预期结论<br>若成功：状态一致性可缓解级联<br>若失败：进入更强全局恢复方法"]:::evidence
+        NR["推进原因<br>当前最强证据集中在 ID+Supplement"]:::reason
+        NEXT -.-> NH
+        NEXT -.-> NT
+        NEXT -.-> NC
+        NEXT -.-> NR
+    end
+
+    NEXT --> END
+    END["研究边界<br>先解决迟到状态如何进入全局跟踪器<br>再考虑 detector error、抖动、丢包和策略学习"]:::summary
+
+    classDef title fill:#f2f2f2,stroke:#222222,stroke-width:2px,color:#111111
+    classDef closed fill:#eef8ed,stroke:#4f8a54,stroke-width:1px,color:#143018
+    classDef current fill:#ffe6cc,stroke:#cc5500,stroke-width:4px,color:#241000
+    classDef plan fill:#eef5ff,stroke:#4f78a8,stroke-width:1px,color:#172536
+    classDef note fill:#ffffff,stroke:#999999,stroke-width:1px,color:#222222
+    classDef evidence fill:#fff7ef,stroke:#cc5500,stroke-width:1px,color:#241000
+    classDef reason fill:#f6f6f6,stroke:#999999,stroke-dasharray:3 3,color:#333333
+    classDef summary fill:#f2f2f2,stroke:#555555,stroke-width:2px,color:#111111

@@ -1,0 +1,14 @@
+flowchart LR
+    A[MDMT existing data and checkpoint] --> B[Isolated Python 3.8 environment]
+    B --> C[Freeze author source commit]
+    C --> D[Delay 0 author local/global matching]
+    D --> E[Full MIA-Net supplementation]
+    E --> F{Synchronous metrics reproducible?}
+    F -->|No| G[Audit path, resolution, initialization, evaluator]
+    F -->|Yes| H[Freeze synchronous baseline]
+    H --> I[Packet interface at delay 0]
+    I --> J{Equivalent to author baseline?}
+    J -->|No| K[Repair interface before delay]
+    J -->|Yes| L[Study Tracklet then H then ID state delay]
+    C:::current
+    classDef current fill:#ffe6cc,stroke:#cc5500,stroke-width:3px,color:#241000

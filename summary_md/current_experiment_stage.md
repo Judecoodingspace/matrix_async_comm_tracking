@@ -4,6 +4,51 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
 
 ## Current Mainline
 
+### Next Planned Gate: Non-Test Compensation Onset Validation (2026-08-17)
+
+- 新实验契约：`exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation`。
+- 本轮只验证 E023 候选集合补偿在 MDMT 非测试序列上的复现性与 d1-d5 出现区间；不实现
+  version-aware recovery，不重新读取 official test 选择 delay。
+- R1-R3 已完成研究设计答辩并落盘：R1 `APPROVED / RESOLVED_CONDITIONAL`，R2
+  `APPROVED / RESOLVED`，R3 `APPROVED / RESOLVED_WITH_CONTRACT_AMENDMENT`。
+- GT protocol gate 已在 2026-08-19 执行并以 `GT_PROTOCOL_GATE_FAIL` 结束：G1 通过，G2
+  仅 5/28 official-test 文件精确匹配，且 source-derived GT 多出 347 行；test XML 没有
+  `outside=1` 见证。G3-G6 未执行，MVE/tracking 未运行。
+- 当前仅允许独立、重新批准的 source annotation/export protocol 调查；不得以 tracker/MVE
+  结果修补转换规则，也不得继续 non-test GT 或 compensation-onset 实验。
+- R3 契约修订要求：实际 delay-only candidate -> High-score Supplement write-in 至少
+  出现在 `10/15` development pairs，不能只在 pooled 数据中非零。
+- 执行顺序冻结为：Research Decisions resolved -> GT protocol gate -> infrastructure -> two-pair MVE ->
+  development sweep -> locked holdout confirmation -> scientific decision。
+- Contract：
+  `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/EXPERIMENT_CONTRACT.md`
+- Gate report:
+  `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/GT_PROTOCOL_GATE_REPORT.md`
+
+### Latest Update: E023 Cascade Formal Completed (2026-08-14)
+
+- E023 已完成 14-pair Formal；40 项测量门全部通过，`Y00` 严格复现同步参考。
+- `ID state` 延迟在 d1/d5 均造成稳定 MDA 与 IDSW 伤害。
+- d1 的候选集合中介路径不可辨识；d5 支持
+  `candidate_set_mediated_compensation`：延迟产生的 unmatched candidate 为及时 Supplement
+  提供恢复机会，oracle edge-cut 反而降低 MDA。
+- 当前阶段不是实现 joint transaction。下一步是在非测试数据上验证该补偿机制的延迟边界，
+  然后设计不使用 oracle shadow、不可改写历史的版本感知恢复机制。
+
+### Previous Update: Formal Channel Audit Completed (2026-08-08)
+
+- Gate A (`exp_20260805_001`) 已完成 14-pair 严格同步等价：其 packet 仅为旁路审计，作者原始
+  进程内对象仍驱动 MIA。
+- `exp_20260805_002_mdmt_mia_active_packet_runtime_equivalence` 已在 Pair-26、Pair-48 与 14-pair
+  Formal 逐 JSON 等价通过；`packetized_active_sync` 的 Local Track、H、ID state 与 Supplement
+  均经过 JSON roundtrip，并显式将 NMS 后 ID/bbox 写回下一帧 ByteTrack。
+- `exp_20260805_003_mdmt_mia_async_state_channel_audit` 已完成 14-pair Formal，测量门全部通过，
+  决策为 `coupled_state_cascade_identified`。Local 与 Supplement 使用帧截止语义；H 使用最近
+  已到达矩阵；ID 使用版本化、未来生效的 remap 事件。
+- Formal 结果需要分开解释：Local Track 是上游流程阻断，`all_channels` 近似 `local_only`；
+  ID state 对 IDSW/IDF1 最敏感；Supplement 主要影响 MDA；5 帧延迟下 ID state 与 Supplement
+  出现稳定组合级级联。当前下一步是联合状态事务与有限窗口更新，不是继续扩大同一套延迟矩阵。
+
 - The old M3OT ReID-only Backfill direction was rejected.
 - The active question is how asynchronous communication of pose/world-coordinate
   observations affects persistent multi-UAV multi-object tracking.
@@ -71,6 +116,39 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
   the active task is a minimum person-only asynchronous incremental-tracklet
   fusion audit. Cross-view category-conflict sensitivity remains a required
   evaluation gate.
+- `exp_20260803_002_mdmt_async_incremental_tracklet_fusion` full val Pilot is
+  complete. All 14 implementation-level measurement gates pass, but appearance
+  calibration is blocked: pooled cue precision is `0.014642` in both directions,
+  V2-primary same-view ReID precision is `0.022989`, and latest cross-view recall
+  is effectively zero (`0.000079/0.000119`). The current output label
+  `measurement_invalid` conflates valid measurement plumbing with failed cue
+  calibration. **Current position: official-test Formal is not authorized. Fix
+  reject-all fallback and run a candidate-conditioned tracklet appearance audit
+  before any delay sweep.**
+- `exp_20260804_001_mdmt_sync_cross_view_tracklet_association` remains an
+  appearance-only negative baseline. The V1->V2 val branch also needs an empty
+  primary-person stream guard before it can be formally closed, but it is no
+  longer a mainline blocker.
+- The active mainline is `exp_20260804_003_mdmt_mia_carafe_paper_alignment_reproduction`.
+  It keeps `delay=0` and audits the published CARAFE+ByteTrack parameter
+  protocol in an isolated source copy before any full-test or async conclusion.
+  Pair-26 is a mechanism/evaluator audit; only the 14-pair macro result can be
+  compared with Table III. `Tracklet`, homography, ID-state and supplementation
+  delay ablations remain explicitly blocked.
+- The preceding `exp_20260804_002_mdmt_author_mia_sync_reproduction`.
+  It first freezes and reproduces the authors' synchronous MIA-Net under its
+  required legacy stack, using the existing MDMT data and detector checkpoint.
+  No delay, custom ReID replacement, or message-interface refactor is allowed
+  until the local/global/no-supplementation/full-MIA synchronous comparison is
+  deterministic and evaluated with the author MDA/AAS protocol.
+  The isolated environment and one-image tracker smoke are valid. The author
+  local, global-matching, and full-MIA entries all completed test pair 26 with
+  two 300-frame JSON outputs. The author-compatible evaluator reports AAS/MDA
+  `0.226674` for local/global and `0.266068` for full MIA. This is only a
+  pair-level functional result: full MIA improves cross-view association but
+  lowers view-2 IDF1 and raises view-2 IDSW. Batch evaluation over all official
+  test pairs is required before accepting the synchronous baseline or injecting
+  delay.
 
 ## Current Data
 

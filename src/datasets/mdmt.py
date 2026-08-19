@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
 import xml.etree.ElementTree as ET
 
 from tracking.tracklet_packets import DetectionKey, LocalDetection
@@ -287,6 +287,45 @@ def reconcile_xml_to_official_mda(
         "mapping_is_xml_plus_one": int(bool(mapping) and all(global_id == local_id + 1 for local_id, global_id in mapping.items())),
     }
     return mapping, audit
+
+
+def build_cross_view_person_protocol(
+    views: Mapping[int, MDMTViewData],
+    identity_maps: Mapping[int, Mapping[int, int]],
+) -> tuple[set[int], set[tuple[int, int]], list[dict[str, object]]]:
+    """Build strict-identity and frame-consistent person evaluation masks."""
+    labels_by_identity: dict[tuple[int, int], set[str]] = defaultdict(set)
+    labels_by_frame: dict[tuple[int, int, int], set[str]] = defaultdict(set)
+    for view_id, view in views.items():
+        for row in view.annotations:
+            if row.outside or row.local_identity not in identity_maps[view_id]:
+                continue
+            identity = int(identity_maps[view_id][row.local_identity])
+            labels_by_identity[(view_id, identity)].add(str(row.label))
+            labels_by_frame[(view_id, row.frame_id, identity)].add(str(row.label))
+    identities = sorted({identity for _, identity in labels_by_identity})
+    strict = {
+        identity for identity in identities
+        if all(labels_by_identity.get((view_id, identity)) == {"person"} for view_id in views)
+    }
+    frame_consistent: set[tuple[int, int]] = set()
+    frame_ids = sorted({frame for _, frame, _ in labels_by_frame})
+    for frame_id in frame_ids:
+        for identity in identities:
+            if all(labels_by_frame.get((view_id, frame_id, identity)) == {"person"} for view_id in views):
+                frame_consistent.add((frame_id, identity))
+    audit = [
+        {
+            "sequence_id": next(iter(views.values())).sequence_id,
+            "official_person_id": identity,
+            "view1_labels": repr(sorted(labels_by_identity.get((1, identity), set()))),
+            "view2_labels": repr(sorted(labels_by_identity.get((2, identity), set()))),
+            "strict_person_identity": int(identity in strict),
+            "frame_consistent_person_rows": sum(key[1] == identity for key in frame_consistent),
+        }
+        for identity in identities
+    ]
+    return strict, frame_consistent, audit
 
 
 def dataset_inventory_rows(root: Path, *, splits: Iterable[str] = ("train", "val", "test")) -> list[dict[str, object]]:

@@ -1,0 +1,14 @@
+flowchart TD
+    A[Released CARAFE + ByteTrack code] --> B[Create isolated paper-aligned copies]
+    B --> C[Pair-26 mechanism audit]
+    C --> D{Measurement gates pass?}
+    D -->|No| E[Fix parameter patch or evaluator]
+    D -->|Yes| F[Full 14-pair synchronous evaluation]
+    F --> G{Within Table III tolerance?}
+    G -->|Yes| H[Sync baseline reproduced]
+    G -->|No, but MIA beats ablations| I[Functional reproduction only]
+    G -->|No| J[Audit code / protocol divergence]
+    H --> K[Only then delay H, ID state, supplementation]
+    I --> J
+    classDef current fill:#ffe6cc,stroke:#cc5500,stroke-width:3px,color:#241000
+    class C current
