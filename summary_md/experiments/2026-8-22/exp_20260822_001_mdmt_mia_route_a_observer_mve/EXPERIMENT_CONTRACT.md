@@ -5,7 +5,7 @@
 - Experiment ID: `exp_20260822_001_mdmt_mia_route_a_observer_mve`
 - Title: Route A delayed pre-association observation candidate-regeneration observer MVE
 - Type: `MECHANISM_MVE`
-- Status: `PROPOSED / MVE-0 PLANNABLE / MVE-1 BLOCKED_BY_CROSS_VIEW_GEOMETRY_GATE`
+- Status: `MVE-0 COMPLETE / MVE-1 BLOCKED_BY_CROSS_VIEW_GEOMETRY_GATE`
 - Target branch: `exp/20260803-002-mdmt-async-tracklet-fusion`
 - Workspace branch state: `UNKNOWN`; the current filesystem root is not a Git worktree.
 - Parent experiment: `exp_20260808_001_mdmt_mia_id_supplement_joint_transaction` (E023 cascade evidence)
@@ -253,4 +253,3 @@ No result may change these definitions or `r(k)`.
 
 No new blocking research decision is raised by this plan. The active MVE-1
 block is the already-frozen D2 gate, not an unresolved semantic choice.
-
