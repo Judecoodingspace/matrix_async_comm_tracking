@@ -1,0 +1,19 @@
+flowchart TD
+    A["Frozen D1-D3 + source audit"] --> B{"M0 protocol and provenance valid?"}
+    B -->|No| X["STOP: invalid planning/input gate"]
+    B -->|Yes| C["M1 MVE-0 observer plumbing"]
+    C --> D{"Causality and tracker invariance pass?"}
+    D -->|No causal| XC["MVE_INVALID_CAUSALITY_VIOLATION"]
+    D -->|No mutation| XM["MVE_INVALID_TRACKER_MUTATION"]
+    D -->|Yes| E["M2 freeze candidate-independent tube"]
+    E --> F{"Independent causal cross-view geometry?"}
+    F -->|No| G["MVE_INCONCLUSIVE_DUE_TO_GEOMETRY\nSTOP before MVE-1"]
+    F -->|Yes| H["M3 MVE-1 time-aligned candidate regeneration"]
+    H --> I{"Route-A-only new candidate exists?"}
+    I -->|Yes| P["CANDIDATE_REGENERATION_MECHANISM_PRESENT"]
+    I -->|No, observable| N["CANDIDATE_REGENERATION_MECHANISM_NOT_OBSERVED"]
+    I -->|Not observable| O["MVE_INCONCLUSIVE_DUE_TO_OBSERVABILITY"]
+    P --> Z["M4 report only; no automatic Formal/commit"]
+    N --> Z
+    O --> Z
+
