@@ -3,7 +3,7 @@
 ## 1. Document Status
 
 - Experiment: `exp_20260823_001_mdmt_mia_independent_geometry_development`
-- Status: `RD-1_TO_RD-6_HUMAN_FROZEN / M0_BLOCKED_LOCAL_GIT_WORKTREE / M2_NOT_AUTHORIZED`
+- Status: `RD-1_TO_RD-6_HUMAN_FROZEN / M1_MANIFEST_FROZEN / M2_NOT_AUTHORIZED`
 - Governing contract: `EXPERIMENT_CONTRACT.md`
 - Frozen research decisions: G1-G15b in the governing contract
 - Planned endpoint: a complete five-pair geometry-only diagnostic package and

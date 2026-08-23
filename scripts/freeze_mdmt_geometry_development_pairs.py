@@ -45,6 +45,18 @@ def git_value(args: list[str]) -> str:
     return completed.stdout.strip()
 
 
+def optional_git_config(key: str) -> str | None:
+    completed = subprocess.run(
+        ["git", "config", "--get", key],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    value = completed.stdout.strip()
+    return value or None
+
+
 def git_provenance() -> dict[str, object]:
     try:
         branch = git_value(["branch", "--show-current"])
@@ -54,7 +66,13 @@ def git_provenance() -> dict[str, object]:
         raise RuntimeError("M1 requires a usable Git worktree with HEAD provenance") from exc
     if not branch or not commit:
         raise RuntimeError("M1 requires a non-detached Git branch and commit")
-    return {"git_branch": branch, "git_commit": commit, "git_dirty_status": dirty}
+    return {
+        "git_branch": branch,
+        "git_commit": commit,
+        "git_dirty_status": dirty,
+        "remote_source_branch": optional_git_config("geometry.remote-branch"),
+        "remote_source_commit": optional_git_config("geometry.remote-commit"),
+    }
 
 
 def jpeg_names(view_dir: Path) -> list[str]:
