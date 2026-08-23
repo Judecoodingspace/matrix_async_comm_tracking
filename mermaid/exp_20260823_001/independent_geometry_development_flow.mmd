@@ -1,0 +1,22 @@
+flowchart TD
+    A["M0: Contract and provenance freeze"] --> B["M1: Enumerate train pairs<br>seed 7 sample manifest written once"]
+    B --> C{"Manifest frozen before diagnostics?"}
+    C -->|No| X["STOP: invalid selection provenance"]
+    C -->|Yes| D["M2: Independent image-only provider<br>SIFT + matching + RANSAC"]
+    D --> E{"Forbidden input or f_last dependency?"}
+    E -->|Yes| Y["STOP: target-dependent geometry path"]
+    E -->|No| F["M3: Raw diagnostic ledger<br>no threshold verdict"]
+    F --> G["M4: Run all synchronized frames<br>five frozen train pairs only"]
+    G --> H{"Assertions and ledger complete?"}
+    H -->|No| Z["STOP: invalid or incomplete evidence"]
+    H -->|Yes| I["M5: Geometry-only distributions<br>threshold candidate report"]
+    I --> J["STOP for human G15c decision"]
+    J -. "separate authorization only" .-> K["Later Pair 26 and Pair 48<br>formal geometry validation"]
+    K -. "not automatic" .-> L["Later Route A MVE-1"]
+
+    style X fill:#dd4444,stroke:#772222,color:#ffffff
+    style Y fill:#dd4444,stroke:#772222,color:#ffffff
+    style Z fill:#dd4444,stroke:#772222,color:#ffffff
+    style J fill:#ffaa00,stroke:#886600
+    style K fill:#6699bb,stroke:#335588,color:#ffffff
+    style L fill:#6699bb,stroke:#335588,color:#ffffff
