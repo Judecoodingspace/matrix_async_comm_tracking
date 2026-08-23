@@ -1,0 +1,171 @@
+schema_version: 1
+experiment_id: exp_20260823_001_mdmt_mia_independent_geometry_development
+decision_version: rd1-rd6-human-freeze-20260823
+freeze_date: 2026-08-23
+human_frozen: true
+threshold_gate_status: PENDING_HUMAN_G15C
+
+preprocessing:
+  decode_mode: cv2.IMREAD_COLOR
+  expected_dtype: uint8
+  expected_channels: 3
+  decoded_color_convention: BGR
+  explicit_color_conversion: cv2.COLOR_BGR2GRAY
+  sift_input_dtype: uint8
+  resize: NONE
+  forbidden_operations:
+    - crop
+    - histogram_equalization
+    - clahe
+    - denoising
+    - sharpening
+    - masking
+    - target_removal
+    - learned_preprocessing
+    - color_normalization
+    - frame_specific_preprocessing
+
+sift:
+  constructor: cv2.SIFT_create
+  nfeatures: 0
+  nOctaveLayers: 3
+  contrastThreshold: 0.04
+  edgeThreshold: 10
+  sigma: 1.6
+  enable_precise_upscale: false
+  descriptor_type: CV_32F
+  require_opencv_build_information_digest: true
+
+matcher:
+  type: FLANN_KDTREE
+  algorithm: 1
+  trees: 5
+  checks: 50
+  knn_k: 2
+  lowe_ratio:
+    comparator: strict_less_than
+    value: 0.7
+  uniqueness:
+    rule: deterministic_greedy_one_to_one
+    traversal: knnMatch_returned_query_iteration_order
+    forbid_global_reassignment: true
+    forbid_h_conditioned_reselection: true
+
+correspondence:
+  minimum_unique_correspondences_for_h: 11
+  insufficient_support_hard_failure: INSUFFICIENT_UNIQUE_CORRESPONDENCES
+
+ransac:
+  method: cv2.RANSAC
+  reprojection_threshold_pixels: 5.0
+  confidence: 0.995
+  max_iterations: 2000
+  correspondence_dtype: float32
+  rng_seed_per_directional_estimate: 7
+
+homography_normalization:
+  output_dtype: float64
+  required_shape: [3, 3]
+  require_finite: true
+  frobenius_norm_epsilon: 1.0e-12
+  normalization: divide_by_frobenius_norm
+  canonical_sign:
+    pivot: first_row_major_absolute_maximum
+    make_pivot_nonnegative: true
+
+hard_failures:
+  - IMAGE_DECODE_FAILURE
+  - MALFORMED_INPUT_IMAGE
+  - NO_USABLE_DESCRIPTORS
+  - INSUFFICIENT_UNIQUE_CORRESPONDENCES
+  - FIND_HOMOGRAPHY_RETURNED_NONE
+  - H_SHAPE_INVALID
+  - H_NONFINITE
+  - NORMALIZATION_ZERO_NORM
+
+directions:
+  independent_estimation_required: true
+  values:
+    - name: 1_to_2
+      source_view: 1
+      destination_view: 2
+    - name: 2_to_1
+      source_view: 2
+      destination_view: 1
+  inverse_as_estimator_output_forbidden: true
+  combined_frame_direction_denominator: 2_per_synchronized_frame
+  cycle_consistency: DIAGNOSTIC_ONLY
+
+projection_diagnostics:
+  normalized_grid:
+    coordinates: [0.0, 0.25, 0.5, 0.75, 1.0]
+    width: 5
+    height: 5
+    source_pixel_formula: x=u*(W_src-1), y=v*(H_src-1)
+  projective_denominator_epsilon: 1.0e-12
+  destination_inside_boundary_epsilon_pixels: 1.0e-9
+  inside_boundary_is_inclusive: true
+  source_corner_order: [top_left, top_right, bottom_right, bottom_left]
+  projected_area:
+    formula: abs(shoelace_signed_area)/((W_dst-1)*(H_dst-1))
+    nonfinite_corner_value: .nan
+  orientation:
+    area_epsilon_multiplier_of_destination_image_area: 1.0e-12
+    degenerate_status: DEGENERATE
+  validity_role: DIAGNOSTIC_ONLY_PENDING_G15C
+
+reproducibility:
+  cv2_num_threads: 1
+  cv2_opencl_enabled: false
+  cv2_rng_seed_per_directional_estimate: 7
+  peripheral_random_seed: 7
+  repeat_subset:
+    pair: lexicographically_first_selected_pair
+    frame_names: lexicographically_first_10
+    directions: both
+    repeat_count: 1
+  exact_fields:
+    - pair_id
+    - frame_id
+    - direction
+    - image_src_digest
+    - image_dst_digest
+    - config_digest
+    - provider_code_digest
+    - hard_failure_code
+    - H_available
+    - H_shape
+    - H_finite
+    - num_keypoints_src
+    - num_keypoints_dst
+    - num_knn_pairs
+    - num_tentative_matches
+    - num_unique_matches
+    - num_ransac_inliers
+    - selected_correspondence_digest
+    - ransac_inlier_mask_digest
+  floating_comparison:
+    rtol: 1.0e-10
+    atol: 1.0e-12
+    equal_nan: true
+  failure_verdict: REPRODUCIBILITY_ACCEPTANCE_FAIL
+
+forbidden_dependencies:
+  - xml
+  - gt
+  - mda_gt
+  - target_bbox
+  - tracker_row
+  - tracker_id
+  - matched_id
+  - candidate
+  - S_cf
+  - f
+  - f_last
+  - previous_h
+  - history
+  - future_frame
+  - pair_26
+  - pair_48
+  - val
+  - learned_feature_model

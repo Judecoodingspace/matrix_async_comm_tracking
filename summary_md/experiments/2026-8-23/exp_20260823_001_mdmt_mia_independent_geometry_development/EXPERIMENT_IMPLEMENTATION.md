@@ -3,7 +3,7 @@
 ## 1. Document Status
 
 - Experiment: `exp_20260823_001_mdmt_mia_independent_geometry_development`
-- Status: `PLAN_ONLY / NO_IMPLEMENTATION_PERFORMED / NO_RUN_AUTHORIZED`
+- Status: `RD-1_TO_RD-6_HUMAN_FROZEN / M0_BLOCKED_LOCAL_GIT_WORKTREE / M2_NOT_AUTHORIZED`
 - Governing contract: `EXPERIMENT_CONTRACT.md`
 - Frozen research decisions: G1-G15b in the governing contract
 - Planned endpoint: a complete five-pair geometry-only diagnostic package and
@@ -32,7 +32,7 @@ tracker rows, target boxes, candidates, GT, or Route-A observer state.
 
 ## 3. Planned File Layout
 
-The exact filenames below are `IMPLEMENTATION_DECISION` and may be adjusted for
+The exact filenames below are `IMPLEMENTATION_DETAIL` and may be adjusted for
 repository conventions without changing the scientific contract.
 
 ```text
@@ -128,8 +128,7 @@ is an `IMPLEMENTATION_DECISION`; its source digest and Python version must be
 recorded. It implements G14 but does not change seed, sample size, pool, or
 no-replacement semantics.
 
-This planning turn must not execute step 7. The actual selected pair IDs remain
-unknown until an authorized M1.
+The selected pair IDs remain unknown until the authorized M1 manifest freeze.
 
 ### 5.2 Manifest schema
 
@@ -176,14 +175,38 @@ record all computation-affecting fields, including:
 - projected-grid construction;
 - OpenCV RNG seed, OpenCV version, thread settings, and device/backend.
 
-Scientific estimator values are `NEEDS_RESEARCH_DECISION`. The values currently
-embedded in `matching_pure.py` are provenance evidence, not defaults authorized
-by this plan. The config file becomes immutable once the development manifest
-is frozen; any change requires a new experiment ID rather than a retry.
+RD-1 through RD-6 are now `HUMAN-FROZEN` in the governing contract Section 7A.
+The immutable config must reproduce them exactly. The values embedded in
+`matching_pure.py` remain provenance evidence for the original path, not an
+alternative implementation default. The config becomes immutable before M1;
+any change requires a new experiment ID rather than a retry.
 
 G15c validity thresholds must not appear in this estimator config. They are
 human-frozen only after the development report and before any formal Pair-26/48
 validation.
+
+## 6A. Frozen Implementation Contract for RD-1 to RD-6
+
+The implementation must encode the following values without substitution:
+
+- BGR `uint8` `cv2.IMREAD_COLOR` decode, BGR-to-gray conversion, native
+  resolution only, and SIFT `(0,3,0.04,10,1.6,false)`;
+- FLANN KDTree `(algorithm=1, trees=5, checks=50)`, `k=2`, strict ratio `<0.7`,
+  deterministic returned-order greedy one-to-one acceptance, and minimum 11
+  unique correspondences;
+- RANSAC `(5.0 px, confidence=0.995, maxIters=2000)`, float32 points, RNG seed
+  7 before every directional call, float64 Frobenius-normalized canonical H,
+  and only the enumerated computation hard failures;
+- two independently estimated directions, with `2N` combined units for a pair
+  of N synchronized frames and cycle consistency diagnostic-only;
+- the fixed 5x5 grid, `1e-12` projection/norm epsilons, `1e-9` inside boundary
+  epsilon, frozen corner order, and diagnostic-only area/orientation fields;
+- one OpenCV thread, disabled OpenCL, required environment digests, one 20-unit
+  repeat subset, exact nonfloat comparison, and floating comparison
+  `(rtol=1e-10, atol=1e-12, equal_nan=true)`.
+
+The authoritative complete wording is Contract Section 7A. M2 remains not
+authorized by this task: do not implement or invoke a real-image SIFT provider.
 
 ## 7. Per-Frame Execution
 
@@ -227,14 +250,12 @@ before M4; required fields cannot be removed.
 
 ## 9. Projection-Plausibility Diagnostics
 
-The diagnostics module should use a predeclared normalized image grid and
-corners rather than target boxes. It may record only geometry-level quantities,
+The diagnostics module must use the Section 7A frozen 5x5 normalized grid,
+corners, source/destination boundary semantics, area convention, and numerical
+epsilons rather than target boxes. It may record only geometry-level quantities,
 including finite projected fraction, inside-image fraction, projected area
-ratio, orientation, and minimum projective denominator magnitude.
-
-Grid density, boundary convention, and numerical epsilon are computation-
-affecting settings and must be declared before M2. They cannot be altered after
-seeing development distributions to obtain preferred coverage.
+ratio, orientation, and minimum projective denominator magnitude. None of these
+diagnostics becomes a validity rule before G15c.
 
 ## 10. Ledger, Summaries, and Threshold-Candidate Report
 
@@ -273,16 +294,14 @@ estimator within this experiment.
 
 ## 12. Reproducibility Check
 
-Before M4, declare the repeat subset as the first ten lexicographically sorted
-frame names of the lexicographically first selected pair. Repeat it once with
-identical code, config, input digests, environment, direction set, and RNG
-initialization.
-
-The check must compare record keys, failure codes, match/inlier counts, H
-availability, H values, and derived diagnostics. The exact floating-point
-comparison rule must be declared before the repeat and cannot be loosened after
-inspection. Cross-platform reproducibility beyond the frozen execution
-environment is not claimed.
+RD-6 freezes the repeat subset as both directions of the first ten
+lexicographically sorted frame names of the lexicographically first selected
+pair. It freezes one repeat with identical code, config, input digests,
+environment, direction set, and per-call RNG initialization. Exact fields and
+the floating comparison rule `(rtol=1e-10, atol=1e-12, equal_nan=true)` are
+listed in Contract Section 7A; the rule cannot be loosened after inspection.
+Cross-platform reproducibility beyond the frozen execution environment is not
+claimed.
 
 ## 13. Firewalls
 
@@ -348,14 +367,14 @@ annotations. Passing tests authorizes no MDMT diagnostic run by itself.
 
 ### M0 — Contract and provenance freeze
 
-- Inputs: contract, this plan, open-decision resolutions, Git worktree.
-- Work: approve experiment ID/branch, freeze code/data/output roots, resolve
-  estimator and direction decisions, implement no scientific execution.
+- Inputs: contract, this plan, human-frozen RD-1 to RD-6, immutable config,
+  and a Git worktree.
+- Work: verify experiment ID/branch, freeze code/data/output roots, record the
+  human decisions and complete config, and implement no scientific execution.
 - Outputs: approved contract, frozen config draft, auditable Git provenance.
-- Exit: all execution-blocking research decisions resolved and G1-G15b mapped
-  to checks.
-- Stop: missing Git provenance, unresolved computation-affecting parameters, or
-  contract conflict.
+- Exit: G1-G15b and RD-1-RD-6 mapped to checks, config digest present, and Git
+  branch/commit/dirty provenance recorded.
+- Stop: missing Git provenance, config mismatch, or contract conflict.
 
 ### M1 — Freeze five-pair development manifest
 
@@ -440,9 +459,6 @@ rule, denominator, inputs, metrics, and decision gate remain unchanged.
 
 ### NEEDS_RESEARCH_DECISION
 
-- all SIFT/matcher/RANSAC computation-affecting parameter values;
-- direction estimation/consistency requirement;
-- the predeclared numerical comparison rule if it changes scientific acceptance;
 - human G15c validity-gate values;
 - later Pair-26/48 pair-level geometry readiness rule.
 

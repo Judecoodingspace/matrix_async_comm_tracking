@@ -1,5 +1,5 @@
 flowchart TD
-    A["M0: Contract and provenance freeze"] --> B["M1: Enumerate train pairs<br>seed 7 sample manifest written once"]
+    A["M0: RD-1 to RD-6 + config + provenance freeze"] --> B["M1: Enumerate train pairs<br>seed 7 sample manifest written once"]
     B --> C{"Manifest frozen before diagnostics?"}
     C -->|No| X["STOP: invalid selection provenance"]
     C -->|Yes| D["M2: Independent image-only provider<br>SIFT + matching + RANSAC"]

@@ -5,7 +5,7 @@
 - Experiment ID: `exp_20260823_001_mdmt_mia_independent_geometry_development`
 - Title: MDMT MIA target-independent same-time SIFT-H geometry development
 - Type: `GEOMETRY_INFRASTRUCTURE_DEVELOPMENT`
-- Status: `PROPOSED / PLANNING_COMPLETE / IMPLEMENTATION_NOT_AUTHORIZED`
+- Status: `RD-1_TO_RD-6_HUMAN_FROZEN / M0_BLOCKED_LOCAL_GIT_WORKTREE / M2_NOT_AUTHORIZED`
 - Parent Route-A experiment:
   `exp_20260822_001_mdmt_mia_route_a_observer_mve`
 - Parent result: `MVE_INCONCLUSIVE_DUE_TO_GEOMETRY`; MVE-1 remains blocked.
@@ -68,8 +68,8 @@ validity diagnostics and coverage on MDMT?
 2. Directory-level frame-name equality denotes the synchronized frame pairing
    used by this geometry development experiment. No target annotation is needed.
 3. SIFT-RANSAC can be made reproducible enough for an audited development
-   ledger once estimator parameters, OpenCV RNG handling, and environment
-   provenance are frozen.
+   ledger under the human-frozen estimator, RNG, and environment protocol in
+   Section 7A.
 
 ### UNKNOWN
 
@@ -78,9 +78,7 @@ validity diagnostics and coverage on MDMT?
 2. The fraction of development frames producing a finite 3x3 H is unknown.
 3. Threshold-valid geometry coverage on Pair 26 and Pair 48 is unknown and may
    not be measured in the current M0-M5 stage.
-4. Whether both A-to-B and B-to-A must be independently estimated, or one
-   direction plus an audited inverse is sufficient, is not frozen.
-5. No pair-level coverage threshold for later Route-A readiness is frozen.
+4. No pair-level coverage threshold for later Route-A readiness is frozen.
 
 ### Primary hypothesis
 
@@ -324,9 +322,97 @@ or previous H. One call estimates one same-time direction without fallback.
 The existing `matching_pure.py` is an implementation reference only. The mixed
 `supp_compute_transf_matrix`, `get_matched_ids`, and `f_last` paths are forbidden.
 
-Estimator parameter values remain `NEEDS_RESEARCH_DECISION`; the constants in
-the original source (`0.7`, `10`, `5.0`) are evidence of author implementation,
-not automatically frozen values for this experiment.
+The exact estimator, direction, projection-diagnostic, and reproducibility
+semantics are human-frozen in Section 7A. G15c validity thresholds remain open.
+
+## 7A. Human-Frozen RD-1 to RD-6 Estimator Contract
+
+The following decisions are `HUMAN-FROZEN`. They replace only RD-1 to RD-6;
+they do not freeze any G15c validity threshold.
+
+### RD-1 — Decode, preprocessing, and SIFT (`HUMAN-FROZEN`)
+
+- Decode each current image with `cv2.IMREAD_COLOR`; require `uint8`, three
+  channels, and BGR convention.
+- Explicitly convert `BGR -> cv2.COLOR_BGR2GRAY -> uint8 grayscale -> SIFT`.
+- Use native decoded resolution. Resize, crop, histogram equalization, CLAHE,
+  denoising, sharpening, masking, target removal, learned preprocessing, color
+  normalization, and frame-specific preprocessing are forbidden.
+- Construct SIFT with `nfeatures=0`, `nOctaveLayers=3`,
+  `contrastThreshold=0.04`, `edgeThreshold=10`, `sigma=1.6`, and
+  `enable_precise_upscale=false`. Descriptors must be `CV_32F`.
+- Record OpenCV version and an OpenCV build-information digest. If this runtime
+  cannot explicitly express these semantics, stop; do not silently substitute an
+  API or implementation.
+
+### RD-2 — Matcher and correspondence policy (`HUMAN-FROZEN`)
+
+- Use FLANN KDTree: `algorithm=1`, `trees=5`, `checks=50`; use KNN `k=2`.
+- Apply the strict ratio rule `m.distance < 0.7 * n.distance` (never `<=`).
+- Traverse `knnMatch` in returned query iteration order. Accept a match only
+  when the query and train indices have not been accepted; then add both to the
+  used sets. This deterministic greedy one-to-one rule forbids Hungarian or
+  global reassignment, H-conditioned reselection, and sequence-specific logic.
+- Require at least 11 accepted unique correspondences before attempting H. With
+  fewer, emit `H_available=false` and
+  `INSUFFICIENT_UNIQUE_CORRESPONDENCES`, retaining the ledger unit.
+
+### RD-3 — RANSAC, canonical H, and computation failures (`HUMAN-FROZEN`)
+
+- Call `cv2.findHomography` with `method=cv2.RANSAC`,
+  `ransacReprojThreshold=5.0` pixels, `confidence=0.995`, `maxIters=2000`, and
+  `np.float32` correspondence coordinates. No tuning, sweep, or pair-specific
+  change is allowed.
+- Start every `(pair_id, frame_id, direction)` call with `cv2.setRNGSeed(7)`.
+- Convert raw H to `float64`; require finite shape `(3,3)`. Require Frobenius
+  norm `s > 1e-12`, then save `Hn=H/s`. Select the first row-major maximum of
+  `abs(Hn)`; if it is negative, multiply `Hn` by `-1`.
+- Computation hard failures are decode/malformed image, no usable descriptors,
+  insufficient unique correspondences, `findHomography=None`, wrong H shape,
+  nonfinite H, and zero-norm H. Inlier count/ratio, reprojection quality, rank,
+  determinant, condition number, projected area, and orientation are not
+  validity failures before G15c.
+
+### RD-4 — Direction and denominator (`HUMAN-FROZEN`)
+
+- Estimate `1_to_2` and `2_to_1` independently. `H_2_to_1` must not be an
+  inverse-derived estimator output.
+- For each synchronized pair with N frames, each direction has denominator N;
+  the combined frame-direction denominator is `2N`.
+- Cycle consistency may be recorded only as `DIAGNOSTIC_ONLY`; it is neither a
+  hard failure nor a current validity threshold.
+
+### RD-5 — Projection-diagnostic construction (`HUMAN-FROZEN`)
+
+- Use the fixed 5x5 normalized grid with both coordinates in
+  `{0,0.25,0.5,0.75,1}` and source pixels `x=u*(W_src-1)`, `y=v*(H_src-1)`.
+- For homogeneous projection, a point is nonfinite when q is nonfinite or
+  `abs(q_w) <= 1e-12`; otherwise divide by `q_w`.
+- Destination-inside uses inclusive boundaries with epsilon `1e-9` pixels.
+- Record grid count, finite fraction, and inside fraction. Project corners in
+  top-left, top-right, bottom-right, bottom-left order; compute signed
+  shoelace area and `abs(area)/((W_dst-1)*(H_dst-1))` when all are finite.
+  Otherwise record NaN with a diagnostic flag.
+- Set orientation status `DEGENERATE` at absolute signed area no greater than
+  `1e-12 * destination_image_area`; otherwise record only whether orientation
+  reverses relative to that fixed source-corner order. These are diagnostics,
+  not validity rules.
+
+### RD-6 — Reproducibility protocol (`HUMAN-FROZEN`)
+
+- Record full Python/NumPy/OpenCV versions, OpenCV build digest, OS/kernel, CPU
+  architecture, OpenCV threads/OpenCL, config/provider digests, and Git branch,
+  commit, and dirty state.
+- Use `cv2.setNumThreads(1)`, `cv2.ocl.setUseOpenCL(False)`, and per-call
+  `cv2.setRNGSeed(7)`; `random.seed(7)` and `np.random.seed(7)` may only guard
+  peripheral nondeterminism.
+- Repeat once both directions for the first ten lexicographic frame names of
+  the first lexicographic selected pair (20 estimates).
+- Record keys, image/config/provider digests, booleans/enums/failure codes,
+  integer counts, and optional correspondence/inlier-mask digests exactly.
+  Compare all floating diagnostics with `rtol=1e-10`, `atol=1e-12`, and
+  `equal_nan=true`. Any mismatch is `REPRODUCIBILITY_ACCEPTANCE_FAIL` and stops
+  the experiment without tolerance/seed/parameter/pair changes.
 
 ## 8. Design
 
@@ -346,8 +432,8 @@ not automatically frozen values for this experiment.
 - Frame range: all synchronized JPEG filename pairs for every selected pair.
 - Seeds:
   - development pair selection: `7`;
-  - estimator/OpenCV RNG: fixed before M2 execution, value pending an open
-    research decision if it can affect scientific output.
+  - estimator/OpenCV RNG: human-frozen in Section 7A; seed `7` per directional
+    estimate.
 - Detector/tracker/checkpoint: `NOT_USED`.
 - Message schema/delay: `NOT_APPLICABLE`; same-time image geometry only.
 - Safety baseline: `GEOMETRY_UNAVAILABLE_FAIL_CLOSED`. A hard failure emits no
@@ -484,7 +570,7 @@ downstream result.
 | Sequence tuning | One config for all five development pairs and later both formal pairs. |
 | Coverage-driven gate relaxation | Threshold candidates justified by failure-regime diagnostics, never a desired coverage target. |
 | Nondeterministic RANSAC | Frozen RNG/environment and exact-repeat subset. |
-| Direction pooling hides failure | Direction-stratified results; final direction requirement awaits human decision. |
+| Direction pooling hides failure | Independently estimate and report both frozen directions. |
 | Homography overclaim | Report projection diagnostics and limitation; no 3D-scene claim. |
 
 ## 11. Assertions
@@ -528,7 +614,7 @@ After implementation authorization and required pre-M2 decisions:
 - exactly five frozen MDMT-train pairs;
 - all synchronized frames in both views;
 - one fixed estimator configuration;
-- direction count is pending the direction research decision;
+- two independently estimated directions per synchronized frame;
 - one exact repeat of the predeclared first-ten-frame subset of the
   lexicographically first selected pair;
 - expected condition count: `5 pair-runs + 1 small repeat`; exact frame-direction
@@ -640,9 +726,9 @@ authorization of Pair-26/48 validation or MVE-1.
 
 ```text
 CURRENT:
-  CONTRACT_COMPLETE
-  IMPLEMENTATION_NOT_AUTHORIZED
-  ESTIMATOR_PARAMETERS_NEED_RESEARCH_DECISION
+  RD-1_TO_RD-6_HUMAN_FROZEN
+  M0_BLOCKED_LOCAL_GIT_WORKTREE
+  M2_NOT_AUTHORIZED
   G15c_NOT_FROZEN
 
 AFTER AUTHORIZED M0-M5:
@@ -670,9 +756,7 @@ association, tracker behavior, or identity outcomes.
 
 ## 17. Conditions Requiring `NEEDS_RESEARCH_DECISION`
 
-- any estimator parameter that changes correspondences or RANSAC output;
 - final G15c geometry-validity thresholds;
-- A-to-B/B-to-A direction requirement;
 - later pair-level coverage/readiness threshold;
 - any change from SIFT-RANSAC Homography to learned, temporal, pose, depth,
   calibration, or optical-flow geometry;
@@ -696,4 +780,3 @@ flowchart TD
     G -. "separate authorization" .-> H["Pair 26/48 formal geometry validation"]
     H -. "not automatic" .-> I["Route-A MVE-1"]
 ```
-
