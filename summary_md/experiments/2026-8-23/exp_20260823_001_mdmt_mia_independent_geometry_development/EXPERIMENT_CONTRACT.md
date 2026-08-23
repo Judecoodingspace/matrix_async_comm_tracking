@@ -5,7 +5,7 @@
 - Experiment ID: `exp_20260823_001_mdmt_mia_independent_geometry_development`
 - Title: MDMT MIA target-independent same-time SIFT-H geometry development
 - Type: `GEOMETRY_INFRASTRUCTURE_DEVELOPMENT`
-- Status: `RD-1_TO_RD-6_HUMAN_FROZEN / M1_MANIFEST_FROZEN / M2_NOT_AUTHORIZED`
+- Status: `RD-1_TO_RD-6_HUMAN_FROZEN / M1_MANIFEST_FROZEN / M2_TO_M5_AUTHORIZED`
 - Parent Route-A experiment:
   `exp_20260822_001_mdmt_mia_route_a_observer_mve`
 - Parent result: `MVE_INCONCLUSIVE_DUE_TO_GEOMETRY`; MVE-1 remains blocked.
@@ -73,8 +73,9 @@ validity diagnostics and coverage on MDMT?
 
 ### UNKNOWN
 
-1. The SIFT ratio-test, RANSAC, minimum support, reprojection, degeneracy, and
-   projection-plausibility numbers are not yet research-frozen.
+1. The G15c validity thresholds over the already frozen raw diagnostics are not
+   research-frozen.  The estimator parameters and hard-failure semantics are
+   frozen in Section 7A.
 2. The fraction of development frames producing a finite 3x3 H is unknown.
 3. Threshold-valid geometry coverage on Pair 26 and Pair 48 is unknown and may
    not be measured in the current M0-M5 stage.
