@@ -2,6 +2,26 @@
 
 Updated: 2026-07-24
 
+## Latest Geometry Development Update (2026-08-24)
+
+RD-R1 authorized a single reproducibility repair for
+`exp_20260823_001_mdmt_mia_independent_geometry_development`: the existing
+OpenCV RNG reset was moved from immediately before RANSAC to the first
+executable statement of `estimate_homography`, before SIFT and FLANN. No
+estimator parameter, input pair, threshold, or tracker/MIA code changed.
+
+The isolated corrected attempt
+`outputs/20260823_mdmt_mia_independent_geometry_development/attempts/attempt_02_rng_placement_corrected`
+completed its frozen 5-pair, 5,460-directional-unit raw diagnostic run. Its
+mandatory first-10-frame Pair-25 bidirectional exact repeat passed (20/20,
+zero mismatches). The older ledger is permanently
+`QUARANTINED_DIAGNOSTIC_ONLY`; it is not merged with or reused by the corrected
+attempt. The accepted status is
+`RNG_PLACEMENT_REPAIR_VALIDATED / REPRODUCIBILITY_ACCEPTED / STOP_BEFORE_G15C`.
+
+No G15c, Pair 26/48, validation, Route-A MVE, tracker modification, or quality
+threshold decision was run. The next action requires the human G15c decision.
+
 ## Latest Research Focus
 
 The current focus is the temporal boundary of useful support during D1 LoS
