@@ -15,7 +15,7 @@ import cv2
 import numpy as np
 
 
-ESTIMATOR_VERSION = "rd1-rd6-frozen-sift-flann-ransac-h-v1"
+ESTIMATOR_VERSION = "rd1-rd6-frozen-sift-flann-ransac-h-v1-rng-placement-corrected"
 _RNG_SEED = 7
 _MIN_UNIQUE = 11
 _EPSILON = 1.0e-12
@@ -172,6 +172,7 @@ def _base_result(source: np.ndarray | None, destination: np.ndarray | None) -> d
 
 def estimate_homography(source: np.ndarray | None, destination: np.ndarray | None) -> dict[str, Any]:
     """Estimate one direction independently, returning raw diagnostics only."""
+    cv2.setRNGSeed(_RNG_SEED)
     result = _base_result(source, destination)
     source_error = _image_error(source)
     destination_error = _image_error(destination)
@@ -222,7 +223,6 @@ def estimate_homography(source: np.ndarray | None, destination: np.ndarray | Non
 
     source_points = np.float32([src_keypoints[match.queryIdx].pt for match in unique]).reshape(-1, 1, 2)
     destination_points = np.float32([dst_keypoints[match.trainIdx].pt for match in unique]).reshape(-1, 1, 2)
-    cv2.setRNGSeed(_RNG_SEED)
     raw_h, inlier_mask = cv2.findHomography(
         source_points,
         destination_points,

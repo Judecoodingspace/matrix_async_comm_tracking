@@ -350,8 +350,11 @@ def main() -> int:
             raise RuntimeError("refusing to mix a diagnostic attempt with existing output")
     output_root.mkdir(parents=True, exist_ok=True)
     manifest = load_manifest(manifest_path, data_root)
-    if manifest_path.parent != output_root:
-        raise RuntimeError("manifest must be the immutable M1 manifest inside output root")
+    is_isolated_attempt = (
+        output_root.parent.name == "attempts" and manifest_path.parent == output_root.parent.parent
+    )
+    if manifest_path.parent != output_root and not is_isolated_attempt:
+        raise RuntimeError("manifest must be in output root or be the immutable parent manifest of an isolated attempt")
     config_digest = sha256_file(config_path)
     provider_digest = sha256_file(REPOSITORY_ROOT / "src/tracking/route_a_geometry/image_geometry_provider.py")
     if args.finalize_existing_ledger:
