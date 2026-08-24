@@ -44,7 +44,7 @@ contains exactly one `cv2.setRNGSeed(7)` call per `estimate_homography` call.
 | Scientific estimator identity | `rd1-rd6-frozen-sift-flann-ransac-h` unchanged |
 | Provider implementation revision | RNG-placement corrected; digest must change |
 | Old provider digest | `34c0500b267e9d2eee00714a71f73a6451c3394878377a8cdbee30d434080723` |
-| New provider digest | recorded from the committed corrected source before rerun |
+| New provider digest | `b8b65b881cc1627ff2e5f41f885f36473ebadf59f5e3f076240c9de1eee99a7d` |
 | SIFT / FLANN / correspondence / RANSAC values | unchanged |
 | H normalization / projection diagnostics | unchanged |
 | Directions / denominator / repeat subset / tolerances | unchanged |

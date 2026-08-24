@@ -5,7 +5,7 @@
 - Experiment ID: `exp_20260823_001_mdmt_mia_independent_geometry_development`
 - Title: MDMT MIA target-independent same-time SIFT-H geometry development
 - Type: `GEOMETRY_INFRASTRUCTURE_DEVELOPMENT`
-- Status: `RD-1_TO_RD-6_HUMAN_FROZEN / M1_MANIFEST_FROZEN / M2_TO_M5_AUTHORIZED`
+- Status: `RD-1_TO_RD-6_HUMAN_FROZEN / RD-R1_REPAIR_VALIDATED / REPRODUCIBILITY_ACCEPTED_RAW_LEDGER / STOP_BEFORE_G15C`
 - Parent Route-A experiment:
   `exp_20260822_001_mdmt_mia_route_a_observer_mve`
 - Parent result: `MVE_INCONCLUSIVE_DUE_TO_GEOMETRY`; MVE-1 remains blocked.

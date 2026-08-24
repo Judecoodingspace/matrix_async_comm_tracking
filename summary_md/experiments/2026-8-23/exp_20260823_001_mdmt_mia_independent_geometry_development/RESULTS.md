@@ -1,59 +1,56 @@
-# RESULTS — M2–M5 Raw Geometry Diagnostics
+# RESULTS — RD-R1 Corrected Isolated Reproducibility Rerun
 
 ## Result status
 
-`RAW_LEDGER_COMPLETE / REPRODUCIBILITY_ACCEPTANCE_FAIL / NOT_VALIDATED_FOR_M5_DECISION`
+`REPRODUCIBILITY_ACCEPTED_RAW_GEOMETRY_LEDGER / STOP_BEFORE_G15C`
 
-This result is limited to the frozen five-pair MDMT-train, image-only raw
-diagnostic execution. It does not provide a geometry-validity threshold, Pair
-26/48 validation, val result, or Route-A MVE result.
+This is an implementation-contract repair and isolated reproducibility result.
+It is not a geometry-quality, G15c, Pair 26/48, val, or Route-A MVE result.
 
-## Completed denominator and provenance
+## Corrected attempt
 
-| Item | Result |
+- Attempt root: `outputs/20260823_mdmt_mia_independent_geometry_development/attempts/attempt_02_rng_placement_corrected/`
+- Scientific estimator identity: `rd1-rd6-frozen-sift-flann-ransac-h` unchanged.
+- Implementation revision: `v1-rng-placement-corrected`.
+- Provider digest: `b8b65b881cc1627ff2e5f41f885f36473ebadf59f5e3f076240c9de1eee99a7d`.
+- Manifest digest: `11f78f5252a5459007ca6c56c2b4eccec487b4a0e9a10c52b38e34a20dec3e8f`.
+- Config digest: `c7b6b2cd30238c174295f2b367f70f5b8a062cae7737abd8aca9ab9ded66eb04`.
+
+| Requirement | Result |
 | --- | ---: |
-| Frozen pair order | `45, 29, 51, 69, 25` |
-| Frame-direction denominator | `5,460` |
+| Full denominator | `5,460` |
 | Unique ledger keys | `5,460` |
 | `1_to_2` records | `2,730` |
 | `2_to_1` records | `2,730` |
-| Threshold status | `NOT_EVALUATED_PENDING_G15C` for every row |
-| Manifest/config/provider digest cardinality | `1 / 1 / 1` |
 | Invalid record digests | `0` |
-| Recorded forbidden-scope image paths | `0` |
+| Forbidden-scope recorded paths | `0` |
+| Threshold status | `NOT_EVALUATED_PENDING_G15C` for all rows |
 
-The raw JSONL ledger is retained locally as a diagnostic artifact. It is not
-published as accepted evidence because the frozen repeat criterion failed.
+## Frozen repeat
 
-## Frozen reproducibility check
-
-The declared repeat subset is the first ten lexical frames of lexical first
-selected Pair 25, in both independently estimated directions. The outcome was:
+The unchanged repeat subset was Pair 25, lexical frames `00000001.jpg` through
+`00000010.jpg`, independently estimated in both directions.
 
 ```text
-REPRODUCIBILITY_ACCEPTANCE_FAIL
-mismatch_count = 1
-pair=25, frame=00000001.jpg, direction=1_to_2
+repeat_record_count = 20
+mismatch_count = 0
+REPRODUCIBILITY_ACCEPTANCE_PASS
 ```
 
-The mismatched fields were `num_tentative_matches`, `num_unique_matches`,
-`num_ransac_inliers`, `selected_correspondence_digest`,
-`ransac_inlier_mask_digest`, `H_matrix`, `inlier_ratio`, and the three recorded
-reprojection-error summaries.
+No geometry-quality distribution, H availability, inlier ratio, reprojection
+error, threshold candidate, coverage claim, or downstream tracking result is
+reported by this result.
 
-## Boundary preserved
+## Previous ledger disposition
 
-- no GT, XML, val, Pair 26/48, tracker, MIA runtime, target state, or Route-A
-  MVE path was used by the provider;
-- no G15c threshold was selected or applied;
-- no numerical result is interpreted as geometry quality, coverage readiness,
-  or tracking impact.
+The earlier 5,460-row ledger used provider digest
+`34c0500b267e9d2eee00714a71f73a6451c3394878377a8cdbee30d434080723` and
+failed the frozen repeat under an `IMPLEMENTATION_CONTRACT_VIOLATION`. It is
+permanently `QUARANTINED_DIAGNOSTIC_ONLY / NOT_ADMISSIBLE_FOR_G15C`; it was not
+merged with, resumed into, or used to patch the corrected ledger.
 
-## Artifact pointers
+## Next boundary
 
-- Full execution status: `M4_M5_EXECUTION_STATUS.md`
-- Frozen contract: `EXPERIMENT_CONTRACT.md`
-- Exact runner: `scripts/run_mdmt_independent_geometry_development.py`
-- Image-only provider: `src/tracking/route_a_geometry/image_geometry_provider.py`
-- Local raw output root (not versioned):
-  `outputs/20260823_mdmt_mia_independent_geometry_development/`
+The only established conclusion is that the corrected frozen estimator now has
+an accepted raw diagnostic ledger. Human authorization is required before any
+G15c decision or further validation.

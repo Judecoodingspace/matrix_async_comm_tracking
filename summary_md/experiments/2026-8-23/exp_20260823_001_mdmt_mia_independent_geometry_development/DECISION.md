@@ -1,24 +1,28 @@
-# DECISION — M2–M5 Reproducibility Stop
+# DECISION — RD-R1 RNG Placement Repair
 
 ## Decision
 
-`STOP_FOR_HUMAN_REPRODUCIBILITY_DECISION`
+`RNG_PLACEMENT_REPAIR_VALIDATED`
 
-The M2–M5 raw diagnostic ledger reached its full frozen denominator, but the
-predeclared exact-repeat acceptance criterion failed. Under RD-6, the current
-provider/configuration is not accepted as reproducible M4/M5 evidence.
+`REPRODUCIBILITY_ACCEPTED`
+
+`STOP_BEFORE_G15C`
+
+The authorised correction moved the sole per-direction RNG reset to the start
+of the image-only provider call. The new, full, isolated ledger passed the
+unchanged 20-unit frozen repeat acceptance rule.
 
 ## Consequences
 
-- Do not use this ledger to freeze G15c thresholds.
-- Do not run Pair 26/48, val, or Route-A MVE-1 from this result.
-- Do not tune the ratio test, RANSAC, support, projection, or threshold values.
-- Do not silently replace exact repeat with a weaker criterion.
+- The corrected ledger is accepted only as a reproducible raw geometry
+  diagnostic ledger.
+- No G15c threshold is frozen or evaluated.
+- Pair 26/48, val, and Route-A MVE-1 remain unrun and unauthorized.
+- No estimator parameter, matcher, tolerance, pair, denominator, or repeat
+  protocol was changed.
+- The old ledger remains quarantined diagnostic-only and is not admissible for
+  G15c.
 
-## Required next research decision
+## Required next action
 
-Human review must decide whether the observed mismatch is classified as an
-implementation defect or environment-level nondeterminism, and—only if a new
-decision is approved—define a new reproducibility protocol/configuration under
-a new experiment stage or decision version. The current raw ledger remains
-diagnostic-only pending that decision.
+Stop for a separate human research decision on whether and how to enter G15c.
