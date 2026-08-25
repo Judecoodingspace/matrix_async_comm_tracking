@@ -1,0 +1,15 @@
+{
+  "composition": "ALL_CONDITIONS",
+  "condition_number_condition_failure": "CONDITION_NUMBER_EXCEEDS_MAX",
+  "condition_number_maximum": 202958294.27180856,
+  "gate_definition_digest": "a4da215d4bed07a14b8bca6e190af4d8b6a26b84db30ac3b1b538cb0d08bdbed",
+  "gate_name": "G15c_H_VALID",
+  "inlier_count_condition_failure": "INSUFFICIENT_RANSAC_INLIER_COUNT",
+  "inlier_ratio_condition_failure": "INSUFFICIENT_RANSAC_INLIER_RATIO",
+  "inlier_ratio_minimum": 0.08955223880597014,
+  "matrix_rank_equals": 3,
+  "num_ransac_inliers_minimum": 5,
+  "provider_unavailable_status": "GEOMETRY_UNAVAILABLE",
+  "provenance_epoch": "FORMAL_PROVENANCE_RECOVERY_EPOCH_001",
+  "rank_condition_failure": "STRUCTURAL_RANK_FAILURE"
+}
