@@ -1,0 +1,32 @@
+{
+  "check_count": 22,
+  "checks": {
+    "duplicate_guard": true,
+    "negative_audit_fail": true,
+    "negative_authorization_false": true,
+    "negative_child_spawn_zero": true,
+    "negative_exit_nonzero": true,
+    "negative_image_decode_zero": true,
+    "negative_never_running": true,
+    "negative_rows_zero": true,
+    "persistent_duration_gt_30": true,
+    "persistent_exit_captured": true,
+    "persistent_no_orphan": true,
+    "persistent_polling": true,
+    "persistent_stderr": true,
+    "persistent_stdout": true,
+    "persistent_terminal": true,
+    "positive_dummy_authorized": true,
+    "schema_exact_27_fields": true,
+    "synthetic_missing_fields_empty": true,
+    "synthetic_missing_input_contract_digest_rejected": true,
+    "synthetic_row_digest_valid": true,
+    "synthetic_row_exact_27_fields": true,
+    "synthetic_shared_builder_serializer_validator": true
+  },
+  "formal_attempt_id": "FORMAL_GEOMETRY_HELDOUT_ATTEMPT_004",
+  "pass_count": 22,
+  "persistent_test_duration_seconds": 31,
+  "provenance_epoch": "FORMAL_PROVENANCE_RECOVERY_EPOCH_001",
+  "verdict": "PASS"
+}

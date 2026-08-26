@@ -1,0 +1,42 @@
+{
+  "C_min": {
+    "denominator": 125,
+    "numerator": 93
+  },
+  "G15c": {
+    "condition_number_maximum": 202958294.27180856,
+    "inlier_ratio_minimum": 0.08955223880597014,
+    "matrix_rank_equals": 3,
+    "num_ransac_inliers_minimum": 5
+  },
+  "attempt003_machine_execution_completed": true,
+  "attempt003_results_reused": false,
+  "attempt003_scientific_result_inspected": false,
+  "directions": [
+    "1_to_2",
+    "2_to_1"
+  ],
+  "execution_spec_digest": "dd968a6e4966e70b7abce7e62bb3e70ae3f0e490cc02ac7b60b889a13af3ca3b",
+  "expected_rows": 2000,
+  "formal_attempt_id": "FORMAL_GEOMETRY_HELDOUT_ATTEMPT_004",
+  "formal_execution_started": false,
+  "formal_output_root": "/mnt/data/yzm/recovery_artifacts/route_a_geometry_epoch_001/formal_attempt_004",
+  "formal_pairs": [
+    "26",
+    "48"
+  ],
+  "formal_status": "NOT_STARTED",
+  "full_denominator": true,
+  "launch_policy": "FAIL_CLOSED_PRESTART_GUARD_THEN_PERSISTENT_ORCHESTRATOR",
+  "orchestration_state_root": "/mnt/data/yzm/recovery_artifacts/route_a_geometry_epoch_001/formal_attempt_004_state",
+  "overall_rule": "ALL_4_PAIR_DIRECTION_UNITS_PASS",
+  "prepared_but_never_run": true,
+  "provenance_epoch": "FORMAL_PROVENANCE_RECOVERY_EPOCH_001",
+  "rerun_class": "BLINDED_FULL_RERUN_AFTER_COMPLETE_BUT_UNINSPECTED_PROTOCOL_FAILURE_AND_PROVENANCE_RECONSTRUCTION",
+  "row_creation_policy": "DIRECT_PROVENANCE_BEFORE_RECORD_DIGEST",
+  "row_schema_fields": 27,
+  "scientific_outcome_blindness": true,
+  "scientific_protocol_changed": false,
+  "spec_name": "FORMAL_HELDOUT_EXECUTION_SPEC_ATTEMPT_004",
+  "start_rows": 0
+}

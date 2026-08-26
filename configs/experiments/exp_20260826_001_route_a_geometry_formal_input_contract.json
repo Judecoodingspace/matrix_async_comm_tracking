@@ -1,0 +1,40 @@
+{
+  "contract_name": "FORMAL_HELDOUT_INPUT_CONTRACT_ATTEMPT_004",
+  "dataset_root_resolved": "/mnt/data/yzm/datasets/Multi-Drone-Multi-Object-Detection-and-Tracking",
+  "directions": [
+    "1_to_2",
+    "2_to_1"
+  ],
+  "expected_directional_row_count": 2000,
+  "expected_synchronized_frame_count": 1000,
+  "filename_policy": "LEXICAL_JPEG_EXACT_EQUALITY_ACROSS_VIEWS",
+  "formal_attempt_id": "FORMAL_GEOMETRY_HELDOUT_ATTEMPT_004",
+  "historical_digest_status": "CONTEXT_ONLY_NOT_CLAIMED_AS_RECOVERED_BYTE_IDENTITY",
+  "historical_input_contract_digest": "288aec272dbddd9d73175a66add0f6d2d28cdd309e75402a80e86da8a6c99cf7",
+  "input_contract_digest": "c0fd435477f1286176b71a21cd949879b312c2504a5995257b81ad0cb41ec4ec",
+  "pair_ids": [
+    "26",
+    "48"
+  ],
+  "pairs": {
+    "26": {
+      "first_frame_name": "00000001.jpg",
+      "frame_count": 300,
+      "frame_name_set_digest": "6f810a6dd43f3670dd0d63b99b5b8d9c4d808613de3f3b4c070a1b4f42e92741",
+      "last_frame_name": "00000300.jpg",
+      "view_1_relative": "test/1/26-1",
+      "view_2_relative": "test/2/26-2"
+    },
+    "48": {
+      "first_frame_name": "00000001.jpg",
+      "frame_count": 700,
+      "frame_name_set_digest": "71cebd89f2d38d2a492c07ffc010ba86658a97b6ff11bce178c800cd28134f56",
+      "last_frame_name": "00000700.jpg",
+      "view_1_relative": "test/1/48-1",
+      "view_2_relative": "test/2/48-2"
+    }
+  },
+  "prestart_access_policy": "METADATA_ONLY_NO_IMAGE_DECODE",
+  "provenance_epoch": "FORMAL_PROVENANCE_RECOVERY_EPOCH_001",
+  "split": "test"
+}
