@@ -1,0 +1,32 @@
+{
+  "artifact_root": "/mnt/data/yzm/recovery_artifacts/route_a_geometry_epoch_001/development",
+  "artifacts": {
+    "access_audit.json": "a6cc586d5109c620e4ba4892b6913253f9e3c9b397fb105767e16e7631d2f193",
+    "determinism_check.json": "0561127a51e914252fd07db0f7ec09e122f0fe39d062401012c1af3de46e0e80",
+    "geometry_development_manifest.json": "f7a879930c46587d3a01c3f1179dd4ee24fc96f2825989803db6e0d509cab58f",
+    "geometry_diagnostics.jsonl": "21e7e838d30a339c6f445aeb73b9c49404df80bd0d27d861c5b11799f47044b9",
+    "geometry_summary.json": "d8db9299c466fe57ad06ef737ad3b27bd8a4e85637ad23f15aa68657afc4da6e"
+  },
+  "byte_identical_historical_artifact_recovery": "NOT_ESTABLISHED",
+  "development_pairs": [
+    "45",
+    "29",
+    "51",
+    "69",
+    "25"
+  ],
+  "development_semantic_equivalence": "PASS",
+  "development_semantic_equivalence_report_digest": "8d3e7cd9e6187229f7bb8c5816be36d8b2a3102e9e51357209249817c782d7e3",
+  "git_source_commit": "434152ce78d66eaa00a717db7c031e7c144e1f9b",
+  "gt_xml_read_count": 0,
+  "heldout_pair_read_count": 0,
+  "historical_aggregate_invariants_exact": true,
+  "ledger_rows": 5460,
+  "provenance_epoch": "FORMAL_PROVENANCE_RECOVERY_EPOCH_001",
+  "provider_digest": "b8b65b881cc1627ff2e5f41f885f36473ebadf59f5e3f076240c9de1eee99a7d",
+  "estimator_config_digest": "c7b6b2cd30238c174295f2b367f70f5b8a062cae7737abd8aca9ab9ded66eb04",
+  "recovery_gate_artifact_digest": "4a102788eeec95cf46762326f5490aad314decdb1740f00dd1f89e87c36fd5f0",
+  "repeat_mismatch_count": 0,
+  "repeat_record_count": 20,
+  "threshold_recalibration_performed": false
+}

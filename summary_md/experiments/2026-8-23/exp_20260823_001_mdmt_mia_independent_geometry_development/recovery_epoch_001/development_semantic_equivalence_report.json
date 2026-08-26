@@ -1,0 +1,126 @@
+{
+  "all_checks_pass": true,
+  "audit": "DEVELOPMENT_SEMANTIC_EQUIVALENCE",
+  "byte_identical_historical_artifact_recovery": "NOT_ESTABLISHED",
+  "checks": [
+    {
+      "expected": 5460,
+      "name": "total_rows",
+      "observed": 5460,
+      "pass": true
+    },
+    {
+      "expected": 5460,
+      "name": "unique_keys",
+      "observed": 5460,
+      "pass": true
+    },
+    {
+      "expected": 4922,
+      "name": "H_VALID",
+      "observed": 4922,
+      "pass": true
+    },
+    {
+      "expected": 538,
+      "name": "H_INVALID",
+      "observed": 538,
+      "pass": true
+    },
+    {
+      "expected": 0,
+      "name": "GEOMETRY_UNAVAILABLE",
+      "observed": 0,
+      "pass": true
+    },
+    {
+      "expected": {
+        "25": 1000,
+        "29": 1400,
+        "45": 800,
+        "51": 860,
+        "69": 1400
+      },
+      "name": "pair_denominators",
+      "observed": {
+        "25": 1000,
+        "29": 1400,
+        "45": 800,
+        "51": 860,
+        "69": 1400
+      },
+      "pass": true
+    },
+    {
+      "expected": {
+        "25": 763,
+        "29": 1241,
+        "45": 800,
+        "51": 844,
+        "69": 1274
+      },
+      "name": "pair_valid",
+      "observed": {
+        "25": 763,
+        "29": 1241,
+        "45": 800,
+        "51": 844,
+        "69": 1274
+      },
+      "pass": true
+    },
+    {
+      "expected": {
+        "1_to_2": 2730,
+        "2_to_1": 2730
+      },
+      "name": "direction_denominators",
+      "observed": {
+        "1_to_2": 2730,
+        "2_to_1": 2730
+      },
+      "pass": true
+    },
+    {
+      "expected": {
+        "1_to_2": 2508,
+        "2_to_1": 2414
+      },
+      "name": "direction_valid",
+      "observed": {
+        "1_to_2": 2508,
+        "2_to_1": 2414
+      },
+      "pass": true
+    },
+    {
+      "expected": {
+        "CONDITION_NUMBER_EXCEEDS_MAX": 294,
+        "INSUFFICIENT_RANSAC_INLIER_COUNT": 3,
+        "INSUFFICIENT_RANSAC_INLIER_RATIO": 289,
+        "STRUCTURAL_RANK_FAILURE": 0
+      },
+      "name": "failure_counts",
+      "observed": {
+        "CONDITION_NUMBER_EXCEEDS_MAX": 294,
+        "INSUFFICIENT_RANSAC_INLIER_COUNT": 3,
+        "INSUFFICIENT_RANSAC_INLIER_RATIO": 289,
+        "STRUCTURAL_RANK_FAILURE": 0
+      },
+      "pass": true
+    },
+    {
+      "expected": 48,
+      "name": "multi_failure_rows",
+      "observed": 48,
+      "pass": true
+    }
+  ],
+  "gate_artifact": "/mnt/data/yzm/worktrees/route_a_geometry_recovery_epoch_001/configs/experiments/exp_20260826_001_route_a_geometry_recovery_epoch_001_g15c.json",
+  "gt_xml_read_count": 0,
+  "heldout_pair_read_count": 0,
+  "historical_row_digest_equivalence_claimed": false,
+  "ledger": "/mnt/data/yzm/recovery_artifacts/route_a_geometry_epoch_001/development/geometry_diagnostics.jsonl",
+  "scope": "FROZEN_DEVELOPMENT_PAIRS_ONLY",
+  "threshold_recalibration_performed": false
+}
