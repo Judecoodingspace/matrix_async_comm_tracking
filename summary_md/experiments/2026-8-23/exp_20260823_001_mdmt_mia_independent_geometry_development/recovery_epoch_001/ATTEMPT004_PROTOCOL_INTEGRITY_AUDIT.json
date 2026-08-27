@@ -1,0 +1,74 @@
+{
+  "attempt_id": "FORMAL_GEOMETRY_HELDOUT_ATTEMPT_004",
+  "provenance_epoch": "FORMAL_PROVENANCE_RECOVERY_EPOCH_001",
+  "authorization": {
+    "authorized": true,
+    "audit_verdict": "PASS",
+    "child_spawn_count": 1,
+    "child_exit_code": 0,
+    "created_at_utc": "2026-08-27T11:02:13.000915+00:00"
+  },
+  "terminal": {
+    "status": "SUCCEEDED",
+    "started_at_utc": "2026-08-27T11:02:13.343887+00:00",
+    "finished_at_utc": "2026-08-27T11:27:30.368490+00:00",
+    "orchestrator_pid": 259141,
+    "child_pid": 259142,
+    "poll_count": 286,
+    "exit_code": 0,
+    "termination_signal": null,
+    "rows_observed": 2000,
+    "no_orphan": true,
+    "duplicate_launch_absent": true,
+    "stdout_preserved": true,
+    "stderr_preserved": true
+  },
+  "ledger": {
+    "path": "/mnt/data/yzm/recovery_artifacts/route_a_geometry_epoch_001/formal_attempt_004/formal_rows.jsonl",
+    "sha256": "304980c3ee831e3fea56332be048d07327bb572b7264c642b4d16bb1adc605bd",
+    "expected_rows": 2000,
+    "observed_rows": 2000,
+    "unique_keys": 2000,
+    "duplicate_keys": 0,
+    "missing_expected_keys": 0,
+    "unexpected_keys": 0,
+    "pair_totals": {
+      "26": 600,
+      "48": 1400
+    },
+    "direction_totals": {
+      "26/1_to_2": 300,
+      "26/2_to_1": 300,
+      "48/1_to_2": 700,
+      "48/2_to_1": 700
+    },
+    "schema_exact_27_all_rows": true,
+    "record_digests_valid_all_rows": true,
+    "posthoc_patch_performed": false
+  },
+  "frozen_binding": {
+    "provider_digest": "b8b65b881cc1627ff2e5f41f885f36473ebadf59f5e3f076240c9de1eee99a7d",
+    "estimator_config_digest": "c7b6b2cd30238c174295f2b367f70f5b8a062cae7737abd8aca9ab9ded66eb04",
+    "G15c_gate_digest": "a4da215d4bed07a14b8bca6e190af4d8b6a26b84db30ac3b1b538cb0d08bdbed",
+    "input_contract_digest": "c0fd435477f1286176b71a21cd949879b312c2504a5995257b81ad0cb41ec4ec",
+    "execution_spec_digest": "dd968a6e4966e70b7abce7e62bb3e70ae3f0e490cc02ac7b60b889a13af3ca3b",
+    "repaired_formal_source_commit": "1fff62d0b0831bd4a079f379a5a1a1a7122974b6",
+    "preexecution_lock_record_commit": "1ad0d92612b17c7def0a795cedee6ba9cadeb662",
+    "thresholds": {
+      "frozen_N_min": 5,
+      "frozen_R_min": 0.08955223880597014,
+      "frozen_kappa_max": 202958294.27180856,
+      "c_min_numerator": 93,
+      "c_min_denominator": 125
+    },
+    "all_rows_match": true
+  },
+  "scientific_firewall": {
+    "attempt003_rows_reused": 0,
+    "attempt003_results_inspected_before_attempt004": false,
+    "gt_xml_runtime_inputs": 0,
+    "route_a_tracker_runtime_inputs": 0
+  },
+  "protocol_valid": true,
+  "scientific_reveal_authorized": true
+}
