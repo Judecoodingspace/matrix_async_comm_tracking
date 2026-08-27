@@ -1,0 +1,56 @@
+{
+  "diagnostics_started_at_freeze": false,
+  "eligible_pair_ids_before_prior-evidence_exclusion": [
+    "23", "25", "27", "28", "29", "30", "32", "39", "42", "44",
+    "45", "50", "51", "53", "54", "58", "63", "64", "65", "66",
+    "69", "70", "74", "76", "78"
+  ],
+  "excluded_pair_ids": [
+    "25", "26", "29", "45", "48", "51", "69"
+  ],
+  "exclusion_reasons": {
+    "25": "old_development_G15c",
+    "26": "formal_heldout_Attempt004",
+    "29": "old_development_G15c",
+    "45": "old_development_G15c",
+    "48": "formal_heldout_Attempt004",
+    "51": "old_development_G15c",
+    "69": "old_development_G15c"
+  },
+  "experiment_id": "exp_20260827_001_route_a_same_correspondence_geometry_diagnosis",
+  "frozen_base_commit": "727d5212a35aaf7398b6c2c48504760fd81e6751",
+  "frozen_branch": "exp/20260827-001-route-a-same-correspondence-geometry-diagnosis",
+  "full_frame_direction_denominator": 5480,
+  "pair_frame_metadata": {
+    "23": {
+      "frame_count": 700,
+      "frame_filename_set_digest": "e2f265adf10f0fa9191bad891aa0ebe28b9fb85f5dd77cf4e5e9ca69409e877b"
+    },
+    "27": {
+      "frame_count": 340,
+      "frame_filename_set_digest": "96d4ae0b4f794d2a99a7e97f6915367f3f85de5fd4e5cb6b05105d55ed7b1364"
+    },
+    "28": {
+      "frame_count": 700,
+      "frame_filename_set_digest": "e2f265adf10f0fa9191bad891aa0ebe28b9fb85f5dd77cf4e5e9ca69409e877b"
+    },
+    "30": {
+      "frame_count": 700,
+      "frame_filename_set_digest": "e2f265adf10f0fa9191bad891aa0ebe28b9fb85f5dd77cf4e5e9ca69409e877b"
+    },
+    "32": {
+      "frame_count": 300,
+      "frame_filename_set_digest": "480247c76d33e234d87603e4f92e347952d8fa63dda126b46e59c19fa0047b05"
+    }
+  },
+  "remaining_eligible_pair_ids": [
+    "23", "27", "28", "30", "32", "39", "42", "44", "50", "53",
+    "54", "58", "63", "64", "65", "66", "70", "74", "76", "78"
+  ],
+  "selected_pair_ids": ["23", "27", "28", "30", "32"],
+  "selection_rule": "take_first_five_after_numeric_sort_of_eligible_train_pairs_after_fixed_exclusions",
+  "selection_rule_frozen_before_image_read": true,
+  "split": "train",
+  "view_1_template": "train/1/{pair_id}-1",
+  "view_2_template": "train/2/{pair_id}-2"
+}
