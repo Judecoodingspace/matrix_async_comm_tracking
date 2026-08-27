@@ -145,13 +145,36 @@ def audit_prestart(args: argparse.Namespace) -> dict[str, bool]:
     checks["branch"] = git_text(repository, "branch", "--show-current") == lock["branch"]
     checks["git_clean"] = git_text(repository, "status", "--porcelain=v1") == ""
     head = git_text(repository, "rev-parse", "HEAD")
-    checks["lock_commit_is_head"] = head == lock["preexecution_lock_record_commit"]
+    contract_commit = lock["formal_contract_implementation_commit"]
+    checks["lock_commit_parent_is_contract_commit"] = git_text(repository, "rev-parse", "HEAD^") == contract_commit
+    expected_lock_path = (repository / lock["lock_path_relative"]).resolve()
+    checks["lock_path"] = args.lock.resolve() == expected_lock_path
+    checks["lock_artifact_committed_at_head"] = (
+        git_text(repository, "hash-object", str(args.lock.resolve()))
+        == git_text(repository, "rev-parse", f"HEAD:{lock['lock_path_relative']}")
+    )
     checks["source_commit_ancestor"] = subprocess.run(
         ["git", "merge-base", "--is-ancestor", lock["repaired_formal_source_commit"], head], cwd=repository
+    ).returncode == 0
+    checks["development_commit_ancestor"] = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", lock["development_equivalence_commit"], head], cwd=repository
     ).returncode == 0
     checks["output_absent"] = not args.formal_output_root.exists()
     checks["authorization_absent"] = not args.authorization.exists()
     checks["orchestration_state_absent"] = not args.state_root.exists()
+    checks["formal_output_path_bound"] = (
+        args.formal_output_root.resolve()
+        == Path(spec["formal_output_root"]).resolve()
+        == Path(lock["formal_output_root"]).resolve()
+    )
+    checks["orchestration_state_path_bound"] = (
+        args.state_root.resolve()
+        == Path(spec["orchestration_state_root"]).resolve()
+        == Path(lock["orchestration_state_root"]).resolve()
+    )
+    checks["authorization_path_bound"] = (
+        args.authorization.resolve() == Path(lock["authorization_record_path"]).resolve()
+    )
 
     data_root = Path(contract["dataset_root_resolved"]).resolve()
     checks["data_root"] = data_root == args.data_root.resolve()

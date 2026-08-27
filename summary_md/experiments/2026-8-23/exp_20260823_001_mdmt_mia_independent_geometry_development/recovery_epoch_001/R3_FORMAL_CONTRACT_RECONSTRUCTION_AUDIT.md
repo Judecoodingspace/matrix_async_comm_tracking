@@ -112,7 +112,7 @@ Persistent selftest artifact SHA-256:
 | --- | --- |
 | Formal row contract | `404b1db4a8701a9bbad95a8afa4b633d7674b33108717df91c7b5b8af85cb75c` |
 | Formal executor | `aa3038bd44b38c38f7e3d5f8b660f16202adca6a285c467f7ea7a9f6f44f2418` |
-| Fail-closed guard | `d3e1a492c4c4cfed31cbb7c84be4fb8ee66a57cab3402dd484de076345f84451` |
+| Fail-closed guard | `62affad18a8094c2b9d4d68698440ce59d1671bc32b5354f20c7fd52d9f4c28a` |
 | Persistent orchestrator | `c43ce52a76e65648f5bd86f2419d489651e52241faa03ab431229bf2f03e1967` |
 | Synthetic selftest source | `3723f762e7e1d46693d2ca38ef33f94c5a2c654bf9b60d8e701b43023fab2ffe` |
 | Execution spec artifact | `f3798c9725abf5a988339effbf9744599a7b99cd118fa7451a7743c7aa46368c` |
