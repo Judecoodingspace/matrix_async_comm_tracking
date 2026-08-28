@@ -1,0 +1,89 @@
+{
+  "experiment_id": "exp_20260827_001_route_a_same_correspondence_geometry_diagnosis",
+  "status": "DEVELOPMENT_ONLY_DIAGNOSTIC_PROBE",
+  "correspondence": {
+    "generation_count_per_frame_direction": 1,
+    "decode": "cv2.IMREAD_COLOR",
+    "color_conversion": "cv2.COLOR_BGR2GRAY",
+    "resize": "NONE",
+    "sift": {
+      "nfeatures": 0,
+      "nOctaveLayers": 3,
+      "contrastThreshold": 0.04,
+      "edgeThreshold": 10,
+      "sigma": 1.6,
+      "enable_precise_upscale": false
+    },
+    "flann": {
+      "algorithm": 1,
+      "trees": 5,
+      "checks": 50,
+      "knn_k": 2
+    },
+    "lowe_ratio_strict_less_than": 0.7,
+    "uniqueness": "returned_order_greedy_one_to_one",
+    "minimum_unique_correspondences": 11,
+    "point_dtype": "float32"
+  },
+  "homography": {
+    "implementation": "unchanged_frozen_provider_semantics",
+    "method": "cv2.RANSAC",
+    "threshold_pixels": 5.0,
+    "confidence": 0.995,
+    "max_iterations": 2000,
+    "rng_seed_at_direction_start": 7,
+    "g15c_unchanged": true
+  },
+  "fundamental": {
+    "role": "DIAGNOSTIC_ONLY_NO_READINESS_GATE",
+    "method": "cv2.FM_RANSAC",
+    "threshold_pixels": 5.0,
+    "confidence": 0.995,
+    "max_iterations": 2000,
+    "rng_seed_immediately_before_solver": 7,
+    "normalization": "frobenius_canonical_sign",
+    "residuals": [
+      "sampson_distance",
+      "absolute_normalized_epipolar_constraint",
+      "symmetric_epipolar_distance"
+    ]
+  },
+  "reproducibility": {
+    "opencv_threads": 1,
+    "opencl": false,
+    "repeat_pair": "first_selected_pair",
+    "repeat_frames": "first_10_lexicographic",
+    "repeat_directions": ["1_to_2", "2_to_1"],
+    "required_mismatch_count": 0
+  },
+  "diagnostic_pattern": {
+    "h_low_reference_inlier_ratio": 0.08955223880597014,
+    "minimum_h_low_comparable_rows_per_unit": 20,
+    "minimum_median_delta": 0.1,
+    "minimum_positive_delta_fraction": 0.75,
+    "minimum_repeated_units": 3,
+    "role": "INTERPRETATION_PATTERN_NOT_READINESS_GATE"
+  },
+  "selected_pair_ids": ["23", "27", "28", "30", "32"],
+  "forbidden_pair_ids": ["25", "26", "29", "45", "48", "51", "69"],
+  "forbidden_inputs": [
+    "test",
+    "val",
+    "xml",
+    "gt",
+    "mda_gt",
+    "detector",
+    "tracker",
+    "mia",
+    "identity",
+    "route_a_state",
+    "history",
+    "future_frame"
+  ],
+  "forbidden_claims": [
+    "F_SHOULD_ENTER_ROUTE_A",
+    "SIFT_PROVEN_RELIABLE",
+    "A1_SUPPORTED",
+    "TRACKING_OR_IDENTITY_CLAIM"
+  ]
+}
