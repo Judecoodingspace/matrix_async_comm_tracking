@@ -1,0 +1,19 @@
+{
+  "audit_role": "SYNTHETIC_STATIC_PASSIVITY",
+  "status": "PASS",
+  "hook_return_assigned": false,
+  "author_input_mutation_count": 0,
+  "alias_violation_count": 0,
+  "protected_source_modified": false,
+  "forbidden_GT_access_count": 0,
+  "forbidden_inplace_mutation_count": 0,
+  "checkpoint_schema_divergence": 0,
+  "recorder_source_divergence": 0,
+  "A_B_C_checkpoint_call_sequence_identical": true,
+  "temporary_A_derivative_ast_parse": "PASS",
+  "temporary_BC_derivative_ast_parse": "PASS",
+  "protected_helpers_byte_identical": true,
+  "frozen_parent_entrypoint_sha256_before_after": "4c8674425462dc8e14dc1f53eaaa62a83d93879e45b4cb46a05b38ea78008616",
+  "instrumentation_runtime_overhead": "UNGRADED",
+  "real_runtime_executed": false
+}

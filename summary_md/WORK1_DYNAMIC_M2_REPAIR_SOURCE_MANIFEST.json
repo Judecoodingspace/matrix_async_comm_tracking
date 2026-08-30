@@ -1,0 +1,27 @@
+{
+  "artifact_role": "PREEXECUTION_SOURCE_PROVENANCE",
+  "branch": "exp/20260827-001-route-a-same-correspondence-geometry-diagnosis",
+  "base_commit_before_repair": "40fc5b29a0634e6b9380add1d5f1d206e9c2e864",
+  "runtime_execution_occurred": false,
+  "files": {
+    "src/tracking/mdmt_mia_work1_core_comparison.py": "3e25bd2aa52647737e34bc9806a61b833d138df26590d80799dce418fd87c3e0",
+    "src/tracking/mdmt_mia_work1_xml_governance.py": "5093c69b65ea0d451cacafae9d34fe65b0551f4c9b7bca6013df30add9dd6a13",
+    "src/tracking/mdmt_mia_work1_eligibility_observer.py": "3f4f4cf07161d6f67e2722fd3ba8e3f5588e5f948ce7bfc5c56df3e50bbf8add",
+    "scripts/audit_mdmt_mia_work1_core_comparison.py": "da4aafc3167fd624b56468337ab59fe43045c0b1c0dc2638aa15b478ab703f92",
+    "scripts/audit_mdmt_mia_work1_xml_governance.py": "fee4a74983af95ceb3fa9fbbf9ca24c8c453f30b1eae72288b001fd610780cef",
+    "scripts/prepare_mdmt_mia_work1_eligibility_variant.py": "ecc7aa8855093df2df49a1d2c248612f32e787eb90b90351624ee55b04c58acf",
+    "tests/test_mdmt_mia_work1_core_comparison.py": "bf90077e3ab3ff3f92788248bcfd53e639b3b0498afc607adfdad6299214b2a2",
+    "tests/test_mdmt_mia_work1_xml_governance.py": "7b7c970175b11341df369d962b8389ec8a311dd634dd124e914e94d896b1b56b",
+    "tests/test_mdmt_mia_work1_eligibility_mve.py": "cfa6e3b5f32ec45fc28944d0189bb1f6b3c20002935fe071c22dae1054b1719a",
+    "summary_md/WORK1_DYNAMIC_M2_EXECUTION_SPEC.json": "c13a7d48b53e73f35b7cc0a4bb8403f2b3ccf753c9da7b21239920eb9cd1d779",
+    "summary_md/WORK1_DYNAMIC_M2_STOP_MATRIX.json": "fef6d232b63ca2220bc94ad2eb0273482c0a3553d9f822cb12115ce8ead4a5dc"
+  },
+  "verification": {
+    "focused_tests": "43 passed",
+    "core_static_audit": "PASS",
+    "g_xml3_static_audit": "PASS",
+    "normalized_launch_diff_audit": "PASS",
+    "temporary_a_bc_generation": "PASS"
+  },
+  "execution_rule": "Future execution must use these exact file hashes from a committed revision; any mismatch is DO_NOT_LAUNCH."
+}

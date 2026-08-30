@@ -1,0 +1,25 @@
+{
+  "schema_version": "work1-full-core-comparison-v1",
+  "recorder_source_sha256": "3e25bd2aa52647737e34bc9806a61b833d138df26590d80799dce418fd87c3e0",
+  "canonicalizer_sha256": "3e25bd2aa52647737e34bc9806a61b833d138df26590d80799dce418fd87c3e0",
+  "comparison_tool_sha256": "da4aafc3167fd624b56468337ab59fe43045c0b1c0dc2638aa15b478ab703f92",
+  "derivative_generator_sha256": "ecc7aa8855093df2df49a1d2c248612f32e787eb90b90351624ee55b04c58acf",
+  "trace_schema_sha256": "d6958c41487599d3b106063cce2afee002c5789bd6a7bf2cfcb9f0ba6843c3e8",
+  "checkpoint_spec_sha256": "5fa0123857430d74df2402134fa4b0b2045ccea9e8193cdd66e89cddc279093f",
+  "A_patch_manifest_sha256": "3671abe50773e4ec24a117c167a435fce13a038d2830de9e2c5296b0fa254b2d",
+  "BC_patch_manifest_sha256": "cdc8e48e62a504ca4a47d8957b2291ebf029bb7dfbfe741811c6361128e6803d",
+  "patch_manifest_role": "TEMPORARY_SYNTHETIC_DERIVATIVE_AUDIT_ONLY; persistent derivative hashes require future authorization",
+  "temporary_A_entrypoint_sha256": "77e9a30f96ac50b03f609b8456a30153f8e68027cf7aa1a9143756746c168b00",
+  "temporary_BC_entrypoint_sha256": "69e4e42963b13a286203adb58a9e88fbabc138215f0f7c9342ffd03a7b308aaf",
+  "protected_parent_hashes": {
+    "demo/supplement_MIA.py": "4c8674425462dc8e14dc1f53eaaa62a83d93879e45b4cb46a05b38ea78008616",
+    "demo/utils/cascade_runtime.py": "b5fd31173e32b7c9c317391d06211dd49f628fec1e960addf0d5a899b732bcf2",
+    "demo/utils/supplement.py": "415484d61c9b805f26ba77032af8a2e67617266a861420557f0d886ff1be5ec6",
+    "demo/utils/common.py": "c87dfcf6d6a785e0042b4bf348fa87733b61de78e92d6c32c60c8c1cc31d3b93",
+    "demo/utils/async_deadline_runtime.py": "9344ad8bfa0353df8b3f5727ec30e50f0d1a737771aa508fd91caa01f914663a"
+  },
+  "A_B_C_recorder_source_identical": true,
+  "A_B_C_checkpoint_spec_identical": true,
+  "frozen_parent_modified": false,
+  "real_runtime_executed": false
+}

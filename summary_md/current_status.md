@@ -674,3 +674,22 @@ especially in 1000ms and 1500ms delay groups?
 ```bash
 PYTHONPATH=src python -m pytest tests/ -q
 ```
+## 2026-08-31 Work 1 Dynamic M2 authorization-repair pass
+
+- Repaired fail-open A/B/C trace comparison by independently enforcing exact
+  schema, externally supplied full frame count, and literal frame0/standard/final
+  checkpoint profiles.
+- Added machine gates for frozen-parent versus A-traced author-output parity,
+  same-condition B exact repeat, normalized launch differences, and source-file
+  hash provenance.
+- Added passive runtime producers for G-XML2 initialization equality inputs,
+  G-XML3 dynamic counters, and the complete G-XML4 ordering record.
+- Removed overlap from the observer mutation count; success still requires zero.
+- Verification: focused Work 1 suite `43 passed`; core static audit `PASS`;
+  G-XML3 static `PASS`; launch-diff audit `PASS`; source-manifest audit `PASS`.
+- Real parent/A/B/B-repeat/C, detector, tracker, dataset, Dynamic M2, MVE,
+  Formal and held-out execution: `NOT RUN`.
+- Exact next action: perform a fresh Dynamic M2 execution-authorization review
+  against `summary_md/WORK1_DYNAMIC_M2_EXECUTION_AUTHORIZATION_REPAIR.md` and
+  `summary_md/WORK1_DYNAMIC_M2_REPAIR_SOURCE_MANIFEST.json`; do not launch from
+  this repair pass itself.

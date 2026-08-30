@@ -10,6 +10,19 @@ Scope is `IMPLEMENTATION_PLANNING_ONLY`. This document authorizes neither
 source modification nor fixture/MVE execution. Scientific role remains
 `MECHANISM_EXISTENCE_PROBE`; Route A remains `PARKED_AFTER_PLANNING`.
 
+XML-governance writeback status:
+
+```text
+GOVERNANCE_DECISION_ALREADY_FROZEN_BEFORE_WRITEBACK
+WORK1_DECISION_GT_INDEPENDENT
+THIS IS AN EXPLICIT GOVERNANCE AMENDMENT
+```
+
+The old full-runtime XML ban is superseded only for the frozen original-MIA
+first-frame initialization. Work 1 direct oracle access and GT safety grading
+remain forbidden. The implementation target is mechanism/non-interference
+under that frozen initialization protocol, not a GT-free deployment runtime.
+
 Frozen source preflight was performed read-only. All contract hashes match:
 
 | Authority item | Frozen/current SHA-256 | Status |
@@ -78,6 +91,8 @@ Planned change: add one dependency-light module containing:
 - `row_fingerprint(row[1:])` including dtype, shape and contiguous bytes;
 - lifecycle enum with only the four frozen terminal transitions;
 - `Work1EligibilityObserver.capture_pre_id(...)`;
+- `Work1EligibilityObserver.record_author_initialization_complete(...)`,
+  accepting only passive marker metadata and returning `None`;
 - `Work1EligibilityObserver.observe_post_id_and_probe(...)`;
 - `Work1EligibilityObserver.record_author_high_score_output(...)`;
 - `Work1EligibilityObserver.end_frame(...)` and `finalize()`;
@@ -112,7 +127,7 @@ Planned change:
 2. refuse an existing destination;
 3. copy the frozen v8 artifact to an isolated proposed derivative such as
    `work1_pre_id_eligibility_observer_v1`;
-4. copy the observer module into `demo/utils/`;
+4. copy the observer and XML-governance validity modules into `demo/utils/`;
 5. apply exact single-match hook insertions only to the derivative
    `demo/supplement_MIA.py`;
 6. write `work1_variant_manifest.json` with parent hashes, changed-file hashes,
@@ -140,12 +155,15 @@ derivative:
 1. import the Work 1 observer module;
 2. create observer state after `CascadeEdgeRuntime` construction when
    `MIA_WORK1_OBSERVER=1`; otherwise bind `None`;
-3. call `capture_pre_id(...)` after lines 312-315;
-4. call `observe_post_id_and_probe(...)` after lines 412-416;
-5. call `record_author_high_score_output(...)` after line 447;
-6. call `end_frame(...)` after feedback construction; skipped/initial frames
+3. after frozen first-frame initialization, create a digest-only
+   `AUTHOR_GT_INITIALIZATION_COMPLETE` marker and pass only its safe metadata
+   to the observer; the marker-recording return is ignored;
+4. call `capture_pre_id(...)` after lines 312-315;
+5. call `observe_post_id_and_probe(...)` after lines 412-416;
+6. call `record_author_high_score_output(...)` after line 447;
+7. call `end_frame(...)` after feedback construction; skipped/initial frames
    may only expire an empty frame state;
-7. call observer `finalize()` only after the author packet/cascade finalizers.
+8. call observer `finalize()` only after the author packet/cascade finalizers.
 
 Every hook is guarded by `if work1_observer is not None`; every return is
 ignored. No author call, threshold, argument order or assignment changes.
@@ -216,7 +234,23 @@ interrupted before line 133.
 Removal test: tests import no detector/tracker and create no runtime outputs
 outside a temporary directory.
 
-### 3.6 No-change list
+### 3.6 XML-governance validity infrastructure
+
+New files:
+
+- `src/tracking/mdmt_mia_work1_xml_governance.py` implements pure G-XML1–5
+  validators and digest-only marker construction;
+- `scripts/audit_mdmt_mia_work1_xml_governance.py` validates pre-existing JSON
+  evidence records but cannot open XML/GT or create expected baselines;
+- `tests/test_mdmt_mia_work1_xml_governance.py` contains static/synthetic
+  fail-closed gate tests;
+- `summary_md/ABC_INITIALIZATION_EQUALITY_AUDIT_SCHEMA.json` freezes structure
+  only and contains no runtime result.
+
+This infrastructure is `EXECUTION_VALIDITY_EVIDENCE`, not mechanism logic.
+None of its outputs may enter eligibility or opportunity metrics.
+
+### 3.7 No-change list
 
 The plan makes **no modification** to:
 
@@ -455,6 +489,97 @@ The frozen author runtime's pre-existing initialization remains outside the
 Work 1 observer data interface and is held constant; no observer/probe/ledger
 branch can receive, inspect or serialize it. No GT grading is planned.
 
+This paragraph is now enforced by `WORK1_DYNAMIC_M2_PREEXECUTION_GATE`, not by
+the superseded absolute full-runtime XML ban. Ordinary author rows may enter
+the observer only as `SHARED_FROZEN_AUTHOR_STATE`; raw XML/GT fields and
+correctness semantics remain forbidden.
+
+#### G-XML1 — Frozen initialization provenance
+
+Before launch, compare an already-frozen expected record with the observed
+record for:
+
+```text
+author_entrypoint_sha256
+xml_reader_source_sha256
+initialization_code_sha256
+xml_view1_sha256
+xml_view2_sha256
+initialization_frame
+```
+
+The expected record cannot be regenerated from observed files. Any mismatch
+is `G_XML1_INITIALIZATION_PROVENANCE_FAIL` and blocks launch.
+
+#### G-XML2 — A/B/C initialization equality
+
+Future `ABC_INITIALIZATION_EQUALITY_AUDIT.json` records exact A/B/C values for
+the XML hashes, initialization-code hash/frame, both views' initial bbox/ID/
+label output digests, and post-initialization tracker-state digest. All fields
+must satisfy `A == B == C`; no tolerance is permitted. Failure is
+`G_XML2_ABC_INITIALIZATION_MISMATCH` and invalidates the attempt before core
+non-interference interpretation.
+
+#### G-XML3 — Work 1 oracle firewall
+
+The static layer audits Work 1 imports, explicit function signatures, schemas,
+serialized keys, environment variables, and file-path interfaces. The future
+dynamic audit `WORK1_RUNTIME_ORACLE_FIREWALL_AUDIT.json` requires:
+
+```text
+xml_open_count_by_work1 = 0
+gt_file_open_count_by_work1 = 0
+gt_field_access_count_by_work1 = 0
+gt_serialized_field_count = 0
+```
+
+Only frozen author initialization may access XML. Failure is
+`G_XML3_WORK1_ORACLE_FIREWALL_FAIL`.
+
+#### G-XML4 — Initialization boundary
+
+An isolated derivative may add only a passive
+`AUTHOR_GT_INITIALIZATION_COMPLETE` marker after first-frame initialization
+and before any Work 1 record. It records frame, completion Boolean, author
+state digest, and monotonically ordered sequence number. Its return is ignored.
+Required ordering is:
+
+```text
+last_author_GT_read
+< AUTHOR_GT_INITIALIZATION_COMPLETE
+< first_Work1_E_pre_record
+```
+
+Failure is `G_XML4_INITIALIZATION_BOUNDARY_FAIL`. The marker and its digest are
+execution-validity evidence and may not enter mechanism metrics.
+
+#### G-XML5 — Claim/output firewall
+
+Validate eligibility/opportunity ledgers, aggregates, decision template, and
+report template against forbidden correctness, candidate-truth, MDA, IDF1,
+MOTA, IDSW, false/safe-write-in, deployment-ready, and GT-free-runtime fields
+or claims. `GT_SAFETY_UNGRADED` remains the only safety status. Failure is
+`G_XML5_CLAIM_BOUNDARY_FAIL`.
+
+#### Frozen gate order
+
+```text
+M2_SYNTHETIC_PARITY_PASS
+-> G-XML1
+-> G-XML3 STATIC
+-> SOURCE / DERIVATIVE HASH
+-> execution authorization review
+-> future A/B/C launch
+-> G-XML2
+-> G-XML4
+-> G-XML3 DYNAMIC
+-> CORE_OUTPUT_DIFF
+-> TRACKER_MUTATION_COUNT_FROM_OBSERVER
+```
+
+Prelaunch failures prevent process launch. Post-launch validity failures mark
+the attempt invalid and stop before interpreting non-interference.
+
 ### M2.5 Non-interference audit
 
 Future audit matrix, using identical cache/input/config/seed/d5:
@@ -522,9 +647,11 @@ requested only when all conditions below are documented as PASS:
 7. d5 ID-state delay only, all other frozen channels unchanged;
 8. edge cut/shadow/oracle paths disabled;
 9. oracle firewall PASS;
-10. parent-vs-derivative-OFF and OFF-vs-ON non-interference PASS;
-11. fresh isolated output root and attempt fingerprint;
-12. explicit confirmation that GT safety remains `GT_SAFETY_UNGRADED`.
+10. `G-XML1` and static `G-XML3` PASS before launch;
+11. future `G-XML2`, `G-XML4`, and dynamic `G-XML3` PASS before interpreting A/B/C;
+12. parent-vs-derivative-OFF and OFF-vs-ON non-interference PASS;
+13. fresh isolated output root and attempt fingerprint;
+14. explicit confirmation that GT safety remains `GT_SAFETY_UNGRADED`.
 
 M3 may not replace/add a pair, shorten frames, run a delay sweep, access
 held-out, use official-test pairs for selection, grade GT, or transition into
@@ -594,3 +721,42 @@ READY_FOR_IMPLEMENTATION_AUTHORIZATION_REVIEW
 This recommendation permits only human review of the plan. It does not
 authorize writing code, running the parity fixture, running detector/tracker,
 running the MVE, accessing held-out data or entering Formal.
+
+## 11. Dynamic M2 full-core comparison addendum
+
+The earlier `DYNAMIC_M2_COMPARISON_COVERAGE_BLOCKER` is resolved at the
+source-mapping plus synthetic/static implementation layer. Future A/B/C must
+use the architecture and exact checkpoint/canonicalization rules frozen in:
+
+- `WORK1_FULL_CORE_COMPARISON_SOURCE_MAP.md`
+- `WORK1_FULL_CORE_COMPARISON_INSTRUMENTATION_SPEC.md`
+- `WORK1_FULL_CORE_COMPARISON_INSTRUMENTATION_MANIFEST.json`
+
+This addendum does not authorize persistent derivative generation or runtime.
+The next governance state is:
+
+```text
+READY_TO_REPEAT_DYNAMIC_M2_EXECUTION_AUTHORIZATION_REVIEW
+```
+
+## 12. Dynamic M2 validity-repair addendum
+
+The repeated authorization review requires the following engineering gates
+before any scientific interpretation. They do not change the frozen causal
+variable or observer treatment:
+
+1. validate each trace independently against the exact schema, expected pair,
+   externally frozen full frame count, and literal frame0/standard/final
+   checkpoint profiles;
+2. require exact parent-author-output versus A-traced-output parity;
+3. run B twice in isolated roots and require exact trace repeatability;
+4. machine-check normalized launch env/argv, allowing only the enumerated
+   treatment and artifact-isolation differences;
+5. build G-XML2 from passive initialization component digests plus the already
+   frozen XML identity manifest;
+6. emit and validate G-XML3 dynamic counters and the complete G-XML4 boundary
+   ordering record;
+7. count unique mutation boundaries so guard evidence is not double-counted.
+
+Any missing/invalid artifact, incomplete profile, repeat mismatch, parent
+parity mismatch, or unauthorized launch difference stops the attempt.

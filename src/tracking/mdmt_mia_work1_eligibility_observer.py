@@ -14,7 +14,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Mapping
 
 import cv2
 import numpy as np
@@ -233,6 +233,16 @@ class Work1EligibilityObserver:
     _author_digests: list[dict[str, Any]] = field(default_factory=list)
     _terminal_digests: list[dict[str, Any]] = field(default_factory=list)
     _active_frame: int | None = None
+    _initialization_marker: dict[str, Any] | None = None
+    _record_sequence_number: int = 0
+    _last_author_gt_read_sequence_number: int | None = None
+    _first_work1_e_pre_sequence_number: int | None = None
+    _runtime_oracle_counters: dict[str, int] = field(default_factory=lambda: {
+        "xml_open_count_by_work1": 0,
+        "gt_file_open_count_by_work1": 0,
+        "gt_field_access_count_by_work1": 0,
+        "gt_serialized_field_count": 0,
+    })
 
     @classmethod
     def from_environment(cls, output_dir: str | Path, pair_id: int | None = None) -> "Work1EligibilityObserver":
@@ -246,6 +256,37 @@ class Work1EligibilityObserver:
         from utils.common import get_matched_ids_lineage  # type: ignore[import-not-found]
         return get_matched_ids_lineage(*args)
 
+    def record_author_initialization_complete(
+        self, marker: Mapping[str, Any], *, last_author_gt_read_sequence_number: int,
+    ) -> None:
+        """Accept passive boundary metadata; raw initialization values are forbidden."""
+        required = {
+            "frame_id",
+            "author_initialization_complete",
+            "initialization_state_digest",
+            "marker_sequence_number",
+        }
+        if set(marker) != required:
+            raise ObserverIntegrityError("invalid author-initialization marker schema")
+        if int(marker["frame_id"]) != 0 or marker["author_initialization_complete"] is not True:
+            raise ObserverIntegrityError("invalid author-initialization completion marker")
+        digest = str(marker["initialization_state_digest"])
+        if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+            raise ObserverIntegrityError("invalid author-initialization state digest")
+        marker_sequence = int(marker["marker_sequence_number"])
+        last_gt_sequence = int(last_author_gt_read_sequence_number)
+        if marker_sequence <= 0 or self._initialization_marker is not None:
+            raise ObserverIntegrityError("duplicate or unordered author-initialization marker")
+        if last_gt_sequence < 0 or last_gt_sequence >= marker_sequence:
+            raise ObserverIntegrityError("author GT-read boundary is not before initialization marker")
+        self._initialization_marker = dict(marker)
+        self._last_author_gt_read_sequence_number = last_gt_sequence
+        self._record_sequence_number = marker_sequence
+
+    def _next_record_sequence(self) -> int:
+        self._record_sequence_number += 1
+        return self._record_sequence_number
+
     def capture_pre_id(
         self, frame_id: int, rows_view1: np.ndarray, rows_view2: np.ndarray,
         pre_a_ids: Any, pre_a_pts: Any, pre_a_corners: Any,
@@ -253,8 +294,12 @@ class Work1EligibilityObserver:
         lineage_args: tuple[Any, ...] | None = None,
         lineage_builder: Callable[..., tuple[Any, ...]] | None = None,
     ) -> None:
+        if self._initialization_marker is None:
+            raise ObserverIntegrityError("WORK1_RECORD_BEFORE_INITIALIZATION_COMPLETE")
         if self._active_frame is not None:
             raise ObserverIntegrityError("frame overlap before expiry")
+        if self._first_work1_e_pre_sequence_number is None:
+            self._first_work1_e_pre_sequence_number = self._next_record_sequence()
         self._active_frame = int(frame_id)
         before = (_array_digest(rows_view1), _array_digest(rows_view2))
         if lineage_args is not None:
@@ -289,7 +334,8 @@ class Work1EligibilityObserver:
             token = EligibilityToken(key, row_fingerprint(rows[index]), np.asarray(points_list[ordinal]).copy(),
                                      np.asarray(corners_list[2 * ordinal:2 * ordinal + 2]).copy())
             self._tokens[key] = token
-            self._eligibility_ledger.append({**key.as_dict(), "event": "E_PRE_CREATED", "state": token.state.value,
+            self._eligibility_ledger.append({**key.as_dict(), "record_sequence_number": self._next_record_sequence(),
+                                             "event": "E_PRE_CREATED", "state": token.state.value,
                                              "row_fingerprint": token.row_fingerprint})
 
     def observe_post_id_and_probe(
@@ -314,6 +360,7 @@ class Work1EligibilityObserver:
         for trace in traces:
             trace["post_id_row_index"] = trace.pop("pre_id_row_index")
             trace.update({"frame_id": int(frame_id), "source_view_id": source, "target_view_id": target,
+                          "record_sequence_number": self._next_record_sequence(),
                           "eligibility_source": "POST_ID_MUTABLE", "token_state": None,
                           "post_id_membership_disappeared_only": None})
             self._opportunity_ledger.append(trace)
@@ -329,7 +376,8 @@ class Work1EligibilityObserver:
                 token.state, token.invalidation_reason = TokenState.INVALIDATED_ROW_REPLACED, "ROW_REPLACED"
             else:
                 token.post_membership_disappeared_only = index not in post_membership
-                self._eligibility_ledger.append({**token.key.as_dict(), "event": "POST_ID_MEMBERSHIP_DISAPPEARED_ONLY",
+                self._eligibility_ledger.append({**token.key.as_dict(), "record_sequence_number": self._next_record_sequence(),
+                                                 "event": "POST_ID_MEMBERSHIP_DISAPPEARED_ONLY",
                                                  "value": token.post_membership_disappeared_only, "state": token.state.value})
         valid = [token for token in tokens if token.state == TokenState.UNCONSUMED]
         traces = author_equivalent_high_score_probe(
@@ -337,7 +385,8 @@ class Work1EligibilityObserver:
             homography, target_detections, [token.key for token in valid])
         for token, trace in zip(valid, traces):
             token.state = TokenState.CONSUMED_ONCE
-            trace.update({"eligibility_source": "PRE_ID_FROZEN", "token_state": token.state.value,
+            trace.update({"record_sequence_number": self._next_record_sequence(),
+                          "eligibility_source": "PRE_ID_FROZEN", "token_state": token.state.value,
                           "post_id_membership_disappeared_only": token.post_membership_disappeared_only})
             self._opportunity_ledger.append(trace)
 
@@ -358,6 +407,12 @@ class Work1EligibilityObserver:
         self._active_frame = None
 
     def finalize(self) -> None:
+        if self._initialization_marker is None:
+            raise ObserverIntegrityError("missing AUTHOR_GT_INITIALIZATION_COMPLETE marker")
+        if self._last_author_gt_read_sequence_number is None:
+            raise ObserverIntegrityError("missing author GT-read boundary")
+        if self._first_work1_e_pre_sequence_number is None:
+            raise ObserverIntegrityError("missing first Work 1 pre-ID boundary")
         if self._active_frame is not None:
             raise ObserverIntegrityError("finalize before active frame expiry")
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -368,6 +423,19 @@ class Work1EligibilityObserver:
                  "author_digests": self._author_digests, "terminal_digests": self._terminal_digests,
                  "pair_id": self.pair_id}
         (self.output_dir / "TOKEN_LIFECYCLE_AUDIT.json").write_text(json.dumps(_jsonable(audit), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        boundary_audit = {
+            "evidence_role": "EXECUTION_VALIDITY_EVIDENCE",
+            "last_author_gt_read_sequence_number": self._last_author_gt_read_sequence_number,
+            "marker": self._initialization_marker,
+            "first_work1_e_pre_sequence_number": self._first_work1_e_pre_sequence_number,
+            "mechanism_metric": False,
+        }
+        (self.output_dir / "AUTHOR_INITIALIZATION_BOUNDARY_AUDIT.json").write_text(
+            json.dumps(boundary_audit, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        (self.output_dir / "WORK1_RUNTIME_ORACLE_FIREWALL_AUDIT.json").write_text(
+            json.dumps(self._runtime_oracle_counters, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
 
     def _write_jsonl(self, name: str, rows: list[dict[str, Any]]) -> None:
         path = self.output_dir / name

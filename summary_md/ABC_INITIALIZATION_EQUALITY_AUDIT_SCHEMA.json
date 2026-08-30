@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Schema only; contains no A/B/C runtime or dataset outcome.",
+  "properties": {
+    "conditions": {
+      "additionalProperties": false,
+      "properties": {
+        "A": { "$ref": "#/$defs/initializationRecord" },
+        "B": { "$ref": "#/$defs/initializationRecord" },
+        "C": { "$ref": "#/$defs/initializationRecord" }
+      },
+      "required": ["A", "B", "C"],
+      "type": "object"
+    }
+  },
+  "required": ["conditions"],
+  "type": "object",
+  "$defs": {
+    "initializationRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "xml_view1_sha256": { "pattern": "^[0-9a-f]{64}$", "type": "string" },
+        "xml_view2_sha256": { "pattern": "^[0-9a-f]{64}$", "type": "string" },
+        "initialization_code_sha256": { "pattern": "^[0-9a-f]{64}$", "type": "string" },
+        "initialization_frame": { "const": 0, "type": "integer" },
+        "initial_bbox_view1_digest": { "pattern": "^[0-9a-f]{64}$", "type": "string" },
+        "initial_id_view1_digest": { "pattern": "^[0-9a-f]{64}$", "type": "string" },
+        "initial_label_view1_digest": { "pattern": "^[0-9a-f]{64}$", "type": "string" },
+        "initial_bbox_view2_digest": { "pattern": "^[0-9a-f]{64}$", "type": "string" },
+        "initial_id_view2_digest": { "pattern": "^[0-9a-f]{64}$", "type": "string" },
+        "initial_label_view2_digest": { "pattern": "^[0-9a-f]{64}$", "type": "string" },
+        "post_initialization_tracker_state_digest": { "pattern": "^[0-9a-f]{64}$", "type": "string" }
+      },
+      "required": [
+        "xml_view1_sha256",
+        "xml_view2_sha256",
+        "initialization_code_sha256",
+        "initialization_frame",
+        "initial_bbox_view1_digest",
+        "initial_id_view1_digest",
+        "initial_label_view1_digest",
+        "initial_bbox_view2_digest",
+        "initial_id_view2_digest",
+        "initial_label_view2_digest",
+        "post_initialization_tracker_state_digest"
+      ],
+      "type": "object"
+    }
+  }
+}

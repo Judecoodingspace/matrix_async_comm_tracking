@@ -282,8 +282,12 @@ Exactly-once rules:
   first MVE input.
 - Runtime seed: `7`; no stochastic method branch. Pair selection never uses
   this seed and is canonical numeric ordering only.
-- No official test pair, held-out outcome, GT/XML/MDA GT, result-conditioned
-  pair replacement or outcome-conditioned rerun.
+- Historical rule retained for provenance:
+  `No official test pair, held-out outcome, GT/XML/MDA GT, result-conditioned
+  pair replacement or outcome-conditioned rerun.` The absolute runtime portion
+  is `SUPERSEDED_BY_AUTHOR_RUNTIME_XML_GOVERNANCE_AMENDMENT`; official-test,
+  held-out, outcome-conditioned selection/rerun, Work 1 oracle use, and GT
+  grading remain prohibited.
 
 ### Dataset / sequence / split
 
@@ -506,6 +510,8 @@ TRACKER_MUTATION_COUNT_FROM_OBSERVER = 0
 
 ### Oracle firewall
 
+Historical rule, retained verbatim:
+
 Runtime schema, imports, field names and access logs must show zero use of:
 
 - `S_cf`;
@@ -519,6 +525,170 @@ Runtime schema, imports, field names and access logs must show zero use of:
 
 Those signals may be discussed in historical offline diagnosis only. They may
 not be loaded by the MVE process, probe, ledger or selector.
+
+```text
+SUPERSEDED_BY_AUTHOR_RUNTIME_XML_GOVERNANCE_AMENDMENT
+```
+
+The supersession applies only to the absolute prohibition on the frozen
+author runtime's already-existing first-frame XML initialization. Every other
+listed oracle prohibition remains active.
+
+## AUTHOR-RUNTIME XML GOVERNANCE AMENDMENT
+
+```text
+GOVERNANCE_DECISION_ALREADY_FROZEN_BEFORE_WRITEBACK
+THIS IS AN EXPLICIT GOVERNANCE AMENDMENT
+```
+
+Scientific invariant:
+
+```text
+WORK1_DECISION_GT_INDEPENDENT
+```
+
+The frozen original-MIA first-frame XML initialization remains
+`XML_RUNTIME_CAUSAL`, but source audit classifies it as
+`NOT_CONTINUAL_DECISION_ORACLE`. This amendment does not retroactively
+reinterpret the old rule.
+
+### Rule 1 — Frozen initialization only
+
+The frozen original-MIA author runtime may read XML only for its
+already-existing first-frame initialization role. This permission covers only
+the frozen role already present in the author runtime. Later-frame GT refresh,
+new XML reads, a new GT-derived cache, new initialization logic, changed XML
+interpretation, or expanded XML usage is forbidden.
+
+### Rule 2 — Initialization provenance frozen
+
+Before launch, freeze and validate the author source path and SHA-256, XML
+files and SHA-256 hashes, initialization-code region/hash, initialization
+frame, and initialization semantics. Any drift is:
+
+```text
+AUTHOR_INITIALIZATION_PROVENANCE_DRIFT
+```
+
+and stops before runtime. An expected hash baseline may not be regenerated
+from the observed runtime inputs.
+
+### Rule 3 — A/B/C initialization identity
+
+A, B, and C must have exactly identical XML files/hashes, initialization-code
+hash, initialization frame, initialization bbox/ID/label output digests for
+both views, and post-initialization tracker-state digest. Comparison is exact;
+no tolerance is permitted. Any mismatch is:
+
+```text
+ABC_INITIALIZATION_MISMATCH
+```
+
+and invalidates the attempt before non-interference interpretation.
+
+### Rule 4 — Work 1 direct oracle firewall
+
+The Work 1 observer, token, probe, ledger, selector, and orchestrator may not
+directly read, receive, retain, infer provenance from, or serialize XML paths,
+raw GT bboxes, raw GT identities, raw GT labels, GT visibility/outside/
+occlusion, GT-derived correctness or candidate validity, or MDA/IDF1/MOTA/
+IDSW grading inputs. Ordinary author tracker state may be observed only as:
+
+```text
+SHARED_FROZEN_AUTHOR_STATE
+```
+
+It must not be interpreted as GT truth. Initialization hashes/digests and the
+completion marker are validity metadata, not mechanism inputs or metrics.
+
+### Rule 5 — Explicit initialization boundary
+
+Passive validity instrumentation must establish:
+
+```text
+AUTHOR_GT_INITIALIZATION_COMPLETE
+```
+
+after XML parsing, first-frame `inference_mot()` initialization, and
+initialization tracker-state construction, but before Work 1 `E_pre`, token,
+probe, eligibility-ledger, or opportunity-ledger records. Required ordering:
+
+```text
+last_author_GT_read
+< AUTHOR_GT_INITIALIZATION_COMPLETE
+< first_Work1_E_pre_record
+```
+
+Any earlier Work 1 scientific record is:
+
+```text
+WORK1_RECORD_BEFORE_INITIALIZATION_COMPLETE
+```
+
+and stops the attempt. The marker records only frame, completion Boolean,
+state digest, and sequence number; its return is ignored and it cannot affect
+author control flow or state.
+
+### Rule 6 — GT must not decide Work 1 behavior
+
+XML/GT may not decide token creation beyond existing `E_pre`, token validity,
+preserve/reject, candidate generation/ranking, the read-only probe outcome,
+Supplement or write-in decisions, or positive/false candidate status.
+
+### Rule 7 — GT safety grading remains blocked
+
+```text
+GT_SAFETY_UNGRADED
+```
+
+Correctness classification, false/safe write-in, MDA, IDF1, MOTA, IDSW, and
+tracking-performance claims remain forbidden.
+
+### Rule 8 — Claim boundary
+
+Any future result is limited to:
+
+```text
+mechanism / non-interference under the frozen original-MIA initialization protocol
+```
+
+It may not be described as a fully GT-free tracker, GT-free runtime, XML-free
+MIA, GT-free initialization, autonomous tracker, deployment-ready tracking,
+or GT-free deployment result.
+
+### WORK1_DYNAMIC_M2_PREEXECUTION_GATE
+
+The amendment is enforced by five fail-closed gates:
+
+| Gate | Required check | Failure label |
+| --- | --- | --- |
+| `G-XML1` | frozen author/XML/reader/initialization provenance exact match | `G_XML1_INITIALIZATION_PROVENANCE_FAIL` |
+| `G-XML2` | exact A/B/C initialization-record equality | `G_XML2_ABC_INITIALIZATION_MISMATCH` |
+| `G-XML3` | static Work 1 oracle interface and future runtime counters | `G_XML3_WORK1_ORACLE_FIREWALL_FAIL` |
+| `G-XML4` | `last_GT_read < marker < first_E_pre` | `G_XML4_INITIALIZATION_BOUNDARY_FAIL` |
+| `G-XML5` | ledger/aggregate/decision/report claim-schema firewall | `G_XML5_CLAIM_BOUNDARY_FAIL` |
+
+Gate order is frozen:
+
+```text
+M2_SYNTHETIC_PARITY_PASS
+-> G-XML1 PASS
+-> G-XML3 STATIC PASS
+-> SOURCE / DERIVATIVE HASH PASS
+-> authorization review
+-> future A/B/C launch
+-> G-XML2 PASS
+-> G-XML4 PASS
+-> G-XML3 DYNAMIC PASS
+-> CORE_OUTPUT_DIFF check
+-> TRACKER_MUTATION_COUNT_FROM_OBSERVER check
+```
+
+`G-XML1` or static `G-XML3` failure blocks launch. `G-XML2`, `G-XML4`,
+or dynamic `G-XML3` failure invalidates the attempt and prohibits
+non-interference interpretation. XML initialization audits are
+`EXECUTION_VALIDITY_EVIDENCE`, never `WORK1_MECHANISM_EVIDENCE`, and cannot
+select a pair/frame/candidate or enter a mechanism metric.
 
 ### Frozen read-only High-score probe parity
 

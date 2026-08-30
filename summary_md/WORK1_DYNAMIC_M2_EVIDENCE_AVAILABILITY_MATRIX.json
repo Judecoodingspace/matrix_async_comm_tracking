@@ -1,0 +1,25 @@
+{
+  "AVAILABLE_PRELAUNCH": [
+    "M2 synthetic parity focused suite: 24 passed",
+    "G-XML3 static source audit: PASS",
+    "frozen parent, XML-reader, initialization-region, and provenance-manifest hashes",
+    "pair/XML paths, realpaths, existence, and SHA-256 identities",
+    "XML governance amendment, schema, gate order, and stop matrix",
+    "future derivative generation command and required structural audit"
+    ,"machine launch-diff validator and PASS preexecution template audit"
+    ,"fail-closed trace schema/profile/full-frame validator"
+    ,"parent-vs-A-traced exact artifact parity validator"
+    ,"B exact-repeat determinism validator"
+    ,"G-XML2/3/4 passive evidence producers and validators"
+  ],
+  "RUNTIME_REQUIRED": [
+    "persistent derivative manifest and derivative hash set after authorized generation",
+    "A/B/C actual initialization bbox, ID, label, and post-initialization-state digests (producer implemented; values require runtime)",
+    "G-XML2 equality result",
+    "G-XML4 real event ordering",
+    "G-XML3 dynamic zero counters",
+    "complete independently profile-validated A/B/C core-output comparison",
+    "TRACKER_MUTATION_COUNT_FROM_OBSERVER"
+  ],
+  "not_runtime_evidence": "No A/B/C, detector, tracker, dataset, MVE, Formal, held-out, or GT safety grading was run in this review."
+}

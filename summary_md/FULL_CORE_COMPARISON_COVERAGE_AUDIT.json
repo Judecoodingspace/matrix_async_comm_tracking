@@ -1,0 +1,33 @@
+{
+  "audit_role": "SYNTHETIC_STATIC_COVERAGE",
+  "detector": "COVERED",
+  "tracker": "COVERED",
+  "row_order": "COVERED",
+  "runtime_id": "COVERED",
+  "pre_id": "COVERED",
+  "id_stage_1": "COVERED",
+  "id_stage_2": "COVERED",
+  "id_stage_3": "COVERED",
+  "post_id": "COVERED",
+  "high_score": "COVERED",
+  "low_score": "COVERED",
+  "nms": "COVERED",
+  "feedback": "COVERED",
+  "next_frame": "COVERED",
+  "final_prediction": "COVERED",
+  "packet_accounting": "COVERED",
+  "independent_trace_schema_validation": "COVERED",
+  "frame0_standard_final_profile_validation": "COVERED",
+  "external_full_frame_count_validation": "COVERED",
+  "uniform_omission_fail_closed": "COVERED",
+  "parent_a_traced_runtime_parity_gate": "IMPLEMENTED_NOT_RUN",
+  "exact_repeat_gate": "IMPLEMENTED_NOT_RUN",
+  "coverage_status": "FULL_CORE_COMPARISON_COVERAGE_COMPLETE",
+  "evidence": {
+    "source_map": "summary_md/WORK1_FULL_CORE_COMPARISON_SOURCE_MAP.md",
+    "recorder": "src/tracking/mdmt_mia_work1_core_comparison.py",
+    "generator": "scripts/prepare_mdmt_mia_work1_eligibility_variant.py",
+    "synthetic_tests": "18 core-comparison tests; combined focused suite 43 passed",
+    "real_runtime_evidence": false
+  }
+}

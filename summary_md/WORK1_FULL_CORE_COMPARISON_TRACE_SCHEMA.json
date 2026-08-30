@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WORK1_FULL_CORE_COMPARISON_TRACE_SCHEMA",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_role", "pair_id", "frame_id", "view_id", "checkpoint", "checkpoint_sequence", "payload_type", "payload_shape", "payload_dtype", "canonical_digest", "optional_event_count", "source_file", "source_region_id", "observer_enabled", "trace_schema_version"],
+  "properties": {
+    "run_role": {"enum": ["A", "B", "C"]},
+    "pair_id": {"enum": [23, 25, 27, 28, 29]},
+    "frame_id": {"type": "integer"},
+    "view_id": {"enum": [0, 1, 2]},
+    "checkpoint": {"enum": ["FRAME_INPUT", "DETECTOR_OUTPUT", "TRACKER_RAW_OUTPUT", "TRACKER_OUTPUT", "INITIALIZATION_STATE", "PRE_ID_STATE", "ID_STAGE_1", "ID_STAGE_2", "ID_STAGE_3", "POST_ID_RECOMPUTE", "HIGH_SCORE_INPUT", "HIGH_SCORE_OUTPUT", "LOW_SCORE_INPUT", "LOW_SCORE_OUTPUT", "NMS_INPUT", "NMS_OUTPUT", "FEEDBACK_INPUT", "FEEDBACK_OUTPUT", "NEXT_FRAME_STATE", "FINAL_PREDICTION", "PACKET_ACCOUNTING", "FRAME_TERMINAL", "OBSERVER_GUARD_INITIALIZATION_PRE", "OBSERVER_GUARD_INITIALIZATION_POST", "OBSERVER_GUARD_PRE_ID_PRE", "OBSERVER_GUARD_PRE_ID_POST", "OBSERVER_GUARD_POST_ID_PRE", "OBSERVER_GUARD_POST_ID_POST", "OBSERVER_GUARD_HIGH_OUTPUT_PRE", "OBSERVER_GUARD_HIGH_OUTPUT_POST", "OBSERVER_GUARD_TERMINAL_PRE", "OBSERVER_GUARD_TERMINAL_POST", "PACKET_ACCOUNTING_FINAL"]},
+    "checkpoint_sequence": {"type": "integer", "minimum": 1},
+    "payload_type": {"type": "string"},
+    "payload_shape": {"type": ["array", "null"], "items": {"type": "integer"}},
+    "payload_dtype": {"type": ["string", "null"]},
+    "canonical_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "optional_event_count": {"type": ["integer", "null"]},
+    "source_file": {"const": "demo/supplement_MIA.py"},
+    "source_region_id": {"type": "string"},
+    "observer_enabled": {"type": "boolean"},
+    "trace_schema_version": {"const": "work1-full-core-comparison-v1"}
+  }
+}

@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from src.tracking.mdmt_mia_work1_eligibility_observer import EligibilityKey, ObserverIntegrityError, TokenState, Work1EligibilityObserver, author_equivalent_high_score_probe, row_fingerprint
+from src.tracking.mdmt_mia_work1_xml_governance import make_author_initialization_marker
 
 ROOT = Path(__file__).resolve().parents[1]
 AUTHOR = Path("/mnt/data/yzm/experiments/mdmt_mia_official/variants/packetized_id_supplement_cascade_v8/demo/utils/supplement.py")
@@ -86,6 +87,8 @@ def test_lifecycle_and_fingerprint(tmp_path):
     rows = np.array([[7,10,10,40,40,.9]], dtype=np.float32)
     changed = rows.copy(); changed[0,0] = 999; assert row_fingerprint(rows[0]) == row_fingerprint(changed[0])
     observer = Work1EligibilityObserver(tmp_path)
+    marker = make_author_initialization_marker(0, (rows, rows), marker_sequence_number=2)
+    observer.record_author_initialization_complete(marker.as_dict(), last_author_gt_read_sequence_number=1)
     observer.capture_pre_id(3, rows, rows, [7], [[25,25]], [[10,10],[40,40]], [], [], [])
     observer.observe_post_id_and_probe(3, rows, rows, [], [], [], [], [], [], H, H, rows, rows)
     token = next(iter(observer._tokens.values()))

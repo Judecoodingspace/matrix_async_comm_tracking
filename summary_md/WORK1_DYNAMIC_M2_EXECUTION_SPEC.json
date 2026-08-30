@@ -1,0 +1,78 @@
+{
+  "artifact_role": "PREEXECUTION_ONLY",
+  "status": "DYNAMIC_M2_COMPARISON_COVERAGE_BLOCKER_CLEARED_FOR_REVIEW",
+  "frozen_scientific_status": {
+    "M2_SYNTHETIC_PARITY": "PASS",
+    "M2_DYNAMIC_NON_INTERFERENCE": "NOT_RUN",
+    "MVE": "NOT_RUN",
+    "FORMAL": "NOT_RUN",
+    "HELDOUT": "NOT_ACCESSED",
+    "GT_SAFETY": "UNGRADED"
+  },
+  "fixed_inputs": {
+    "pair_ids": [23, 25, 27, 28, 29],
+    "split": "train",
+    "directions": ["1_to_2", "2_to_1"],
+    "frame_scope": "full_available_sequence",
+    "async_delays": "local=0,homography=0,id_state=5,supplement=0",
+    "forbidden_environment": {"MIA_CASCADE_EDGE_CUT": "nonzero", "MIA_CASCADE_SHADOW": "nonzero"},
+    "device": "cuda:0",
+    "seed_policy": "PYTHONHASHSEED=0 plus mandatory same-condition B exact-repeat gate; unsupported author RNG flags are not invented. Any exact-repeat mismatch is EXACT_COMPARISON_DETERMINISM_BLOCKER."
+  },
+  "source_authority": {
+    "parent_root": "/mnt/data/yzm/experiments/mdmt_mia_official/variants/packetized_id_supplement_cascade_v8",
+    "parent_entrypoint_sha256": "4c8674425462dc8e14dc1f53eaaa62a83d93879e45b4cb46a05b38ea78008616",
+    "xml_reader_sha256": "c87dfcf6d6a785e0042b4bf348fa87733b61de78e92d6c32c60c8c1cc31d3b93",
+    "initialization_region_sha256": "53773a70cf69e8ae434c04ecaa013818968d1b20549116477a85d81e2113d395",
+    "cascade_edge_manifest_sha256": "0eb11be11898af2c8b9ba3de8140ca5beac9de3df5ba9213bdafe715b9b9e5ed",
+    "formal_run_manifest_sha256": "14d23ca17faef9d5f96769d771e02cb12eb615a5a2c96de9d072f47d450ab17e",
+    "repair_source_manifest": "summary_md/WORK1_DYNAMIC_M2_REPAIR_SOURCE_MANIFEST.json",
+    "repair_source_manifest_audit_command": "python3 scripts/audit_mdmt_mia_work1_core_comparison.py source-manifest --manifest summary_md/WORK1_DYNAMIC_M2_REPAIR_SOURCE_MANIFEST.json --repository-root . --output {AUDIT_ROOT}/WORK1_REPAIR_SOURCE_MANIFEST_AUDIT.json"
+  },
+  "persistent_derivative_policy": {
+    "decision": "GENERATE_ONLY_AFTER_EXPLICIT_DYNAMIC_M2_EXECUTION_AUTHORIZATION_AND_BEFORE_ANY_LAUNCH",
+    "parent": "/mnt/data/yzm/experiments/mdmt_mia_official/variants/packetized_id_supplement_cascade_v8",
+    "A_traced_derivative_root": "/mnt/data/yzm/experiments/mdmt_mia_official/variants/work1_full_core_traced_a_v1",
+    "BC_traced_derivative_root": "/mnt/data/yzm/experiments/mdmt_mia_official/variants/work1_full_core_traced_bc_v1",
+    "A_generation_command_template": "python3 scripts/prepare_mdmt_mia_work1_eligibility_variant.py --parent /mnt/data/yzm/experiments/mdmt_mia_official/variants/packetized_id_supplement_cascade_v8 --destination /mnt/data/yzm/experiments/mdmt_mia_official/variants/work1_full_core_traced_a_v1 --comparison src/tracking/mdmt_mia_work1_core_comparison.py --full-core-role A",
+    "BC_generation_command_template": "python3 scripts/prepare_mdmt_mia_work1_eligibility_variant.py --parent /mnt/data/yzm/experiments/mdmt_mia_official/variants/packetized_id_supplement_cascade_v8 --destination /mnt/data/yzm/experiments/mdmt_mia_official/variants/work1_full_core_traced_bc_v1 --comparison src/tracking/mdmt_mia_work1_core_comparison.py --observer src/tracking/mdmt_mia_work1_eligibility_observer.py --full-core-role BC",
+    "required_before_launch": ["both work1_full_core_variant_manifest.json files", "derivative manifest SHA-256", "both derivative demo/supplement_MIA.py SHA-256 values", "identical copied recorder SHA-256", "copied observer-module SHA-256", "identical checkpoint specification", "structure audit PASS"],
+    "current_value": "NOT_GENERATED_BY_THIS_PREEXECUTION_REVIEW"
+  },
+  "parent_runtime_parity": {
+    "parent_reference_command": "env PYTHONHASHSEED=0 MIA_ASYNC_CHANNEL_DELAYS=local=0,homography=0,id_state=5,supplement=0 MIA_CASCADE_EDGE_CUT=0 MIA_CASCADE_SHADOW=0 MIA_ROOT=/mnt/data/yzm/experiments/mdmt_mia_official MIA_SOURCE_ROOT=/mnt/data/yzm/experiments/mdmt_mia_official/variants/packetized_id_supplement_cascade_v8 MIA_RUN_INPUT_ROOT={RUN_INPUT_ROOT}/PARENT MIA_OUTPUT_ROOT={RESULT_ROOT}/PARENT bash /mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/scripts/run_mdmt_mia_author_sync.sh mia train {PAIR_ID}",
+    "comparison_command": "python3 scripts/audit_mdmt_mia_work1_core_comparison.py parent-parity --parent-artifact {PARENT_VIEW1_RESULT} --parent-artifact {PARENT_VIEW2_RESULT} --a-traced-artifact {A_VIEW1_RESULT} --a-traced-artifact {A_VIEW2_RESULT} --output {AUDIT_ROOT}/{PAIR_ID}/A_PARENT_VS_A_TRACED_RUNTIME_PARITY.json",
+    "required_result": "PARENT_VS_A_TRACED_OUTPUT_DIFF=0",
+    "failure_label": "A_PARENT_VS_A_TRACED_RUNTIME_PARITY_FAIL"
+  },
+  "command_templates": {
+    "A_traced": "env PYTHONHASHSEED=0 MIA_ASYNC_CHANNEL_DELAYS=local=0,homography=0,id_state=5,supplement=0 MIA_CASCADE_EDGE_CUT=0 MIA_CASCADE_SHADOW=0 MIA_ROOT=/mnt/data/yzm/experiments/mdmt_mia_official MIA_SOURCE_ROOT=/mnt/data/yzm/experiments/mdmt_mia_official/variants/work1_full_core_traced_a_v1 MIA_RUN_INPUT_ROOT={RUN_INPUT_ROOT}/A MIA_OUTPUT_ROOT={RESULT_ROOT}/A MIA_WORK1_RUN_ROLE=A MIA_WORK1_PAIR_ID={PAIR_ID} MIA_WORK1_CORE_TRACE={TRACE_ROOT}/{PAIR_ID}/A_FULL_CORE_TRACE.jsonl MIA_WORK1_INITIALIZATION_STATE_RECORD={TRACE_ROOT}/{PAIR_ID}/A_INITIALIZATION_STATE.json MIA_WORK1_OBSERVER=0 bash /mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/scripts/run_mdmt_mia_author_sync.sh mia train {PAIR_ID}",
+    "B_derivative_off": "env PYTHONHASHSEED=0 MIA_ASYNC_CHANNEL_DELAYS=local=0,homography=0,id_state=5,supplement=0 MIA_CASCADE_EDGE_CUT=0 MIA_CASCADE_SHADOW=0 MIA_ROOT=/mnt/data/yzm/experiments/mdmt_mia_official MIA_SOURCE_ROOT=/mnt/data/yzm/experiments/mdmt_mia_official/variants/work1_full_core_traced_bc_v1 MIA_RUN_INPUT_ROOT={RUN_INPUT_ROOT}/B MIA_OUTPUT_ROOT={RESULT_ROOT}/B MIA_WORK1_RUN_ROLE=B MIA_WORK1_PAIR_ID={PAIR_ID} MIA_WORK1_CORE_TRACE={TRACE_ROOT}/{PAIR_ID}/B_FULL_CORE_TRACE.jsonl MIA_WORK1_INITIALIZATION_STATE_RECORD={TRACE_ROOT}/{PAIR_ID}/B_INITIALIZATION_STATE.json MIA_WORK1_OBSERVER=0 bash /mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/scripts/run_mdmt_mia_author_sync.sh mia train {PAIR_ID}",
+    "B_repeat": "env PYTHONHASHSEED=0 MIA_ASYNC_CHANNEL_DELAYS=local=0,homography=0,id_state=5,supplement=0 MIA_CASCADE_EDGE_CUT=0 MIA_CASCADE_SHADOW=0 MIA_ROOT=/mnt/data/yzm/experiments/mdmt_mia_official MIA_SOURCE_ROOT=/mnt/data/yzm/experiments/mdmt_mia_official/variants/work1_full_core_traced_bc_v1 MIA_RUN_INPUT_ROOT={RUN_INPUT_ROOT}/B_REPEAT MIA_OUTPUT_ROOT={RESULT_ROOT}/B_REPEAT MIA_WORK1_RUN_ROLE=B MIA_WORK1_PAIR_ID={PAIR_ID} MIA_WORK1_CORE_TRACE={TRACE_ROOT}/{PAIR_ID}/B_REPEAT_FULL_CORE_TRACE.jsonl MIA_WORK1_INITIALIZATION_STATE_RECORD={TRACE_ROOT}/{PAIR_ID}/B_REPEAT_INITIALIZATION_STATE.json MIA_WORK1_OBSERVER=0 bash /mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/scripts/run_mdmt_mia_author_sync.sh mia train {PAIR_ID}",
+    "C_derivative_on": "env PYTHONHASHSEED=0 MIA_ASYNC_CHANNEL_DELAYS=local=0,homography=0,id_state=5,supplement=0 MIA_CASCADE_EDGE_CUT=0 MIA_CASCADE_SHADOW=0 MIA_ROOT=/mnt/data/yzm/experiments/mdmt_mia_official MIA_SOURCE_ROOT=/mnt/data/yzm/experiments/mdmt_mia_official/variants/work1_full_core_traced_bc_v1 MIA_RUN_INPUT_ROOT={RUN_INPUT_ROOT}/C MIA_OUTPUT_ROOT={RESULT_ROOT}/C MIA_WORK1_RUN_ROLE=C MIA_WORK1_PAIR_ID={PAIR_ID} MIA_WORK1_CORE_TRACE={TRACE_ROOT}/{PAIR_ID}/C_FULL_CORE_TRACE.jsonl MIA_WORK1_INITIALIZATION_STATE_RECORD={TRACE_ROOT}/{PAIR_ID}/C_INITIALIZATION_STATE.json MIA_WORK1_OBSERVER=1 MIA_WORK1_OUTPUT_DIR={OBSERVER_OUTPUT_ROOT}/{PAIR_ID} bash /mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/scripts/run_mdmt_mia_author_sync.sh mia train {PAIR_ID}",
+    "not_executed": true
+  },
+  "launch_diff_audit": {
+    "A_vs_B_authorized_differences": ["MIA_SOURCE_ROOT: A traced vs shared BC traced derivative", "MIA_WORK1_RUN_ROLE", "condition-isolated run-input/result/trace roots"],
+    "B_vs_B_repeat_authorized_differences": ["condition-isolated run-input/result/trace/initialization-record roots"],
+    "B_vs_C_authorized_differences": ["MIA_WORK1_RUN_ROLE", "MIA_WORK1_OBSERVER", "MIA_WORK1_OUTPUT_DIR", "condition-isolated run-input/result/trace/initialization-record roots"],
+    "machine_command": "python3 scripts/audit_mdmt_mia_work1_core_comparison.py launch-diff --execution-spec summary_md/WORK1_DYNAMIC_M2_EXECUTION_SPEC.json --output {AUDIT_ROOT}/ABC_LAUNCH_ARGUMENT_DIFF_AUDIT.json",
+    "strict_result": "MACHINE_CHECKED_BEFORE_LAUNCH; output-root differences are artifact isolation only and cannot enter author runtime state."
+  },
+  "runtime_validity_commands": {
+    "determinism": "python3 scripts/audit_mdmt_mia_work1_core_comparison.py repeat --first {TRACE_ROOT}/{PAIR_ID}/B_FULL_CORE_TRACE.jsonl --second {TRACE_ROOT}/{PAIR_ID}/B_REPEAT_FULL_CORE_TRACE.jsonl --role B --pair-id {PAIR_ID} --expected-frame-count {FRAME_COUNT} --output {AUDIT_ROOT}/{PAIR_ID}/B_EXACT_REPEAT_AUDIT.json",
+    "g_xml2": "python3 scripts/audit_mdmt_mia_work1_xml_governance.py build-g-xml2 --a-record {TRACE_ROOT}/{PAIR_ID}/A_INITIALIZATION_STATE.json --b-record {TRACE_ROOT}/{PAIR_ID}/B_INITIALIZATION_STATE.json --c-record {TRACE_ROOT}/{PAIR_ID}/C_INITIALIZATION_STATE.json --xml-manifest summary_md/WORK1_DYNAMIC_M2_XML_INPUT_MANIFEST.json --pair-id {PAIR_ID} --audit-record {AUDIT_ROOT}/{PAIR_ID}/ABC_INITIALIZATION_EQUALITY_AUDIT.json --result {AUDIT_ROOT}/{PAIR_ID}/G_XML2_RESULT.json",
+    "g_xml3_dynamic": "python3 scripts/audit_mdmt_mia_work1_xml_governance.py g-xml3-dynamic --audit-record {OBSERVER_OUTPUT_ROOT}/{PAIR_ID}/WORK1_RUNTIME_ORACLE_FIREWALL_AUDIT.json --result {AUDIT_ROOT}/{PAIR_ID}/G_XML3_DYNAMIC_RESULT.json",
+    "g_xml4": "python3 scripts/audit_mdmt_mia_work1_xml_governance.py g-xml4 --audit-record {OBSERVER_OUTPUT_ROOT}/{PAIR_ID}/AUTHOR_INITIALIZATION_BOUNDARY_AUDIT.json --result {AUDIT_ROOT}/{PAIR_ID}/G_XML4_RESULT.json",
+    "full_core": "python3 scripts/audit_mdmt_mia_work1_core_comparison.py compare --a {TRACE_ROOT}/{PAIR_ID}/A_FULL_CORE_TRACE.jsonl --b {TRACE_ROOT}/{PAIR_ID}/B_FULL_CORE_TRACE.jsonl --c {TRACE_ROOT}/{PAIR_ID}/C_FULL_CORE_TRACE.jsonl --pair-id {PAIR_ID} --expected-frame-count {FRAME_COUNT} --output {AUDIT_ROOT}/{PAIR_ID}/WORK1_CORE_OUTPUT_COMPARISON.json"
+  },
+  "comparison_coverage": {
+    "required": ["detector rows/scores/labels", "ByteTrack rows/order/bboxes/runtime IDs", "three ID-state stages", "author high-score and low-score Supplement inputs/outputs", "NMS", "feedback and next-frame state", "final predictions", "packet accounting"],
+    "implemented_for_A": ["shared full-core recorder and all frozen checkpoints"],
+    "implemented_for_B": ["same shared full-core recorder and all frozen checkpoints; observer OFF"],
+    "implemented_for_C": ["same shared full-core recorder and all frozen checkpoints; observer ON plus separate mechanism ledgers"],
+    "blocker": null,
+    "coverage_audit": "summary_md/FULL_CORE_COMPARISON_COVERAGE_AUDIT.json"
+  },
+  "runtime_execution_occurred": false
+}
