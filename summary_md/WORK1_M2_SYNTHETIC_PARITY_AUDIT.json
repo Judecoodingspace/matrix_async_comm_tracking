@@ -1,0 +1,25 @@
+{
+  "audit_kind": "WORK1_M2_SYNTHETIC_ONLY",
+  "author_helper": {
+    "path": "demo/utils/supplement.py:not_matched_supplement",
+    "sha256": "415484d61c9b805f26ba77032af8a2e67617266a861420557f0d886ff1be5ec6",
+    "success_stop_boundary": "BEFORE_AUTHOR_LINE_133"
+  },
+  "fixture_cases": [
+    "OUTSIDE", "NO_IOU", "UNIQUE", "MULTI_SCORE", "MULTI_TIE",
+    "WIDTH_REJECT", "HEIGHT_REJECT", "CLIP_SUCCESS", "SOURCE_ORDER"
+  ],
+  "checks": {
+    "frozen_case_probe_parity": "PASS",
+    "successful_author_line_trace": "PASS",
+    "author_input_immutability": "PASS",
+    "oracle_firewall_static_and_environment": "PASS",
+    "temporary_derivative_structure_and_parent_restoration": "PASS",
+    "parent_source_modified": false,
+    "dataset_access": false,
+    "tracker_or_mve_execution": false
+  },
+  "test_command": "PYTHONDONTWRITEBYTECODE=1 python3 -B -m pytest -q -p no:cacheprovider tests/test_mdmt_mia_work1_eligibility_mve.py",
+  "test_result": "16 passed",
+  "scope": "This audit establishes synthetic probe parity only; it is not MVE evidence. G9 dynamic non-interference remains deliberately unrun because it requires author runtime A/B/C execution."
+}
