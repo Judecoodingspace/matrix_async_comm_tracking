@@ -1,0 +1,29 @@
+{
+  "schema_version": "work1-dynamic-m2-structured-launch-v1",
+  "launch_provenance_manifest": "summary_md/WORK1_DYNAMIC_M2_LAUNCH_PROVENANCE_MANIFEST.json",
+  "pair_ids": [23, 25, 27, 28, 29],
+  "wrapper_argv": ["mia", "train", "{PAIR_ID}"],
+  "common_environment": {
+    "PYTHONHASHSEED": "0",
+    "DEVICE": "cuda:0",
+    "MIA_ASYNC_CHANNEL_DELAYS": "local=0,homography=0,id_state=5,supplement=0",
+    "MIA_CASCADE_EDGE_CUT": "0",
+    "MIA_CASCADE_SHADOW": "0",
+    "MIA_ROOT": "/mnt/data/yzm/experiments/mdmt_mia_official",
+    "MIA_CONFIG": "/mnt/data/yzm/experiments/mdmt_mia_official/run_configs/one_carafe_bytetrack_full_mdmt_reproduction.py"
+  },
+  "conditions": {
+    "A": {"source_role": "A_TRACED", "observer": "0", "run_role": "A"},
+    "B": {"source_role": "BC_SHARED", "observer": "0", "run_role": "B"},
+    "B_REPEAT": {"source_role": "BC_SHARED", "observer": "0", "run_role": "B"},
+    "C": {"source_role": "BC_SHARED", "observer": "1", "run_role": "C"}
+  },
+  "condition_scoped_fields": [
+    "MIA_SOURCE_ROOT", "MIA_RUN_INPUT_ROOT", "MIA_OUTPUT_ROOT",
+    "MIA_WORK1_RUN_ROLE", "MIA_WORK1_PAIR_ID", "MIA_WORK1_CORE_TRACE",
+    "MIA_WORK1_INITIALIZATION_STATE_RECORD", "MIA_WORK1_OBSERVER",
+    "MIA_WORK1_OUTPUT_DIR"
+  ],
+  "b_vs_c_authorized_treatment_difference": ["MIA_WORK1_RUN_ROLE", "MIA_WORK1_OBSERVER", "MIA_WORK1_OUTPUT_DIR"],
+  "generated_not_handwritten": true
+}

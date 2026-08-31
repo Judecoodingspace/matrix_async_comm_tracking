@@ -83,7 +83,9 @@ The static layer rejects forbidden imports, unbounded `**kwargs`, raw GT/XML
 path/field interfaces, and serialized oracle fields in Work 1 scientific
 components.
 
-The future dynamic audit requires exactly zero:
+The future dynamic audit is produced by `ACTUAL_WORK1_ACCESS_OBSERVATION`, not
+by zero-initialized constants. It records an observation ledger and the frozen
+observability boundary. Within that boundary it requires exactly zero:
 
 ```text
 xml_open_count_by_work1
@@ -92,12 +94,16 @@ gt_field_access_count_by_work1
 gt_serialized_field_count
 ```
 
-Frozen author initialization access is accounted separately and never charged
+The boundary covers registered Work 1 file/path calls, constructor/runtime
+interfaces and token/ledger serialization, together with the static source
+gate. It does not claim arbitrary hidden-reflection interception. Frozen author initialization access is accounted separately and never charged
 to Work 1, provided it remains inside the frozen initialization boundary.
 
 ## G-XML4 marker
 
-The passive marker schema is:
+One shared passive sequence is advanced only by the actual last `read_xml_r`
+completion, the actual initialization-complete hook and the actual first E_pre
+hook. Hard-coded/post-hoc sequence values are forbidden. The passive marker schema is:
 
 ```text
 frame_id
@@ -138,11 +144,13 @@ M2_SYNTHETIC_PARITY_PASS
 -> G-XML4 PASS
 -> G-XML3 DYNAMIC PASS
 -> CORE_OUTPUT_DIFF == 0
--> TRACKER_MUTATION_COUNT_FROM_OBSERVER == 0
+-> B_VS_C_CORE_DIFF_COUNT == 0
+-> OBSERVER_GUARD_CHANGE_COUNT == 0
+-> G-XML5 final artifact/report PASS
 ```
 
 - Prelaunch failure: do not start A/B/C.
-- Post-launch G-XML2/3/4 failure: mark attempt invalid and stop before
+- Post-launch G-XML2/3/4/5 failure: mark attempt invalid and stop before
   non-interference interpretation.
 - No gate can be rescued by approximate equality, regenerated expected hashes,
   input replacement, or mechanism outcome.
@@ -155,6 +163,10 @@ M2_SYNTHETIC_PARITY_PASS
 - Passive derivative marker: generated only by
   `scripts/prepare_mdmt_mia_work1_eligibility_variant.py`; frozen parent remains
   immutable.
+- Material/input/structured launch validator:
+  `scripts/audit_mdmt_mia_work1_preexecution.py`.
+- G-XML5 is mandatory both before launch for output schemas/templates and after
+  runtime for every final artifact/report.
 
 No real `ABC_INITIALIZATION_EQUALITY_AUDIT.json` or runtime firewall audit is
 generated in this documentation/gate-freeze pass.

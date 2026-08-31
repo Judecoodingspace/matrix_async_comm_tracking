@@ -83,19 +83,18 @@ needed for fail-closed diagnosis.
 ## Observer mutation metric
 
 Observer guard checkpoints surround every Work 1 hook and contain every mutable
-author object supplied to that hook. The conservative measurable definition is:
+author object supplied to that hook. The closure epoch retains two independent
+diagnostic counts:
 
 ```text
-TRACKER_MUTATION_COUNT_FROM_OBSERVER =
-    count(unique B/C non-guard mismatch positions)
-  + count(unique observer-guard phases with either B/C mismatch
-          or C pre/post change)
+B_VS_C_CORE_DIFF_COUNT
+OBSERVER_GUARD_CHANGE_COUNT
 ```
 
-This removes double counting between guard rows and guard pre/post checks. It
-does not claim impossible causal attribution beyond observed boundaries.
-Next-frame state and final predictions are included in `B_VS_C_CORE_DIFF`.
-Success requires zero.
+They are not added and a nonzero value is not described as an independent
+mutation-event count. The gate requires both to be zero. It does not claim
+impossible causal attribution beyond observed boundaries. Next-frame state and
+final predictions are included in `B_VS_C_CORE_DIFF_COUNT`.
 
 ## Passivity
 

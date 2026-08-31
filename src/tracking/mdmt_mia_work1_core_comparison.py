@@ -520,15 +520,14 @@ def compare_trace_records(a: Sequence[Mapping[str, Any]], b: Sequence[Mapping[st
                 if after_row is None or row["canonical_digest"] != after_row["canonical_digest"]:
                     guard_changes += 1
                     bc_guard_phase_keys.add((frame_id, view_id, _GUARD_PHASES[before_name]))
-    mutation_boundary_count = len(bc_non_guard_mismatch_keys) + len(bc_guard_phase_keys)
     return {
         "trace_schema_version": TRACE_SCHEMA_VERSION,
         "record_counts": lengths,
         "CORE_OUTPUT_DIFF": diff_count,
-        "B_VS_C_CORE_DIFF": bc_diff_count,
-        "TRACKER_MUTATION_COUNT_FROM_OBSERVER": mutation_boundary_count,
-        "observer_mutation_boundary_semantics": "UNIQUE_B_C_NON_GUARD_POSITIONS_PLUS_UNIQUE_GUARD_PHASES",
-        "observer_guard_change_count": guard_changes,
+        "B_VS_C_CORE_DIFF_COUNT": bc_diff_count,
+        "OBSERVER_GUARD_CHANGE_COUNT": guard_changes,
+        "TRACKER_MUTATION_GATE_PASS": bc_diff_count == 0 and guard_changes == 0,
+        "observer_mutation_boundary_semantics": "TWO_INDEPENDENT_ZERO_GATES; NONZERO_VALUES_ARE_NOT_SUMMED_AS_EVENTS",
         "first_mismatch": first,
         "trace_validation": validation,
         "exact_canonical_equality": diff_count == 0,

@@ -1,5 +1,15 @@
 # Current Status
 
+## 2026-08-31 — Work 1 Dynamic M2 preexecution closure repair
+
+The C1-C7 preexecution closure list is implemented under a closed audit scope.
+Material launch and ten-unit input provenance, executable G-XML1, real-event
+G-XML4, actual-access G-XML3, pre/final G-XML5, structured launches and non-null
+pair/role attribution are present. Existing plus closure tests pass (`51
+passed`); five G-XML1 records, launch/input manifests, static gates and temporary
+A/BC derivative generation pass. No real runtime was executed. Next action is
+the separately requested final closed-scope authorization audit.
+
 Updated: 2026-08-24
 
 ## Latest Geometry Development Update (2026-08-24)

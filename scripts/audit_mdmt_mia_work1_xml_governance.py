@@ -29,6 +29,14 @@ def _load(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _load_json_or_text(path: Path) -> Any:
+    text = path.read_text(encoding="utf-8")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return text
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="gate", required=True)
@@ -85,7 +93,7 @@ def main() -> None:
         elif args.gate == "g-xml4":
             result = validate_initialization_boundary(_load(args.audit_record))
         else:
-            result = validate_claim_output(_load(args.output_record))
+            result = validate_claim_output(_load_json_or_text(args.output_record))
     except GovernanceGateError as error:
         write_gate_result(args.result, {"gate": args.gate, "status": "FAIL", "failure_label": error.label, "detail": error.detail})
         raise SystemExit(error.label) from error

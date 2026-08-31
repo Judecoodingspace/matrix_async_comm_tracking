@@ -21,6 +21,16 @@ from src.tracking.mdmt_mia_work1_core_comparison import (
     compare_trace_files,
     load_trace,
 )
+from src.tracking.mdmt_mia_work1_preexecution import validate_input_manifest
+
+
+def _frame_count_from_manifest(path: Path, pair_id: int) -> int:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    validate_input_manifest(payload, verify_files=False)
+    counts = {int(unit["frame_count"]) for unit in payload["units"] if int(unit["pair_id"]) == int(pair_id)}
+    if len(counts) != 1:
+        raise CoreComparisonError("pair frame count does not resolve uniquely from frozen input manifest")
+    return counts.pop()
 
 
 def main() -> None:
@@ -32,13 +42,13 @@ def main() -> None:
     compare.add_argument("--c", type=Path, required=True)
     compare.add_argument("--output", type=Path, required=True)
     compare.add_argument("--pair-id", type=int, required=True)
-    compare.add_argument("--expected-frame-count", type=int, required=True)
+    compare.add_argument("--input-manifest", type=Path, required=True)
     repeat = sub.add_parser("repeat")
     repeat.add_argument("--first", type=Path, required=True)
     repeat.add_argument("--second", type=Path, required=True)
     repeat.add_argument("--role", choices=("A", "B", "C"), required=True)
     repeat.add_argument("--pair-id", type=int, required=True)
-    repeat.add_argument("--expected-frame-count", type=int, required=True)
+    repeat.add_argument("--input-manifest", type=Path, required=True)
     repeat.add_argument("--output", type=Path, required=True)
     parent = sub.add_parser("parent-parity")
     parent.add_argument("--parent-artifact", type=Path, action="append", required=True)
@@ -59,17 +69,20 @@ def main() -> None:
     args = parser.parse_args()
     try:
         if args.command == "compare":
+            frame_count = _frame_count_from_manifest(args.input_manifest, args.pair_id)
             result = compare_trace_files(
                 args.a, args.b, args.c, args.output, expected_pair_id=args.pair_id,
-                expected_frame_ids=range(args.expected_frame_count),
+                expected_frame_ids=range(frame_count),
             )
-            if result["CORE_OUTPUT_DIFF"] or result["TRACKER_MUTATION_COUNT_FROM_OBSERVER"]:
+            if (result["CORE_OUTPUT_DIFF"] or result["B_VS_C_CORE_DIFF_COUNT"]
+                    or result["OBSERVER_GUARD_CHANGE_COUNT"]):
                 raise SystemExit("DYNAMIC_M2_NON_INTERFERENCE_FAIL")
             return
         if args.command == "repeat":
+            frame_count = _frame_count_from_manifest(args.input_manifest, args.pair_id)
             result = compare_repeat_records(
                 load_trace(args.first), load_trace(args.second), expected_role=args.role,
-                expected_pair_id=args.pair_id, expected_frame_ids=range(args.expected_frame_count),
+                expected_pair_id=args.pair_id, expected_frame_ids=range(frame_count),
             )
             args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             if result["EXACT_REPEAT_DIFF"]:
@@ -83,7 +96,8 @@ def main() -> None:
             return
         if args.command == "launch-diff":
             specification = json.loads(args.execution_spec.read_text(encoding="utf-8"))
-            commands = {key: value for key, value in specification["command_templates"].items() if key != "not_executed"}
+            commands = {key: value for key, value in specification["command_templates"].items()
+                        if key in {"A_traced", "B_derivative_off", "B_repeat", "C_derivative_on"}}
             result = audit_launch_command_diff(commands)
             args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             return

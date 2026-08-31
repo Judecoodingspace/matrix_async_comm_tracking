@@ -26,6 +26,7 @@ from src.tracking.mdmt_mia_work1_core_comparison import (
     audit_launch_command_diff,
     compare_artifact_pairs,
     packet_accounting_snapshot,
+    validate_trace_records,
 )
 
 
@@ -122,6 +123,26 @@ def test_uniform_schema_omission_fails_closed():
             row.pop("canonical_digest")
     with pytest.raises(CoreComparisonError, match="schema fields"):
         compare_trace_records(*traces, expected_pair_id=23, expected_frame_ids=[0])
+
+
+def test_duplicate_out_of_order_missing_and_extra_frames_fail_closed():
+    rows = np.asarray([[1, 2, 3, 4, 5]], dtype=np.float32)
+    complete = make_records("A", [rows, rows])
+    duplicate = copy.deepcopy(complete)
+    duplicate[2]["checkpoint"] = duplicate[0]["checkpoint"]
+    out_of_order = copy.deepcopy(complete)
+    out_of_order[0], out_of_order[1] = out_of_order[1], out_of_order[0]
+    missing_frame = [row for row in complete if row["frame_id"] == 0 or row["frame_id"] == -1]
+    extra_frame = make_records("A", [rows, rows, rows])
+    for records, expected_frames in (
+        (duplicate, [0, 1]),
+        (out_of_order, [0, 1]),
+        (missing_frame, [0, 1]),
+        (extra_frame, [0, 1]),
+    ):
+        with pytest.raises(CoreComparisonError):
+            validate_trace_records(records, expected_role="A", expected_pair_id=23,
+                                   expected_frame_ids=expected_frames)
 
 
 def test_low_score_nms_feedback_next_frame_and_packet_checkpoints_frozen():

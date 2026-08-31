@@ -1,0 +1,31 @@
+{
+  "artifact_role": "FROZEN_MATERIAL_LAUNCH_PROVENANCE",
+  "wrapper": {
+    "realpath": "/mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/scripts/run_mdmt_mia_author_sync.sh",
+    "sha256": "efcab838bab075c79ac075443d5e4005c4cf636be728eb7c65d74c69717461e3"
+  },
+  "config": {
+    "realpath": "/mnt/data/yzm/experiments/mdmt_mia_official/run_configs/one_carafe_bytetrack_full_mdmt_reproduction.py",
+    "sha256": "6f472813987fdfecd4751d0ff5729c264c4595430745a43f75b32f891e7f288a"
+  },
+  "checkpoint": {
+    "realpath": "/mnt/data/yzm/datasets/Multi-Drone-Multi-Object-Detection-and-Tracking/checkpoints/work_dirsfaster_rcnn_r50_fpn_carafe_1x_full_mdmt/epoch_12.pth",
+    "sha256": "f50882a6814b08d8f9ee2db278825258b52d16463fff6fb45ff45484df7d9e96"
+  },
+  "python_entrypoint": {
+    "realpath": "/mnt/data/yzm/experiments/mdmt_mia_official/.conda-env/bin/python3.8",
+    "sha256": "4a502ef5543201d4797c6b495e436438e8d5f558cf99f34a44ac764d8763ee1b"
+  },
+  "dataset_root_realpath": "/mnt/data/yzm/datasets/Multi-Drone-Multi-Object-Detection-and-Tracking",
+  "xml_root_realpath": "/mnt/data/yzm/datasets/Multi-Drone-Multi-Object-Detection-and-Tracking/new_xml",
+  "runtime_environment": {
+    "device": "cuda:0",
+    "python_hash_seed": "0",
+    "python_no_user_site": "1",
+    "split": "train",
+    "stage": "mia",
+    "async_delays": "local=0,homography=0,id_state=5,supplement=0",
+    "cascade_edge_cut": "0",
+    "cascade_shadow": "0"
+  }
+}

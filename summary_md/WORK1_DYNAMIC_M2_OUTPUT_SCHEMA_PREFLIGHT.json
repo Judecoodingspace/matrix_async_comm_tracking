@@ -1,0 +1,13 @@
+{
+  "artifact_role": "G_XML5_SCHEMA_PREFLIGHT",
+  "gt_safety": "UNGRADED",
+  "artifacts": {
+    "eligibility_ledger": ["pair_id", "run_role", "frame_id", "source_view_id", "target_view_id", "pre_id_row_index", "event", "state"],
+    "opportunity_ledger": ["pair_id", "run_role", "frame_id", "source_view_id", "target_view_id", "eligibility_source", "writein_opportunity"],
+    "lifecycle_audit": ["pair_id", "run_role", "observer_version", "token_count", "terminal_state_counts"],
+    "core_comparison": ["CORE_OUTPUT_DIFF", "B_VS_C_CORE_DIFF_COUNT", "OBSERVER_GUARD_CHANGE_COUNT", "TRACKER_MUTATION_GATE_PASS"],
+    "decision": ["GT_SAFETY_UNGRADED", "DYNAMIC_M2_NON_INTERFERENCE_PASS", "DYNAMIC_M2_NON_INTERFERENCE_FAIL"]
+  },
+  "correctness_grading_present": false,
+  "performance_metric_present": false
+}

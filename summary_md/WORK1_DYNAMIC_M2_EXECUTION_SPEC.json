@@ -29,6 +29,22 @@
     "repair_source_manifest": "summary_md/WORK1_DYNAMIC_M2_REPAIR_SOURCE_MANIFEST.json",
     "repair_source_manifest_audit_command": "python3 scripts/audit_mdmt_mia_work1_core_comparison.py source-manifest --manifest summary_md/WORK1_DYNAMIC_M2_REPAIR_SOURCE_MANIFEST.json --repository-root . --output {AUDIT_ROOT}/WORK1_REPAIR_SOURCE_MANIFEST_AUDIT.json"
   },
+  "closed_scope_prelaunch_authority": {
+    "launch_provenance_manifest": "summary_md/WORK1_DYNAMIC_M2_LAUNCH_PROVENANCE_MANIFEST.json",
+    "input_manifest": "summary_md/WORK1_DYNAMIC_M2_INPUT_MANIFEST.json",
+    "structured_launch_manifest": "summary_md/WORK1_DYNAMIC_M2_STRUCTURED_LAUNCH_MANIFEST.json",
+    "commands_must_be_rendered_by": "scripts/audit_mdmt_mia_work1_preexecution.py render-structured-launch",
+    "handwritten_command_launch_forbidden": true,
+    "prelaunch_commands": {
+      "launch_provenance": "python3 scripts/audit_mdmt_mia_work1_preexecution.py launch-provenance --manifest summary_md/WORK1_DYNAMIC_M2_LAUNCH_PROVENANCE_MANIFEST.json --result {AUDIT_ROOT}/LAUNCH_PROVENANCE_RESULT.json",
+      "input_exactness": "python3 scripts/audit_mdmt_mia_work1_preexecution.py validate-input-manifest --manifest summary_md/WORK1_DYNAMIC_M2_INPUT_MANIFEST.json --result {AUDIT_ROOT}/INPUT_MANIFEST_RESULT.json",
+      "structured_launch": "python3 scripts/audit_mdmt_mia_work1_preexecution.py render-structured-launch --manifest summary_md/WORK1_DYNAMIC_M2_STRUCTURED_LAUNCH_MANIFEST.json --pair-id {PAIR_ID} --artifact-root {ATTEMPT_ROOT} --a-source-root /mnt/data/yzm/experiments/mdmt_mia_official/variants/work1_full_core_traced_a_v1 --bc-source-root /mnt/data/yzm/experiments/mdmt_mia_official/variants/work1_full_core_traced_bc_v1 --wrapper /mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/scripts/run_mdmt_mia_author_sync.sh --output {AUDIT_ROOT}/{PAIR_ID}/STRUCTURED_LAUNCH.json",
+      "g_xml1_expected": "python3 scripts/audit_mdmt_mia_work1_preexecution.py build-g-xml1-expected --xml-manifest summary_md/WORK1_DYNAMIC_M2_XML_INPUT_MANIFEST.json --pair-id {PAIR_ID} --output {AUDIT_ROOT}/{PAIR_ID}/G_XML1_EXPECTED.json",
+      "g_xml1_observed": "python3 scripts/audit_mdmt_mia_work1_preexecution.py produce-g-xml1-observed --author-entrypoint /mnt/data/yzm/experiments/mdmt_mia_official/variants/packetized_id_supplement_cascade_v8/demo/supplement_MIA.py --xml-reader-source /mnt/data/yzm/experiments/mdmt_mia_official/variants/packetized_id_supplement_cascade_v8/demo/utils/common.py --xml-view1 /mnt/data/yzm/datasets/Multi-Drone-Multi-Object-Detection-and-Tracking/new_xml/1/{PAIR_ID}-1.xml --xml-view2 /mnt/data/yzm/datasets/Multi-Drone-Multi-Object-Detection-and-Tracking/new_xml/2/{PAIR_ID}-2.xml --output {AUDIT_ROOT}/{PAIR_ID}/G_XML1_OBSERVED.json",
+      "g_xml1_validate": "python3 scripts/audit_mdmt_mia_work1_xml_governance.py g-xml1 --expected-record {AUDIT_ROOT}/{PAIR_ID}/G_XML1_EXPECTED.json --observed-record {AUDIT_ROOT}/{PAIR_ID}/G_XML1_OBSERVED.json --result {AUDIT_ROOT}/{PAIR_ID}/G_XML1_RESULT.json",
+      "g_xml5_schema_preflight": "python3 scripts/audit_mdmt_mia_work1_xml_governance.py g-xml5 --output-record summary_md/WORK1_DYNAMIC_M2_OUTPUT_SCHEMA_PREFLIGHT.json --result {AUDIT_ROOT}/G_XML5_PREFLIGHT_RESULT.json"
+    }
+  },
   "persistent_derivative_policy": {
     "decision": "GENERATE_ONLY_AFTER_EXPLICIT_DYNAMIC_M2_EXECUTION_AUTHORIZATION_AND_BEFORE_ANY_LAUNCH",
     "parent": "/mnt/data/yzm/experiments/mdmt_mia_official/variants/packetized_id_supplement_cascade_v8",
@@ -50,7 +66,8 @@
     "B_derivative_off": "env PYTHONHASHSEED=0 MIA_ASYNC_CHANNEL_DELAYS=local=0,homography=0,id_state=5,supplement=0 MIA_CASCADE_EDGE_CUT=0 MIA_CASCADE_SHADOW=0 MIA_ROOT=/mnt/data/yzm/experiments/mdmt_mia_official MIA_SOURCE_ROOT=/mnt/data/yzm/experiments/mdmt_mia_official/variants/work1_full_core_traced_bc_v1 MIA_RUN_INPUT_ROOT={RUN_INPUT_ROOT}/B MIA_OUTPUT_ROOT={RESULT_ROOT}/B MIA_WORK1_RUN_ROLE=B MIA_WORK1_PAIR_ID={PAIR_ID} MIA_WORK1_CORE_TRACE={TRACE_ROOT}/{PAIR_ID}/B_FULL_CORE_TRACE.jsonl MIA_WORK1_INITIALIZATION_STATE_RECORD={TRACE_ROOT}/{PAIR_ID}/B_INITIALIZATION_STATE.json MIA_WORK1_OBSERVER=0 bash /mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/scripts/run_mdmt_mia_author_sync.sh mia train {PAIR_ID}",
     "B_repeat": "env PYTHONHASHSEED=0 MIA_ASYNC_CHANNEL_DELAYS=local=0,homography=0,id_state=5,supplement=0 MIA_CASCADE_EDGE_CUT=0 MIA_CASCADE_SHADOW=0 MIA_ROOT=/mnt/data/yzm/experiments/mdmt_mia_official MIA_SOURCE_ROOT=/mnt/data/yzm/experiments/mdmt_mia_official/variants/work1_full_core_traced_bc_v1 MIA_RUN_INPUT_ROOT={RUN_INPUT_ROOT}/B_REPEAT MIA_OUTPUT_ROOT={RESULT_ROOT}/B_REPEAT MIA_WORK1_RUN_ROLE=B MIA_WORK1_PAIR_ID={PAIR_ID} MIA_WORK1_CORE_TRACE={TRACE_ROOT}/{PAIR_ID}/B_REPEAT_FULL_CORE_TRACE.jsonl MIA_WORK1_INITIALIZATION_STATE_RECORD={TRACE_ROOT}/{PAIR_ID}/B_REPEAT_INITIALIZATION_STATE.json MIA_WORK1_OBSERVER=0 bash /mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/scripts/run_mdmt_mia_author_sync.sh mia train {PAIR_ID}",
     "C_derivative_on": "env PYTHONHASHSEED=0 MIA_ASYNC_CHANNEL_DELAYS=local=0,homography=0,id_state=5,supplement=0 MIA_CASCADE_EDGE_CUT=0 MIA_CASCADE_SHADOW=0 MIA_ROOT=/mnt/data/yzm/experiments/mdmt_mia_official MIA_SOURCE_ROOT=/mnt/data/yzm/experiments/mdmt_mia_official/variants/work1_full_core_traced_bc_v1 MIA_RUN_INPUT_ROOT={RUN_INPUT_ROOT}/C MIA_OUTPUT_ROOT={RESULT_ROOT}/C MIA_WORK1_RUN_ROLE=C MIA_WORK1_PAIR_ID={PAIR_ID} MIA_WORK1_CORE_TRACE={TRACE_ROOT}/{PAIR_ID}/C_FULL_CORE_TRACE.jsonl MIA_WORK1_INITIALIZATION_STATE_RECORD={TRACE_ROOT}/{PAIR_ID}/C_INITIALIZATION_STATE.json MIA_WORK1_OBSERVER=1 MIA_WORK1_OUTPUT_DIR={OBSERVER_OUTPUT_ROOT}/{PAIR_ID} bash /mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/scripts/run_mdmt_mia_author_sync.sh mia train {PAIR_ID}",
-    "not_executed": true
+    "not_executed": true,
+    "legacy_preview_only": true
   },
   "launch_diff_audit": {
     "A_vs_B_authorized_differences": ["MIA_SOURCE_ROOT: A traced vs shared BC traced derivative", "MIA_WORK1_RUN_ROLE", "condition-isolated run-input/result/trace roots"],
@@ -60,11 +77,13 @@
     "strict_result": "MACHINE_CHECKED_BEFORE_LAUNCH; output-root differences are artifact isolation only and cannot enter author runtime state."
   },
   "runtime_validity_commands": {
-    "determinism": "python3 scripts/audit_mdmt_mia_work1_core_comparison.py repeat --first {TRACE_ROOT}/{PAIR_ID}/B_FULL_CORE_TRACE.jsonl --second {TRACE_ROOT}/{PAIR_ID}/B_REPEAT_FULL_CORE_TRACE.jsonl --role B --pair-id {PAIR_ID} --expected-frame-count {FRAME_COUNT} --output {AUDIT_ROOT}/{PAIR_ID}/B_EXACT_REPEAT_AUDIT.json",
+    "determinism": "python3 scripts/audit_mdmt_mia_work1_core_comparison.py repeat --first {TRACE_ROOT}/{PAIR_ID}/B_FULL_CORE_TRACE.jsonl --second {TRACE_ROOT}/{PAIR_ID}/B_REPEAT_FULL_CORE_TRACE.jsonl --role B --pair-id {PAIR_ID} --input-manifest summary_md/WORK1_DYNAMIC_M2_INPUT_MANIFEST.json --output {AUDIT_ROOT}/{PAIR_ID}/B_EXACT_REPEAT_AUDIT.json",
     "g_xml2": "python3 scripts/audit_mdmt_mia_work1_xml_governance.py build-g-xml2 --a-record {TRACE_ROOT}/{PAIR_ID}/A_INITIALIZATION_STATE.json --b-record {TRACE_ROOT}/{PAIR_ID}/B_INITIALIZATION_STATE.json --c-record {TRACE_ROOT}/{PAIR_ID}/C_INITIALIZATION_STATE.json --xml-manifest summary_md/WORK1_DYNAMIC_M2_XML_INPUT_MANIFEST.json --pair-id {PAIR_ID} --audit-record {AUDIT_ROOT}/{PAIR_ID}/ABC_INITIALIZATION_EQUALITY_AUDIT.json --result {AUDIT_ROOT}/{PAIR_ID}/G_XML2_RESULT.json",
     "g_xml3_dynamic": "python3 scripts/audit_mdmt_mia_work1_xml_governance.py g-xml3-dynamic --audit-record {OBSERVER_OUTPUT_ROOT}/{PAIR_ID}/WORK1_RUNTIME_ORACLE_FIREWALL_AUDIT.json --result {AUDIT_ROOT}/{PAIR_ID}/G_XML3_DYNAMIC_RESULT.json",
     "g_xml4": "python3 scripts/audit_mdmt_mia_work1_xml_governance.py g-xml4 --audit-record {OBSERVER_OUTPUT_ROOT}/{PAIR_ID}/AUTHOR_INITIALIZATION_BOUNDARY_AUDIT.json --result {AUDIT_ROOT}/{PAIR_ID}/G_XML4_RESULT.json",
-    "full_core": "python3 scripts/audit_mdmt_mia_work1_core_comparison.py compare --a {TRACE_ROOT}/{PAIR_ID}/A_FULL_CORE_TRACE.jsonl --b {TRACE_ROOT}/{PAIR_ID}/B_FULL_CORE_TRACE.jsonl --c {TRACE_ROOT}/{PAIR_ID}/C_FULL_CORE_TRACE.jsonl --pair-id {PAIR_ID} --expected-frame-count {FRAME_COUNT} --output {AUDIT_ROOT}/{PAIR_ID}/WORK1_CORE_OUTPUT_COMPARISON.json"
+    "g_xml5_final_artifact": "python3 scripts/audit_mdmt_mia_work1_xml_governance.py g-xml5 --output-record {FINAL_ARTIFACT} --result {AUDIT_ROOT}/G_XML5_FINAL_ARTIFACT_RESULT.json",
+    "g_xml5_final_report": "python3 scripts/audit_mdmt_mia_work1_xml_governance.py g-xml5 --output-record {FINAL_REPORT} --result {AUDIT_ROOT}/G_XML5_FINAL_REPORT_RESULT.json",
+    "full_core": "python3 scripts/audit_mdmt_mia_work1_core_comparison.py compare --a {TRACE_ROOT}/{PAIR_ID}/A_FULL_CORE_TRACE.jsonl --b {TRACE_ROOT}/{PAIR_ID}/B_FULL_CORE_TRACE.jsonl --c {TRACE_ROOT}/{PAIR_ID}/C_FULL_CORE_TRACE.jsonl --pair-id {PAIR_ID} --input-manifest summary_md/WORK1_DYNAMIC_M2_INPUT_MANIFEST.json --output {AUDIT_ROOT}/{PAIR_ID}/WORK1_CORE_OUTPUT_COMPARISON.json"
   },
   "comparison_coverage": {
     "required": ["detector rows/scores/labels", "ByteTrack rows/order/bboxes/runtime IDs", "three ID-state stages", "author high-score and low-score Supplement inputs/outputs", "NMS", "feedback and next-frame state", "final predictions", "packet accounting"],

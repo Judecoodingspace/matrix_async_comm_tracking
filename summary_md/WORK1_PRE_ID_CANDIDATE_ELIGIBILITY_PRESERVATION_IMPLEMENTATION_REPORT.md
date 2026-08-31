@@ -169,3 +169,15 @@ real parent/A/B/B-repeat/C runtime: NOT RUN
 
 These repairs make the evidence path executable after a fresh authorization;
 they do not themselves constitute Dynamic M2 evidence or authorization.
+
+## Closed-scope preexecution closure repair
+
+The one-shot C1-C7 closure epoch adds material launch provenance, an independent
+G-XML1 observed-record producer, an exact ten-unit image-byte manifest,
+real-event G-XML4 ordering, actual-access G-XML3 evidence, mandatory pre/final
+G-XML5 commands and non-null structured pair/role provenance. Mutation evidence
+is now two independent zero gates rather than a summed pseudo-event count.
+
+The scope and blocker admission rules are frozen in
+`WORK1_DYNAMIC_M2_PREEXECUTION_CLOSURE_CONTRACT.md`. No real parent/A/B/C,
+detector, tracker, MVE, Formal, held-out or GT safety-grading run was added.

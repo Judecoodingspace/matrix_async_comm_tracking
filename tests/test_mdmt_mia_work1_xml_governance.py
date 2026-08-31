@@ -20,6 +20,7 @@ from src.tracking.mdmt_mia_work1_xml_governance import (
     INITIALIZATION_CODE_SHA256,
     XML_READER_SOURCE_SHA256,
     GovernanceGateError,
+    Work1AccessAudit,
     audit_static_oracle_firewall,
     build_abc_initialization_equality,
     make_author_initialization_marker,
@@ -96,16 +97,14 @@ def test_g_xml3_static_and_dynamic_firewalls(tmp_path):
     with pytest.raises(GovernanceGateError) as error:
         audit_static_oracle_firewall([forbidden])
     assert error.value.label == G_XML3_FAIL
-    zero = {
-        "xml_open_count_by_work1": 0,
-        "gt_file_open_count_by_work1": 0,
-        "gt_field_access_count_by_work1": 0,
-        "gt_serialized_field_count": 0,
-    }
+    access = Work1AccessAudit()
+    access.observe_runtime_interfaces(("frame_id", "pair_id"))
+    access.observe_serialized_payload({"frame_id": 1, "pair_id": 23})
+    zero = access.as_dict()
     assert validate_runtime_oracle_firewall(zero)["status"] == "PASS"
-    zero["gt_field_access_count_by_work1"] = 1
+    access.observe_file_access(tmp_path / "forbidden.xml", owner="WORK1_SCIENTIFIC", purpose="RUNTIME_READ")
     with pytest.raises(GovernanceGateError) as error:
-        validate_runtime_oracle_firewall(zero)
+        validate_runtime_oracle_firewall(access.as_dict())
     assert error.value.label == G_XML3_FAIL
 
 
@@ -116,6 +115,11 @@ def test_g_xml4_marker_and_ordering_fail_closed(tmp_path):
         "last_author_gt_read_sequence_number": 1,
         "marker": marker.as_dict(),
         "first_work1_e_pre_sequence_number": 3,
+        "event_log": [
+            {"event": "AUTHOR_LAST_GT_INITIALIZATION_READ", "sequence_number": 1},
+            {"event": "AUTHOR_GT_INITIALIZATION_COMPLETE", "sequence_number": 2},
+            {"event": "FIRST_WORK1_E_PRE_RECORD", "sequence_number": 3},
+        ],
     }
     assert validate_initialization_boundary(payload)["status"] == "PASS"
     payload["first_work1_e_pre_sequence_number"] = 2
@@ -123,19 +127,19 @@ def test_g_xml4_marker_and_ordering_fail_closed(tmp_path):
         validate_initialization_boundary(payload)
     assert error.value.label == G_XML4_FAIL
 
-    observer = Work1EligibilityObserver(tmp_path)
+    observer = Work1EligibilityObserver(tmp_path, 23, "C")
     with pytest.raises(ObserverIntegrityError, match="WORK1_RECORD_BEFORE_INITIALIZATION_COMPLETE"):
         observer.capture_pre_id(1, rows, rows, [], [], [], [], [], [])
-    assert observer.record_author_initialization_complete(
-        marker.as_dict(), last_author_gt_read_sequence_number=1
-    ) is None
+    observer.record_author_last_gt_initialization_read(0)
+    assert observer.record_author_initialization_complete(0, (rows,)) is None
     observer.capture_pre_id(1, rows, rows, [1], [[15, 15]], [[10, 10], [20, 20]], [], [], [])
-    first_e_pre = observer._eligibility_ledger[0]["record_sequence_number"]
-    assert first_e_pre > marker.marker_sequence_number
+    first_e_pre = observer._first_work1_e_pre_sequence_number
+    assert first_e_pre is not None and first_e_pre > 2
     assert validate_initialization_boundary({
         "last_author_gt_read_sequence_number": 1,
-        "marker": marker.as_dict(),
+        "marker": observer._initialization_marker,
         "first_work1_e_pre_sequence_number": first_e_pre,
+        "event_log": list(observer._audit_sequence.events or []),
     })["status"] == "PASS"
     observer.end_frame(1)
     observer.finalize()
@@ -191,9 +195,11 @@ def test_passive_marker_hook_return_ignored_and_parent_unchanged(tmp_path):
     destination = tmp_path / "derivative"
     manifest = module.prepare(PARENT, destination, ROOT / "src/tracking/mdmt_mia_work1_eligibility_observer.py")
     generated = (destination / "demo/supplement_MIA.py").read_text(encoding="utf-8")
-    call = "work1_observer.record_author_initialization_complete(initialization_marker.as_dict(), last_author_gt_read_sequence_number=1)"
+    call = "work1_observer.record_author_initialization_complete(i, (track_bboxes, track_bboxes2))"
     assert call in generated
     assert f"= {call}" not in generated
+    assert "work1_observer.record_author_last_gt_initialization_read(i)" in generated
+    assert "marker_sequence_number=2" not in generated
     assert manifest["structure_audit"]["marker_return_ignored"] is True
     assert hashlib.sha256(parent_entry.read_bytes()).hexdigest() == before == AUTHOR_ENTRYPOINT_SHA256
 

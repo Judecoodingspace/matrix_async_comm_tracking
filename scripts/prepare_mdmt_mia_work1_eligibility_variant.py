@@ -77,8 +77,7 @@ def instrument_full_core(text: str, include_observer: bool) -> str:
         "from utils.cascade_runtime import CascadeEdgeRuntime\n",
         "from utils.cascade_runtime import CascadeEdgeRuntime\n"
         "from utils.work1_core_comparison import Work1CoreComparisonRecorder, packet_accounting_snapshot\n"
-        + ("from utils.work1_eligibility_observer import Work1EligibilityObserver\n"
-           "from utils.work1_xml_governance import make_author_initialization_marker\n" if include_observer else ""),
+        + ("from utils.work1_eligibility_observer import Work1EligibilityObserver\n" if include_observer else ""),
         "full-core imports",
     )
     observer_construction = "        work1_observer = None\n"
@@ -125,8 +124,7 @@ def instrument_full_core(text: str, include_observer: bool) -> str:
     if include_observer:
         init_hook += (
             "                if work1_observer is not None:\n"
-            "                    initialization_marker = make_author_initialization_marker(i, (track_bboxes, track_bboxes2), marker_sequence_number=2)\n"
-            "                    work1_observer.record_author_initialization_complete(initialization_marker.as_dict(), last_author_gt_read_sequence_number=1)\n"
+            "                    work1_observer.record_author_initialization_complete(i, (track_bboxes, track_bboxes2))\n"
         )
     init_hook += (
         _comparison_hook("OBSERVER_GUARD_INITIALIZATION_POST", "i", "track_bboxes", "track_bboxes2", "WORK1_INIT_GUARD", 16)
@@ -137,6 +135,16 @@ def instrument_full_core(text: str, include_observer: bool) -> str:
     )
     text = replace_once(text, "                prog_bar.update()\n                continue\n            ###########################################################################################################################\n",
                         init_hook + "                prog_bar.update()\n                continue\n            ###########################################################################################################################\n", "initialization checkpoints")
+
+    if include_observer:
+        text = replace_once(
+            text,
+            "                bboxes2, ids2, labels2 = read_xml_r(xml_file2, i)\n",
+            "                bboxes2, ids2, labels2 = read_xml_r(xml_file2, i)\n"
+            "                if work1_observer is not None:\n"
+            "                    work1_observer.record_author_last_gt_initialization_read(i)\n",
+            "actual last author GT initialization read",
+        )
 
     pre_guard = _comparison_hook("PRE_ID_STATE", "i", "{'rows': track_bboxes, 'matched': matched_ids, 'confirmed': coID_confirme, 'max_id': A_max_id, 'new_ids': A_new_ID, 'new_pts': A_pts, 'new_corners': A_pts_corner, 'eligible_ids': A_old_not_matched_ids, 'eligible_pts': A_old_not_matched_pts, 'eligible_corners': A_old_not_matched_pts_corner, 'matched_pts_src': pts_src, 'matched_pts_dst': pts_dst}", "{'rows': track_bboxes2, 'matched': matched_ids, 'confirmed': coID_confirme, 'max_id': B_max_id, 'new_ids': B_new_ID, 'new_pts': B_pts, 'new_corners': B_pts_corner, 'eligible_ids': B_old_not_matched_ids, 'eligible_pts': B_old_not_matched_pts, 'eligible_corners': B_old_not_matched_pts_corner, 'matched_pts_src': pts_src, 'matched_pts_dst': pts_dst}", "L312_315_PRE_ID")
     pre_guard += _comparison_hook("OBSERVER_GUARD_PRE_ID_PRE", "i", "{'rows': track_bboxes, 'centers': cent_allclass, 'corners': corner_allclass, 'eligible_ids': A_old_not_matched_ids, 'eligible_pts': A_old_not_matched_pts, 'eligible_corners': A_old_not_matched_pts_corner}", "{'rows': track_bboxes2, 'centers': cent_allclass2, 'corners': corner_allclass2, 'eligible_ids': B_old_not_matched_ids, 'eligible_pts': B_old_not_matched_pts, 'eligible_corners': B_old_not_matched_pts_corner}", "WORK1_PRE_ID_GUARD")
@@ -217,7 +225,9 @@ def prepare_full_core(parent: Path, destination: Path, comparison: Path,
     if observer is not None:
         shutil.copy2(observer, destination / "demo/utils/work1_eligibility_observer.py")
         governance = observer.with_name("mdmt_mia_work1_xml_governance.py")
+        audit_boundary = observer.with_name("mdmt_mia_work1_audit_boundary.py")
         shutil.copy2(governance, destination / "demo/utils/work1_xml_governance.py")
+        shutil.copy2(audit_boundary, destination / "demo/utils/work1_audit_boundary.py")
     entrypoint = destination / "demo/supplement_MIA.py"
     entrypoint.write_text(instrument_full_core(entrypoint.read_text(encoding="utf-8"), observer is not None), encoding="utf-8")
     protected = ["demo/utils/cascade_runtime.py", "demo/utils/supplement.py", "demo/utils/common.py", "demo/utils/async_deadline_runtime.py"]
@@ -232,6 +242,7 @@ def prepare_full_core(parent: Path, destination: Path, comparison: Path,
         changed.update({
             "demo/utils/work1_eligibility_observer.py": sha256(destination / "demo/utils/work1_eligibility_observer.py"),
             "demo/utils/work1_xml_governance.py": sha256(destination / "demo/utils/work1_xml_governance.py"),
+            "demo/utils/work1_audit_boundary.py": sha256(destination / "demo/utils/work1_audit_boundary.py"),
         })
     manifest = {
         "kind": "WORK1_FULL_CORE_TRACED_BC" if observer is not None else "WORK1_FULL_CORE_TRACED_A",
@@ -254,17 +265,27 @@ def prepare(parent: Path, destination: Path, observer: Path) -> dict[str, object
     shutil.copytree(parent, destination)
     shutil.copy2(observer, destination / "demo/utils/work1_eligibility_observer.py")
     governance = observer.with_name("mdmt_mia_work1_xml_governance.py")
+    audit_boundary = observer.with_name("mdmt_mia_work1_audit_boundary.py")
     if not governance.is_file():
         raise RuntimeError(f"missing XML-governance gate module: {governance}")
+    if not audit_boundary.is_file():
+        raise RuntimeError(f"missing passive audit boundary module: {audit_boundary}")
     shutil.copy2(governance, destination / "demo/utils/work1_xml_governance.py")
+    shutil.copy2(audit_boundary, destination / "demo/utils/work1_audit_boundary.py")
     entrypoint = destination / "demo/supplement_MIA.py"
     text = entrypoint.read_text(encoding="utf-8")
     text = replace_once(text, "from utils.cascade_runtime import CascadeEdgeRuntime\n",
-        "from utils.cascade_runtime import CascadeEdgeRuntime\nfrom utils.work1_eligibility_observer import Work1EligibilityObserver\nfrom utils.work1_xml_governance import make_author_initialization_marker\n", "observer import")
+        "from utils.cascade_runtime import CascadeEdgeRuntime\nfrom utils.work1_eligibility_observer import Work1EligibilityObserver\n", "observer import")
     text = replace_once(text, "        cascade_runtime = CascadeEdgeRuntime(args.result_dir, args.method, dirrr)\n",
         "        work1_observer = None\n        if os.environ.get('MIA_WORK1_OBSERVER', '0') == '1':\n            work1_observer = Work1EligibilityObserver.from_environment(os.environ['MIA_WORK1_OUTPUT_DIR'])\n        cascade_runtime = CascadeEdgeRuntime(args.result_dir, args.method, dirrr)\n", "observer construction")
     initialization_anchor = "                prog_bar.update()\n                continue\n            ###########################################################################################################################\n"
-    initialization_hook = "                if work1_observer is not None:\n                    initialization_marker = make_author_initialization_marker(i, (track_bboxes, track_bboxes2), marker_sequence_number=2)\n                    work1_observer.record_author_initialization_complete(initialization_marker.as_dict(), last_author_gt_read_sequence_number=1)\n"
+    text = replace_once(
+        text,
+        "                bboxes2, ids2, labels2 = read_xml_r(xml_file2, i)\n",
+        "                bboxes2, ids2, labels2 = read_xml_r(xml_file2, i)\n                if work1_observer is not None:\n                    work1_observer.record_author_last_gt_initialization_read(i)\n",
+        "actual last author GT initialization read",
+    )
+    initialization_hook = "                if work1_observer is not None:\n                    work1_observer.record_author_initialization_complete(i, (track_bboxes, track_bboxes2))\n"
     text = replace_once(text, initialization_anchor, initialization_hook + initialization_anchor, "initialization-complete marker")
     pre_anchor = "            # print(track_bboxes[:, 0])\n            # print(sorted(matched_ids))\n"
     pre_hook = "            if work1_observer is not None:\n                work1_observer.capture_pre_id(i, track_bboxes, track_bboxes2, A_old_not_matched_ids, A_old_not_matched_pts, A_old_not_matched_pts_corner, B_old_not_matched_ids, B_old_not_matched_pts, B_old_not_matched_pts_corner, lineage_args=(track_bboxes, track_bboxes2, cent_allclass, cent_allclass2, corner_allclass, corner_allclass2, A_max_id, B_max_id, coID_confirme))\n"
@@ -287,7 +308,7 @@ def prepare(parent: Path, destination: Path, observer: Path) -> dict[str, object
             raise RuntimeError(f"protected source changed in derivative: {relative}")
     manifest = {
         "kind": "WORK1_OBSERVER_DERIVATIVE", "parent": str(parent), "parent_hashes": FROZEN_HASHES,
-        "changed_files": {"demo/supplement_MIA.py": sha256(entrypoint), "demo/utils/work1_eligibility_observer.py": sha256(destination / "demo/utils/work1_eligibility_observer.py"), "demo/utils/work1_xml_governance.py": sha256(destination / "demo/utils/work1_xml_governance.py")},
+        "changed_files": {"demo/supplement_MIA.py": sha256(entrypoint), "demo/utils/work1_eligibility_observer.py": sha256(destination / "demo/utils/work1_eligibility_observer.py"), "demo/utils/work1_xml_governance.py": sha256(destination / "demo/utils/work1_xml_governance.py"), "demo/utils/work1_audit_boundary.py": sha256(destination / "demo/utils/work1_audit_boundary.py")},
         "structure_audit": {"hook_calls": 6, "marker_return_ignored": True, "hook_returns_assigned": False, "protected_files_byte_identical": True},
     }
     (destination / "work1_variant_manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")

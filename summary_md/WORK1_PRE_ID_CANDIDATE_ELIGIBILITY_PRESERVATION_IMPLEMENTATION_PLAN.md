@@ -523,8 +523,9 @@ non-interference interpretation.
 #### G-XML3 — Work 1 oracle firewall
 
 The static layer audits Work 1 imports, explicit function signatures, schemas,
-serialized keys, environment variables, and file-path interfaces. The future
-dynamic audit `WORK1_RUNTIME_ORACLE_FIREWALL_AUDIT.json` requires:
+serialized keys, environment variables, and file-path interfaces. The dynamic
+audit is sourced from actual registered Work 1 path/interface/serialization
+observations, declares its observability boundary, and requires:
 
 ```text
 xml_open_count_by_work1 = 0
@@ -541,7 +542,9 @@ Only frozen author initialization may access XML. Failure is
 An isolated derivative may add only a passive
 `AUTHOR_GT_INITIALIZATION_COMPLETE` marker after first-frame initialization
 and before any Work 1 record. It records frame, completion Boolean, author
-state digest, and monotonically ordered sequence number. Its return is ignored.
+state digest, and monotonically ordered sequence number. One shared counter is
+advanced only by the actual second `read_xml_r` completion, marker hook and
+first E_pre hook; hard-coded numbers are forbidden. Its return is ignored.
 Required ordering is:
 
 ```text
@@ -574,7 +577,9 @@ M2_SYNTHETIC_PARITY_PASS
 -> G-XML4
 -> G-XML3 DYNAMIC
 -> CORE_OUTPUT_DIFF
--> TRACKER_MUTATION_COUNT_FROM_OBSERVER
+-> B_VS_C_CORE_DIFF_COUNT
+-> OBSERVER_GUARD_CHANGE_COUNT
+-> G-XML5 FINAL
 ```
 
 Prelaunch failures prevent process launch. Post-launch validity failures mark
@@ -608,7 +613,8 @@ Required result:
 
 ```text
 CORE_OUTPUT_DIFF = 0
-TRACKER_MUTATION_COUNT_FROM_OBSERVER = 0
+B_VS_C_CORE_DIFF_COUNT = 0
+OBSERVER_GUARD_CHANGE_COUNT = 0
 ```
 
 Any timing difference is descriptive only; any scientific/core difference is

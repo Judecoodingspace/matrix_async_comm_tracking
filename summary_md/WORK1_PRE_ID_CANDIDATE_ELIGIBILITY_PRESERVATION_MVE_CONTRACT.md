@@ -508,6 +508,17 @@ CORE_OUTPUT_DIFF = 0
 TRACKER_MUTATION_COUNT_FROM_OBSERVER = 0
 ```
 
+Closure-epoch machine representation preserves this zero-only estimand without
+claiming a summed event count:
+
+```text
+B_VS_C_CORE_DIFF_COUNT = 0
+AND
+OBSERVER_GUARD_CHANGE_COUNT = 0
+```
+
+Nonzero diagnostics are not added or interpreted as independent mutation events.
+
 ### Oracle firewall
 
 Historical rule, retained verbatim:

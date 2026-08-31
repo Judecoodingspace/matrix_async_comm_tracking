@@ -135,6 +135,102 @@ class GovernanceGateError(RuntimeError):
         self.detail = detail
 
 
+@dataclass
+class PassiveAuditSequence:
+    """Monotonic metadata sequence advanced only by real hook events."""
+
+    value: int = 0
+    events: list[dict[str, Any]] | None = None
+
+    def __post_init__(self) -> None:
+        if self.events is None:
+            self.events = []
+
+    def record(self, event: str) -> int:
+        if event not in {
+            "AUTHOR_LAST_GT_INITIALIZATION_READ",
+            "AUTHOR_GT_INITIALIZATION_COMPLETE",
+            "FIRST_WORK1_E_PRE_RECORD",
+        }:
+            raise GovernanceGateError(G_XML4_FAIL, f"unknown audit event: {event}")
+        self.value += 1
+        assert self.events is not None
+        self.events.append({"event": event, "sequence_number": self.value})
+        return self.value
+
+
+@dataclass
+class Work1AccessAudit:
+    """Actual calls observed at frozen Work 1-owned I/O/schema interfaces.
+
+    This deliberately does not claim to intercept arbitrary Python reflection.
+    Static source auditing forbids unregistered scientific file-read interfaces;
+    this object records every call crossing the registered runtime boundary.
+    """
+
+    counters: dict[str, int] | None = None
+    observations: list[dict[str, Any]] | None = None
+
+    def __post_init__(self) -> None:
+        if self.counters is None:
+            self.counters = {field: 0 for field in RUNTIME_ORACLE_COUNTERS}
+        if self.observations is None:
+            self.observations = []
+
+    def observe_file_access(self, path: str | Path, *, owner: str, purpose: str) -> None:
+        resolved = str(path).lower()
+        assert self.counters is not None and self.observations is not None
+        forbidden_scientific = owner == "WORK1_SCIENTIFIC" and purpose != "PROVENANCE_HASH_ONLY"
+        if forbidden_scientific and resolved.endswith(".xml"):
+            self.counters["xml_open_count_by_work1"] += 1
+        if forbidden_scientific and any(part in resolved for part in ("/gt/", "mda_gt", "ground_truth")):
+            self.counters["gt_file_open_count_by_work1"] += 1
+        self.observations.append({"kind": "FILE_ACCESS", "owner": owner, "purpose": purpose,
+                                  "forbidden": forbidden_scientific and (resolved.endswith(".xml") or "/gt/" in resolved or "mda_gt" in resolved)})
+
+    def observe_runtime_interfaces(self, names: Iterable[str]) -> None:
+        assert self.counters is not None and self.observations is not None
+        materialized = tuple(names)
+        count = sum(any(part in str(name).lower() for part in _FORBIDDEN_INTERFACE_PARTS) for name in materialized)
+        self.counters["gt_field_access_count_by_work1"] += count
+        self.observations.append({"kind": "RUNTIME_INTERFACE", "field_count": len(materialized), "forbidden_count": count})
+
+    def observe_serialized_payload(self, payload: Any) -> None:
+        assert self.counters is not None and self.observations is not None
+        count = 0
+
+        def visit(value: Any) -> None:
+            nonlocal count
+            if isinstance(value, Mapping):
+                for key, item in value.items():
+                    if any(part in str(key).lower() for part in _FORBIDDEN_INTERFACE_PARTS):
+                        count += 1
+                    visit(item)
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    visit(item)
+
+        visit(payload)
+        self.counters["gt_serialized_field_count"] += count
+        self.observations.append({"kind": "SERIALIZATION", "forbidden_count": count})
+
+    def as_dict(self) -> dict[str, Any]:
+        assert self.counters is not None and self.observations is not None
+        return {
+            **self.counters,
+            "counter_source": "ACTUAL_WORK1_ACCESS_OBSERVATION",
+            "observability_boundary": [
+                "registered Work1-owned file/path interfaces",
+                "observer constructor/runtime interface names",
+                "token/ledger serialization keys",
+                "static rejection of unregistered forbidden interfaces",
+            ],
+            "observation_count": len(self.observations),
+            "observations": list(self.observations),
+            "arbitrary_hidden_python_reflection_covered": False,
+        }
+
+
 def _require_fields(payload: Mapping[str, Any], fields: Iterable[str], label: str) -> None:
     missing = [field for field in fields if field not in payload]
     if missing:
@@ -270,6 +366,14 @@ def build_abc_initialization_equality(
 def validate_runtime_oracle_firewall(payload: Mapping[str, Any]) -> dict[str, Any]:
     """G-XML3 dynamic layer: every Work 1 oracle counter must be zero."""
     _require_fields(payload, RUNTIME_ORACLE_COUNTERS, G_XML3_FAIL)
+    _require_fields(payload, ("counter_source", "observability_boundary", "observation_count", "observations",
+                              "arbitrary_hidden_python_reflection_covered"), G_XML3_FAIL)
+    if payload["counter_source"] != "ACTUAL_WORK1_ACCESS_OBSERVATION":
+        raise GovernanceGateError(G_XML3_FAIL, "runtime counters are not actual-access observations")
+    if not isinstance(payload["observability_boundary"], list) or not payload["observability_boundary"]:
+        raise GovernanceGateError(G_XML3_FAIL, "observability boundary is absent")
+    if not isinstance(payload["observations"], list) or payload["observation_count"] != len(payload["observations"]):
+        raise GovernanceGateError(G_XML3_FAIL, "runtime access observation ledger is inconsistent")
     nonzero = {field: payload[field] for field in RUNTIME_ORACLE_COUNTERS if payload[field] != 0}
     if nonzero:
         raise GovernanceGateError(G_XML3_FAIL, f"nonzero runtime oracle counters: {nonzero}")
@@ -280,7 +384,7 @@ def validate_initialization_boundary(payload: Mapping[str, Any]) -> dict[str, An
     """G-XML4: enforce GT-read < marker < first Work 1 E_pre record."""
     _require_fields(
         payload,
-        ("last_author_gt_read_sequence_number", "marker", "first_work1_e_pre_sequence_number"),
+        ("last_author_gt_read_sequence_number", "marker", "first_work1_e_pre_sequence_number", "event_log"),
         G_XML4_FAIL,
     )
     marker = payload["marker"]
@@ -300,6 +404,16 @@ def validate_initialization_boundary(payload: Mapping[str, Any]) -> dict[str, An
     first_work1 = int(payload["first_work1_e_pre_sequence_number"])
     if not last_gt < marker_sequence < first_work1:
         raise GovernanceGateError(G_XML4_FAIL, "required event ordering is not satisfied")
+    event_log = payload["event_log"]
+    expected_events = [
+        ("AUTHOR_LAST_GT_INITIALIZATION_READ", last_gt),
+        ("AUTHOR_GT_INITIALIZATION_COMPLETE", marker_sequence),
+        ("FIRST_WORK1_E_PRE_RECORD", first_work1),
+    ]
+    if not isinstance(event_log, list) or [
+        (item.get("event"), item.get("sequence_number")) for item in event_log if isinstance(item, Mapping)
+    ] != expected_events:
+        raise GovernanceGateError(G_XML4_FAIL, "event log is absent, incomplete, or not real-event ordered")
     return {"gate": "G-XML4", "status": "PASS", "ordering": "last_GT_read < marker < first_E_pre"}
 
 
