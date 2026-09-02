@@ -141,13 +141,14 @@ def _census_count_fields(channel):
     return fields[channel]
 
 
-def validate_packet_census_records(emissions, terminals):
+def validate_packet_census_records(emissions, terminals, finalization_records=None):
     """Validate the frozen passive-census schemas and C1--C8 gates.
 
     This function is deliberately independent of runtime semantics.  It only
     validates append-only sidecar records already produced by the runtime.
     """
     errors = []
+    finalization_records = list(finalization_records or [])
     emission_by_id = {}
     terminal_by_id = {}
     emission_counts = {}
@@ -211,6 +212,18 @@ def validate_packet_census_records(emissions, terminals):
                 and _nonnegative_int(record["terminal_frame"])
                 and isinstance(record["wire_digest"], str))
 
+    def valid_finalization(record):
+        required = ("record_type", "census_run_id", "sequence_name", "runtime_instance_id",
+                    "finalization_frame", "completion_state", "emission_record_count", "terminal_record_count")
+        return (all(field in record for field in required)
+                and record["record_type"] == "CENSUS_FINALIZATION"
+                and all(isinstance(record[field], str) and record[field] for field in
+                        ("census_run_id", "sequence_name", "runtime_instance_id"))
+                and _nonnegative_int(record["finalization_frame"])
+                and record["completion_state"] == "SUCCESSFUL_FINALIZE"
+                and _nonnegative_int(record["emission_record_count"])
+                and _nonnegative_int(record["terminal_record_count"]))
+
     for record in emissions:
         if not valid_emission(record):
             errors.append("invalid_emission_schema")
@@ -225,6 +238,13 @@ def validate_packet_census_records(emissions, terminals):
         key = _census_key(record["packet_id"])
         add_count(terminal_counts, key)
         terminal_by_id[key] = record
+
+    valid_finalizations = []
+    for record in finalization_records:
+        if not valid_finalization(record):
+            errors.append("invalid_finalization_schema")
+            continue
+        valid_finalizations.append(record)
 
     duplicate_packet_id = sum(max(count - 1, 0) for count in emission_counts.values())
     duplicate_terminal = sum(max(count - 1, 0) for count in terminal_counts.values())
@@ -261,6 +281,22 @@ def validate_packet_census_records(emissions, terminals):
         abs(emission_partitions.get(key, 0) - terminal_partitions.get(key, 0))
         for key in set(emission_partitions).union(terminal_partitions)
     )
+    expected_namespaces = {
+        (record["packet_id"]["census_run_id"], record["packet_id"]["sequence_name"],
+         record["packet_id"]["runtime_instance_id"])
+        for record in emission_by_id.values()
+    }
+    finalization_identity_mismatch = sum(
+        1 for record in valid_finalizations
+        if expected_namespaces and (record["census_run_id"], record["sequence_name"], record["runtime_instance_id"])
+        not in expected_namespaces
+    )
+    finalization_count_mismatch = sum(
+        1 for record in valid_finalizations
+        if record["emission_record_count"] != len(emissions)
+        or record["terminal_record_count"] != len(terminals)
+    )
+    finalization_evidence_count = len(valid_finalizations)
     result = {
         "schema_valid": not errors,
         "duplicate_packet_id": duplicate_packet_id,
@@ -275,10 +311,17 @@ def validate_packet_census_records(emissions, terminals):
         "partition_count_difference": partition_difference_count,
         "emission_record_count": len(emissions),
         "terminal_record_count": len(terminals),
+        "finalization_evidence_count": finalization_evidence_count,
+        "finalization_identity_mismatch": finalization_identity_mismatch,
+        "finalization_count_mismatch": finalization_count_mismatch,
         "errors": sorted(set(errors)),
     }
+    result["census_status"] = "CENSUS_INCOMPLETE"
     result["passed"] = bool(
         result["schema_valid"]
+        and result["finalization_evidence_count"] == 1
+        and result["finalization_identity_mismatch"] == 0
+        and result["finalization_count_mismatch"] == 0
         and result["duplicate_packet_id"] == 0
         and result["emission_count_per_packet_id"] == 1
         and result["terminal_count_per_emitted_packet_id"] == 1
@@ -290,6 +333,8 @@ def validate_packet_census_records(emissions, terminals):
         and result["global_count_difference"] == 0
         and result["partition_count_difference"] == 0
     )
+    if result["passed"]:
+        result["census_status"] = "CENSUS_COMPLETE"
     return result
 
 
@@ -305,20 +350,24 @@ class _PacketCensusSidecar(object):
         self.emission_ordinal = 0
         self.emissions = []
         self.terminals = []
+        self.finalizations = []
         self.io_failure = ""
         self.emission_path = self.output_dir / ("packet_census_emissions_" + self.sequence_name + ".jsonl")
         self.terminal_path = self.output_dir / ("packet_census_terminals_" + self.sequence_name + ".jsonl")
+        self.finalization_path = self.output_dir / ("packet_census_finalization_" + self.sequence_name + ".jsonl")
         self.validation_path = self.output_dir / ("packet_census_validation_" + self.sequence_name + ".json")
 
     def _append(self, path, record):
         if not self.enabled or self.io_failure:
-            return
+            return False
         try:
             self.output_dir.mkdir(parents=True, exist_ok=True)
             with path.open("a", encoding="utf-8") as handle:
                 handle.write(_canonical_json(record) + "\n")
+            return True
         except Exception as exc:  # Census I/O must fail closed without affecting MIA semantics.
             self.io_failure = "{}".format(type(exc).__name__)
+            return False
 
     def emission(self, wire, encoded, wire_digest, semantic_arrays):
         if not self.enabled:
@@ -408,10 +457,23 @@ class _PacketCensusSidecar(object):
         self.terminals.append(record)
         self._append(self.terminal_path, record)
 
-    def finalize(self):
+    def finalize(self, finalization_frame):
         if not self.enabled:
             return None
-        report = validate_packet_census_records(self.emissions, self.terminals)
+        finalization = {
+            "record_type": "CENSUS_FINALIZATION",
+            "census_run_id": self.census_run_id,
+            "sequence_name": self.sequence_name,
+            "runtime_instance_id": self.runtime_instance_id,
+            "finalization_frame": int(finalization_frame),
+            "completion_state": "SUCCESSFUL_FINALIZE",
+            "emission_record_count": len(self.emissions),
+            "terminal_record_count": len(self.terminals),
+        }
+        # This is intentionally after all PENDING_AT_END terminal writes.
+        if self._append(self.finalization_path, finalization):
+            self.finalizations.append(finalization)
+        report = validate_packet_census_records(self.emissions, self.terminals, self.finalizations)
         report["census_status"] = "CENSUS_COMPLETE" if not self.io_failure and report["passed"] else "CENSUS_INCOMPLETE"
         report["io_failure"] = self.io_failure
         self._append(self.validation_path, report)
@@ -772,7 +834,8 @@ class PacketRuntime(object):
             "offline_init_frames": self.offline_init_frames,
             "forbidden_runtime_identity_fields": list(RUNTIME_FORBIDDEN_FIELDS),
         }
-        census_report = self._census.finalize()
+        finalization_frame = self._current_frame if self._current_frame >= 0 else 0
+        census_report = self._census.finalize(finalization_frame)
         if census_report is not None:
             manifest["packet_census_status"] = census_report["census_status"]
             manifest["packet_census_validation"] = census_report

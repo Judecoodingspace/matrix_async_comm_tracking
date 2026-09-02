@@ -22,6 +22,40 @@ def _runtime(tmp_path: Path, monkeypatch, **delays: int) -> PacketRuntime:
     return PacketRuntime(tmp_path, "mia_test_26", "26-1")
 
 
+def _finalization(packet_id: dict[str, object], emission_count: int = 1, terminal_count: int = 1) -> dict[str, object]:
+    return {
+        "record_type": "CENSUS_FINALIZATION",
+        "census_run_id": packet_id["census_run_id"],
+        "sequence_name": packet_id["sequence_name"],
+        "runtime_instance_id": packet_id["runtime_instance_id"],
+        "finalization_frame": 2,
+        "completion_state": "SUCCESSFUL_FINALIZE",
+        "emission_record_count": emission_count,
+        "terminal_record_count": terminal_count,
+    }
+
+
+def _valid_id_ledger() -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+    packet_id = {"census_run_id": "run", "sequence_name": "sequence", "runtime_instance_id": "instance",
+                 "emission_ordinal": 1}
+    routing = {"type": "PARTIAL_NATIVE", "stage": "stage", "remap_event_view_ids": [],
+               "source": "NOT_EXPLICIT", "target": "NOT_EXPLICIT", "direction": "NOT_EXPLICIT"}
+    emission = {
+        "record_type": "PACKET_EMISSION", "packet_id": packet_id, "channel": "id_state", "stage": "stage",
+        "runtime_instance_id": "instance", "source_state_version": 1, "capture_frame": 1, "emitted_frame": 1,
+        "arrival_frame": 2, "valid_until_frame": 1, "wire_digest": "a", "JSON_WIRE_BYTES": 1,
+        "SEMANTIC_ARRAY_RAW_BYTES": 0, "routing_attribution": routing,
+        "content_counts": {"track_rows_view1_count": 0, "track_rows_view2_count": 0, "remap_event_count": 0,
+                           "shared_matched_id_count": 0, "shared_confirmed_id_count": 0},
+    }
+    terminal = {
+        "record_type": "PACKET_TERMINAL", "packet_id": packet_id, "channel": "id_state", "stage": "stage",
+        "routing_attribution": routing, "terminal_class": "ARRIVED_REJECTED", "terminal_reason": "obsolete",
+        "terminal_frame": 2, "wire_digest": "a",
+    }
+    return emission, terminal, _finalization(packet_id)
+
+
 def test_delayed_local_preserves_local_rows_but_blocks_cross_view(tmp_path: Path, monkeypatch) -> None:
     runtime = _runtime(tmp_path, monkeypatch, local=2)
     rows = _rows()
@@ -84,8 +118,9 @@ def test_packet_census_sidecar_closes_runtime_lifecycles(tmp_path: Path, monkeyp
     base = tmp_path / "mia_test_26"
     emissions = [json.loads(line) for line in (base / "packet_census_emissions_26-1.jsonl").read_text().splitlines()]
     terminals = [json.loads(line) for line in (base / "packet_census_terminals_26-1.jsonl").read_text().splitlines()]
+    finalizations = [json.loads(line) for line in (base / "packet_census_finalization_26-1.jsonl").read_text().splitlines()]
     assert manifest["packet_census_status"] == "CENSUS_COMPLETE"
-    assert validate_packet_census_records(emissions, terminals)["passed"]
+    assert validate_packet_census_records(emissions, terminals, finalizations)["passed"]
     assert {record["terminal_class"] for record in terminals} == {
         "ARRIVED_ACCEPTED", "EXPIRED", "PENDING_AT_END",
     }
@@ -146,27 +181,45 @@ def test_packet_census_does_not_advance_python_or_numpy_random_state(tmp_path: P
     assert current_numpy_state[2:] == numpy_state[2:]
 
 
-def test_packet_census_validator_rejects_digest_mismatch_and_accepts_rejected_terminal() -> None:
-    packet_id = {"census_run_id": "run", "sequence_name": "sequence", "runtime_instance_id": "instance",
-                 "emission_ordinal": 1}
-    emission = {
-        "record_type": "PACKET_EMISSION", "packet_id": packet_id, "channel": "id_state", "stage": "stage",
-        "runtime_instance_id": "instance", "source_state_version": 1, "capture_frame": 1, "emitted_frame": 1,
-        "arrival_frame": 2, "valid_until_frame": 1, "wire_digest": "a", "JSON_WIRE_BYTES": 1,
-        "SEMANTIC_ARRAY_RAW_BYTES": 0,
-        "routing_attribution": {"type": "PARTIAL_NATIVE", "stage": "stage", "remap_event_view_ids": [],
-                                 "source": "NOT_EXPLICIT", "target": "NOT_EXPLICIT", "direction": "NOT_EXPLICIT"},
-        "content_counts": {"track_rows_view1_count": 0, "track_rows_view2_count": 0, "remap_event_count": 0,
-                           "shared_matched_id_count": 0, "shared_confirmed_id_count": 0},
-    }
-    terminal = {
-        "record_type": "PACKET_TERMINAL", "packet_id": packet_id, "channel": "id_state", "stage": "stage",
-        "routing_attribution": emission["routing_attribution"], "terminal_class": "ARRIVED_REJECTED",
-        "terminal_reason": "obsolete", "terminal_frame": 2, "wire_digest": "a",
-    }
-    assert validate_packet_census_records([emission], [terminal])["passed"]
+def test_packet_census_finalization_evidence_repair_cases(tmp_path: Path, monkeypatch) -> None:
+    emission, terminal, finalization = _valid_id_ledger()
+    # R1: normal finalized ledger.
+    normal = validate_packet_census_records([emission], [terminal], [finalization])
+    assert normal["passed"] and normal["census_status"] == "CENSUS_COMPLETE"
+    # R2: the original N7 reproduction must fail closed without finalization evidence.
+    missing = validate_packet_census_records([emission], [terminal])
+    assert not missing["passed"] and missing["census_status"] == "CENSUS_INCOMPLETE"
+    # R3: duplicate completion evidence is not auditable completion.
+    duplicate = validate_packet_census_records([emission], [terminal], [finalization, finalization])
+    assert not duplicate["passed"] and duplicate["finalization_evidence_count"] == 2
+    # R4: a runtime namespace mismatch is rejected.
+    mismatched = dict(finalization)
+    mismatched["runtime_instance_id"] = "other-instance"
+    mismatch = validate_packet_census_records([emission], [terminal], [mismatched])
+    assert not mismatch["passed"] and mismatch["finalization_identity_mismatch"] == 1
+    # R5: completion evidence cannot mask a missing terminal/conservation failure.
+    conservation = validate_packet_census_records([emission], [], [_finalization(emission["packet_id"], 1, 0)])
+    assert not conservation["passed"] and conservation["emission_without_terminal"] == 1
+    # R6: pending-at-end terminal is present before the finalization artifact and validates complete.
+    monkeypatch.setenv("MIA_PACKET_CENSUS_RUN_ID", "pending-finalization")
+    runtime = _runtime(tmp_path, monkeypatch, local=2)
+    runtime.deliver_local_track(1, 1, _rows(), np.empty((0, 5), dtype=np.float32), 3)
+    _, manifest_path = runtime.finalize()
+    root = tmp_path / "mia_test_26"
+    emissions = [json.loads(line) for line in (root / "packet_census_emissions_26-1.jsonl").read_text().splitlines()]
+    terminals = [json.loads(line) for line in (root / "packet_census_terminals_26-1.jsonl").read_text().splitlines()]
+    finalizations = [json.loads(line) for line in (root / "packet_census_finalization_26-1.jsonl").read_text().splitlines()]
+    assert terminals[0]["terminal_class"] == "PENDING_AT_END"
+    assert finalizations[0]["terminal_record_count"] == len(terminals)
+    assert validate_packet_census_records(emissions, terminals, finalizations)["passed"]
+    assert json.loads(manifest_path.read_text())["packet_census_status"] == "CENSUS_COMPLETE"
+
+
+def test_packet_census_validator_rejects_digest_mismatch() -> None:
+    emission, terminal, finalization = _valid_id_ledger()
+    assert validate_packet_census_records([emission], [terminal], [finalization])["passed"]
     terminal["wire_digest"] = "different"
-    result = validate_packet_census_records([emission], [terminal])
+    result = validate_packet_census_records([emission], [terminal], [finalization])
     assert not result["passed"]
     assert result["wire_digest_mismatch"] == 1
 
