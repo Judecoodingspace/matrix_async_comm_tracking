@@ -25,7 +25,7 @@ network packet.
   current logical packet, and `_send()` either consumes it immediately or
   places it in a channel queue.
 - **FACT:** current terminal paths do not consistently retain a stable packet
-  key or the emission digest.
+  key or the emission `wire_digest`.
 - **FACT:** Homography installation and later held-state use are different
   events.
 - **INFERENCE:** a ledger-only lineage key plus passive byte/count bookkeeping
@@ -81,13 +81,24 @@ be unique. It is not sufficient as the sole durable packet lineage key because:
 
 It remains required metadata and must not be redefined.
 
-### 3.2 Frozen independent lineage key
+### 3.2 Runtime-instance audit
+
+The generated author entry contains one textual `PacketRuntime(...)`
+construction inside its sequence-processing invocation, but neither
+`PacketRuntime.__init__` nor the launcher establishes a process-wide or
+launch-wide invariant that a given `(census_run_id, sequence_name)` can have
+only one instance. A future launcher could invoke the same sequence twice,
+instantiate a second runtime for retry/inspection, or merge artifacts from
+separate processes. Therefore the two-part namespace cannot be treated as a
+strict uniqueness proof.
+
+### 3.3 Frozen independent lineage key
 
 Every emission receives a census-side `packet_id` whose logical value is the
 immutable tuple:
 
 ```text
-(census_run_id, sequence_name, emission_ordinal)
+(census_run_id, sequence_name, runtime_instance_id, emission_ordinal)
 ```
 
 The JSON representation is:
@@ -96,6 +107,7 @@ The JSON representation is:
 {
   "census_run_id": "<launch-frozen non-semantic run identifier>",
   "sequence_name": "<current PacketRuntime sequence_name>",
+  "runtime_instance_id": "<initialization-time non-semantic audit identifier>",
   "emission_ordinal": 1
 }
 ```
@@ -104,16 +116,19 @@ Rules:
 
 - `census_run_id` is fixed before launch and cannot depend on GT, candidates,
   tracking output, payload content, or future outcome.
+- `runtime_instance_id` is created once at `PacketRuntime` initialization and
+  is non-semantic audit metadata. It cannot depend on GT, payload, candidates,
+  tracking output, or future state.
 - `emission_ordinal` is a new one-based, monotonically increasing
   instrumentation counter assigned exactly once when `_wire()` successfully
   creates an emission.
 - The ordinal may numerically equal `source_state_version` in the frozen
   runtime, but it is a different field with a different semantic role.
-- The complete three-field object is the identity; validators compare its
+- The complete four-field object is the identity; validators compare its
   canonical JSON value, not Python object identity.
 - `packet_id` is census sidecar metadata. It must not be inserted into or
   hashed as part of the existing logical wire packet.
-- The same `packet_id` and emission digest must travel together in an
+- The same `packet_id` and emission `wire_digest` must travel together in an
   out-of-band census sidecar through immediate and queued paths.
 
 This freezes packet lineage without merging it with runtime state versioning.
@@ -132,27 +147,27 @@ Required common fields:
 | `packet_id` | Immutable object defined in Section 3. |
 | `channel` | Exact runtime channel: `local`, `homography`, `id_state`, or `supplement`. |
 | `stage` | Exact payload stage when present; otherwise `NOT_EXPLICIT`. |
+| `runtime_instance_id` | Copy of the non-semantic initialization-time identifier contained in `packet_id`. |
 | `source_state_version` | Existing wire value, unchanged. |
 | `capture_frame` | Existing wire value. |
 | `emitted_frame` | Existing wire value. |
 | `arrival_frame` | Existing planned/current arrival frame in the wire. |
 | `valid_until_frame` | Existing wire value; not interpreted as a universal deadline. |
-| `payload_digest` | Existing canonical-wire SHA-256 defined below. |
+| `wire_digest` | Existing canonical-wire SHA-256 defined below. |
 | `JSON_WIRE_BYTES` | Exact primary size quantity defined in Section 7. No lowercase or physical-byte alias is permitted. |
 | `SEMANTIC_ARRAY_RAW_BYTES` | Exact primary size quantity defined in Section 8. No scalar/list accounting is included. |
 | `routing_attribution` | Source-native routing object defined below. |
 | `content_counts` | Channel-specific raw counts from Section 6. |
 
-`payload_digest` is fixed to the current `wire_digest` calculation:
+`wire_digest` is fixed to the current runtime's `wire_digest` calculation:
 
 ```text
 sha256(encoded.encode("utf-8")).hexdigest()
 ```
 
-Despite the field name required by this contract, it covers the complete
-current canonical logical wire object, not only `wire["payload"]`. The exact
-emission string is hashed once; terminal records propagate that stored digest
-and do not reserialize the packet.
+It covers the complete current canonical logical wire object, not only
+`wire["payload"]`. The exact emission string is hashed once; terminal records
+propagate that stored digest and do not reserialize the packet.
 
 ### Routing attribution
 
@@ -185,12 +200,12 @@ Required fields:
 | `terminal_class` | One of the five classes below. |
 | `terminal_reason` | Existing native action where one exists, or the explicitly marked source-branch observation listed in Section 10. |
 | `terminal_frame` | Frame in which the terminal branch is processed; for finalization, the final processed frame. |
-| `payload_digest` | The stored emission digest, propagated without reserialization. |
+| `wire_digest` | The stored emission `wire_digest`, propagated without reserialization. |
 
 Allowed terminal classes are exactly:
 
 ```text
-TIMELY_CONSUMED
+TIMELY_DELIVERED
 ARRIVED_ACCEPTED
 ARRIVED_REJECTED
 EXPIRED
@@ -247,13 +262,23 @@ Directly available:
 track_rows_view1_count
 track_rows_view2_count
 remap_event_count
-matched_id_count
-confirmed_id_count
 ```
 
-Counts include empty lists/arrays and do not deduplicate or reinterpret IDs.
-The raw track-row counts are included because the current logical payload
-serializes both two-view state arrays.
+The current payload has only one untagged `matched_ids` list and one untagged
+`confirmed_ids` list. It does not carry per-view lists or per-item view tags.
+Under frozen `R-CENSUS-COUNT-01`, the permitted source-native descriptive
+fields are:
+
+```text
+shared_matched_id_count = len(current payload matched_ids)
+shared_confirmed_id_count = len(current payload confirmed_ids)
+```
+
+`shared` means only that the current runtime carries a shared list. It does
+not express source, target, view1, or view2 ownership. The census must not
+deduplicate, remap, infer ownership from rows/stage/ID values, check
+correctness, or read GT. The raw track-row counts are included because the
+current logical payload serializes both two-view state arrays.
 
 ### Supplement
 
@@ -264,14 +289,25 @@ track_rows_view1_count
 track_rows_view2_count
 supplement_view1_row_count
 supplement_view2_row_count
-matched_id_count
-confirmed_id_count
 score_stage
 low_score_flag
 ```
 
 `score_stage` is the exact payload `stage`; `low_score_flag` is the exact
 existing `low_score` value. No high/low stage is inferred from result content.
+
+As with ID state, the current Supplement payload supplies only untagged shared
+`matched_ids` and `confirmed_ids` lists. Under frozen
+`R-CENSUS-COUNT-01`, the permitted source-native descriptive fields are:
+
+```text
+shared_matched_id_count = len(current payload matched_ids)
+shared_confirmed_id_count = len(current payload confirmed_ids)
+```
+
+`shared` has no source/target/view ownership semantics. No total
+reinterpretation, deduplication, remapping, correctness check, or GT read is
+permitted.
 
 No count that requires GT, candidate identity, correctness, future state, or
 an inferred endpoint is allowed. A requested field absent from these payloads
@@ -368,23 +404,23 @@ transport, compression, and retransmission receive separate frozen decisions.
 
 The table distinguishes current native actions from contract-level terminal
 classification. `REQUIRES_PASSIVE_INSTRUMENTATION` means the current event
-lacks packet ID/digest propagation or lacks a packet-level completion record;
+lacks packet ID/`wire_digest` propagation or lacks a packet-level completion record;
 it does not authorize a semantic branch change.
 
 | Runtime path / native action | Terminal class | `terminal_reason` | Instrumentation status |
 | --- | --- | --- | --- |
-| `_send()`: `packet_action="timely"` | `TIMELY_CONSUMED` | exact native value `timely` | Requires packet ID and stored digest sidecar only. |
+| `_send()`: `packet_action="timely"` | `TIMELY_DELIVERED` | exact native value `timely` | Requires packet ID and stored `wire_digest` sidecar only. |
 | `_send()`: `packet_action="queued"` | none | none | Nonterminal emission/queue event. |
 | `_drain()`: packet becomes available | none | none | Nonterminal availability event. |
 | `_drain()`: `capture_frame > frame_id`, current future-read violation/drop branch | `ARRIVED_REJECTED` | source-branch label `future_read_violation` | `REQUIRES_PASSIVE_INSTRUMENTATION`; current code increments a counter but emits no packet terminal. |
-| `begin_frame()`, Local: `packet_action="expired"` | `EXPIRED` | exact native value `expired` | `REQUIRES_PASSIVE_INSTRUMENTATION` for packet ID/digest. |
-| `begin_frame()`, Homography arrival: `packet_action="applied"` after installing `_latest_h` | `ARRIVED_ACCEPTED` | exact native value `applied` | `REQUIRES_PASSIVE_INSTRUMENTATION` for packet ID/digest. |
+| `begin_frame()`, Local: `packet_action="expired"` | `EXPIRED` | exact native value `expired` | `REQUIRES_PASSIVE_INSTRUMENTATION` for packet ID/`wire_digest`. |
+| `begin_frame()`, Homography arrival: `packet_action="applied"` after installing `_latest_h` | `ARRIVED_ACCEPTED` | exact native value `applied` | `REQUIRES_PASSIVE_INSTRUMENTATION` for packet ID/`wire_digest`. |
 | `deliver_homography()`: `packet_action="held"` | none | none | Semantic-usage event, not a packet terminal. |
-| `_apply_pending_id()`: packet version `<= _last_id_packet_version`, native `packet_action="obsolete"` | `ARRIVED_REJECTED` | exact native value `obsolete` | `REQUIRES_PASSIVE_INSTRUMENTATION` for packet ID/digest. |
+| `_apply_pending_id()`: packet version `<= _last_id_packet_version`, native `packet_action="obsolete"` | `ARRIVED_REJECTED` | exact native value `obsolete` | `REQUIRES_PASSIVE_INSTRUMENTATION` for packet ID/`wire_digest`. |
 | `_apply_pending_id()`: packet version accepted and whole payload processing completes | `ARRIVED_ACCEPTED` | source-branch label `id_version_accepted` | `REQUIRES_PASSIVE_INSTRUMENTATION`; current code has no single packet-level completion event. |
 | ID remap subevent: native `applied`, `conflict`, or row-missing `obsolete` | none by itself | retain only in an optional subevent audit | Multiple remap subevents must not create multiple packet terminals. |
-| `begin_frame()`, Supplement: `packet_action="expired"` | `EXPIRED` | exact native value `expired` | `REQUIRES_PASSIVE_INSTRUMENTATION` for packet ID/digest. |
-| `finalize()`: `packet_action="pending_at_end"` | `PENDING_AT_END` | exact native value `pending_at_end` | `REQUIRES_PASSIVE_INSTRUMENTATION` for packet ID/digest. |
+| `begin_frame()`, Supplement: `packet_action="expired"` | `EXPIRED` | exact native value `expired` | `REQUIRES_PASSIVE_INSTRUMENTATION` for packet ID/`wire_digest`. |
+| `finalize()`: `packet_action="pending_at_end"` | `PENDING_AT_END` | exact native value `pending_at_end` | `REQUIRES_PASSIVE_INSTRUMENTATION` for packet ID/`wire_digest`. |
 
 `future_read_violation` and `id_version_accepted` are explicitly marked
 source-branch labels added by the census contract because no packet-level
@@ -403,7 +439,7 @@ The following events are distinct:
 
 ```text
 H packet emitted
-  -> timely consume OR queue
+  -> timely delivered OR queue
   -> delayed arrival installs matrix as latest H
   -> exactly one packet terminal
 
@@ -432,7 +468,7 @@ Global conservation:
 |E| = |T|
 
 |T| =
-  N_TIMELY_CONSUMED
+  N_TIMELY_DELIVERED
   + N_ARRIVED_ACCEPTED
   + N_ARRIVED_REJECTED
   + N_EXPIRED
@@ -444,7 +480,7 @@ Lineage conservation for every `packet_id = p`:
 ```text
 count(E where packet_id = p) = 1
 count(T where packet_id = p) = 1
-digest(E[p]) = digest(T[p])
+wire_digest(E[p]) = wire_digest(T[p])
 ```
 
 The same equations must hold independently for every observed:
@@ -472,14 +508,17 @@ fails.
 | C4 No phantom terminal | Every terminal has an emission. | `terminal_without_emission = 0` |
 | C5 No orphan emission | Every emission has a terminal after finalize. | `emission_without_terminal = 0` |
 | C6 No duplicate terminal | No packet has two terminal records. | `duplicate_terminal = 0` |
-| C7 Payload digest conservation | Emission and terminal retain the same exact canonical-wire digest. | `payload_digest_mismatch = 0` |
+| C7 Wire digest conservation | Emission and terminal retain the same exact canonical-wire digest. | `wire_digest_mismatch = 0` |
 | C8 Count conservation | Total and partitioned emission counts equal terminal counts. | all global/channel/stage/source-native-routing differences equal `0` |
 
 Additional measurement gates:
 
 - ledger JSON schema validation passes;
 - every terminal class is in the frozen five-value set;
-- every required size/count field is present and nonnegative;
+- every directly available size/count field is present and nonnegative;
+- `shared_matched_id_count` and `shared_confirmed_id_count`, where emitted,
+  equal the direct length of the current payload lists without deduplication or
+  ownership inference;
 - `JSON_WIRE_BYTES` equals a direct count of the emission's existing encoded
   string;
 - `SEMANTIC_ARRAY_RAW_BYTES` equals the sum over the frozen channel array set;
@@ -497,14 +536,14 @@ Future implementation is authorized only to:
 - count bytes on the existing canonical `encoded` string;
 - sum raw bytes at current array-encoding boundaries;
 - record the frozen content counts and native routing evidence;
-- carry `packet_id` and the stored digest in an out-of-band sidecar;
+- carry `packet_id` and the stored `wire_digest` in an out-of-band sidecar;
 - append one emission and one terminal record;
 - record `PENDING_AT_END` during finalization;
-- run schema, uniqueness, digest, and conservation validators.
+- run schema, uniqueness, `wire_digest`, and conservation validators.
 
 It must not:
 
-- alter `wire`, `wire["payload"]`, the canonical JSON string, or its digest;
+- alter `wire`, `wire["payload"]`, the canonical JSON string, or its `wire_digest`;
 - alter queue keys, service order, delays, arrival frames, or readiness;
 - read or change detector, tracker, Kalman, identity, H estimation, Supplement,
   NMS, feedback, or publication state;
@@ -532,8 +571,8 @@ The only authorized treatment difference is passive census artifact creation.
 Required exact equalities:
 
 ```text
-prediction JSON bytes                         equal
-existing logical packet payload-digest order equal
+prediction JSON bytes                      equal
+existing logical packet wire-digest order equal
 existing manifest semantic counts            equal
 tracker feedback digest sequence              equal
 ```
@@ -559,14 +598,20 @@ scheduler study, but do **not** block the passive descriptive census:
    communication payload format;
 2. physical packet atomicity, especially bundled ID and Supplement state;
 3. explicit source, destination, direction, and link semantics where the
-   current payload does not provide them;
+   current payload does not provide them, including per-view ownership of the
+   shared matched/confirmed ID lists;
 4. metadata/header/framing/compression/retransmission accounting;
 5. physical capacity, bandwidth, service time, queue policy, loss, deadline,
    priority, and channel weights;
 6. whether channel-specific validity semantics should later be represented by
    separate deadline/version/hold fields.
 
-No unresolved decision remains for the three Step-2 essentials:
+Frozen `R-CENSUS-COUNT-01` resolves the descriptive-count boundary: absent
+per-view ownership does not block census instrumentation. The census records
+only direct lengths of the existing shared lists and reserves ownership/link
+semantics for later physical communication research.
+
+The Step-2 essentials are frozen:
 
 - packet identity is the independent census tuple in Section 3;
 - the only primary byte quantities are frozen in Sections 7 and 8;
@@ -586,8 +631,10 @@ Rationale:
 - emission and terminal ledgers support one-packet/one-fate conservation;
 - Homography held-state reuse and ID remap subevents are excluded from duplicate
   packet terminals;
-- all required additions fit inside a passive sidecar/ledger boundary and are
-  subject to exact OFF/ON non-interference.
+- `wire_digest` precisely names the unchanged full canonical-wire hash;
+- `TIMELY_DELIVERED` makes no downstream semantic-consumption claim.
+- `R-CENSUS-COUNT-01` restricts matched/confirmed counts to direct lengths of
+  the existing shared payload lists and makes no per-view ownership claim.
 
 This decision authorizes only implementation and synthetic/static validation
 of passive census instrumentation. It does not authorize a dataset run, a
