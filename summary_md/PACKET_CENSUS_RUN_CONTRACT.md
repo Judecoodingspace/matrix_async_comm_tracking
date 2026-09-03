@@ -92,6 +92,12 @@ d9af00f  synthetic re-validation evidence
 and manifest-identity gates before opening author inputs. A mismatch is
 `PACKET_CENSUS_CONTRACT_DRIFT` and stops execution.
 
+**DESIGN DECISION:** The formal runner must resolve every attempt-local input,
+XML, result, prediction, and RNG-report path to an absolute path before the
+author process changes into the attempt working directory. This is a
+contract-preserving launch-isolation requirement; it changes no author runtime
+input, packet, delay, or measurement semantics.
+
 ## 4. Authorized runtime and environment
 
 **FACT:** The dataset-level validation used the isolated frozen author variant
