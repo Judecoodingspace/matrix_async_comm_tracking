@@ -5,6 +5,8 @@
 - Successor branch: `exp/20260903-001-mdmt-mia-p39-homography-fallback-successor-census`
 - Predecessor baseline: `0e2880f1cd860ac1134dcbacb5f2fb94a2d1dda0`
 - Successor formal identity: `mdmt-mia-packet-census-z0-train-all-hfallback-v1`
+- Published successor repair baseline:
+  `79040009f040897128751027639cef3e81e18e54`.
 - Population: the same 25 frozen train pairs, 12,026 Census frame units.
 - Condition: Z0 only; seed 7; `cuda:0`.
 - Successor author variant:
@@ -57,3 +59,13 @@ successor preflight may a new output root
 `outputs/packet_census_z0_train_all_hfallback_v1/` begin at Pair 23. The
 directed Pair 39 records do not substitute for formal Pair 39. No scientific
 summary may be read before 25/25 successor pairs and 12,026/12,026 frames.
+
+## Formal-preflight freeze
+
+The formal preflight requires the successor branch and requires the published
+repair baseline above to be an ancestor of the checked worktree HEAD. The
+preflight manifest additionally freezes hashes of the current runner, tools,
+summarizer, RNG wrapper, successor author entry, fallback module, copied
+runtime, config, checkpoint, and all 25 input identities. This permits the
+dedicated formal-contract/preflight tooling commit while retaining the
+validated repair baseline as the immutable source anchor.

@@ -21,7 +21,7 @@ from tracking.mdmt_mia_async_deadline_runtime import validate_packet_census_reco
 
 SCHEMA_VERSION = "packet-census-z0-tools-v1"
 CENSUS_RUN_ID = "mdmt-mia-packet-census-z0-train-all-hfallback-v1"
-FROZEN_CHECKPOINT = "3a071174331805b8eb55eeb3cc33951541711f5a"
+FROZEN_CHECKPOINT = "79040009f040897128751027639cef3e81e18e54"
 EXECUTION_BASELINE_COMMIT = "0e2880f1cd860ac1134dcbacb5f2fb94a2d1dda0"
 FROZEN_BRANCH = "exp/20260903-001-mdmt-mia-p39-homography-fallback-successor-census"
 POPULATION_ID = "ALL_PREAUDITED_RUNNABLE_TRAIN_PAIRS"

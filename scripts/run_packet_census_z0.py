@@ -116,6 +116,8 @@ def verify_frozen_environment():
     current_head = _git_value(["rev-parse", "HEAD"])
     if not _git_is_ancestor(EXECUTION_BASELINE_COMMIT, current_head):
         raise PacketCensusToolError("PACKET_CENSUS_CONTRACT_DRIFT: execution baseline ancestry")
+    if not _git_is_ancestor(FROZEN_CHECKPOINT, current_head):
+        raise PacketCensusToolError("PACKET_CENSUS_CONTRACT_DRIFT: successor repair baseline ancestry")
     if _git_value(["status", "--porcelain", "--untracked-files=no"]):
         raise PacketCensusToolError("PACKET_CENSUS_CONTRACT_DRIFT: tracked worktree dirty")
     runtime_inputs = {}
