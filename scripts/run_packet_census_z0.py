@@ -18,6 +18,7 @@ from pathlib import Path
 
 from tracking.packet_census_run_tools import (
     CENSUS_RUN_ID,
+    EXECUTION_BASELINE_COMMIT,
     FROZEN_BRANCH,
     FROZEN_CHECKPOINT,
     PacketCensusToolError,
@@ -103,11 +104,19 @@ def _git_value(arguments):
     return subprocess.check_output(["git", "-C", str(WORKTREE_ROOT), *arguments], text=True).strip()
 
 
+def _git_is_ancestor(ancestor, descendant):
+    return subprocess.run(["git", "-C", str(WORKTREE_ROOT), "merge-base", "--is-ancestor",
+                           str(ancestor), str(descendant)], check=False).returncode == 0
+
+
 def verify_frozen_environment():
     if _git_value(["branch", "--show-current"]) != FROZEN_BRANCH:
         raise PacketCensusToolError("PACKET_CENSUS_CONTRACT_DRIFT: branch")
-    if _git_value(["rev-parse", "HEAD"]) != FROZEN_CHECKPOINT:
-        raise PacketCensusToolError("PACKET_CENSUS_CONTRACT_DRIFT: HEAD")
+    current_head = _git_value(["rev-parse", "HEAD"])
+    if not _git_is_ancestor(EXECUTION_BASELINE_COMMIT, current_head):
+        raise PacketCensusToolError("PACKET_CENSUS_CONTRACT_DRIFT: execution baseline ancestry")
+    if _git_value(["status", "--porcelain", "--untracked-files=no"]):
+        raise PacketCensusToolError("PACKET_CENSUS_CONTRACT_DRIFT: tracked worktree dirty")
     runtime_inputs = {}
     for path, expected in ASSET_HASHES.items():
         if not path.is_file() or _sha256(path) != expected:
@@ -116,6 +125,16 @@ def verify_frozen_environment():
     if not FROZEN_PYTHON.is_file():
         raise PacketCensusToolError("missing frozen author Python: {}".format(FROZEN_PYTHON))
     return runtime_inputs
+
+
+def _verify_manifest_identity(manifest):
+    if manifest.get("contract_sha256") != _sha256(CONTRACT_PATH):
+        raise PacketCensusToolError("PACKET_CENSUS_CONTRACT_DRIFT: manifest contract hash")
+    tooling_paths = [WORKTREE_ROOT / "src" / "tracking" / "packet_census_run_tools.py", Path(__file__),
+                     WORKTREE_ROOT / "scripts" / "summarize_packet_census_z0.py", RNG_WRAPPER]
+    observed = {str(path): _sha256(path) for path in tooling_paths}
+    if manifest.get("tooling_sha256") != observed:
+        raise PacketCensusToolError("PACKET_CENSUS_CONTRACT_DRIFT: manifest tooling hash")
 
 
 def _state_path(output_root):
@@ -265,6 +284,7 @@ def command_preflight(output_root):
 def command_pilot(output_root):
     verify_frozen_environment()
     manifest = verify_frozen_manifest(output_root)
+    _verify_manifest_identity(manifest)
     state = _load_state(output_root)
     if state.get("state") != "PREFLIGHT_PASSED":
         raise PacketCensusToolError("pilot requires PREFLIGHT_PASSED")
@@ -278,6 +298,7 @@ def command_pilot(output_root):
 def command_cohort(output_root):
     verify_frozen_environment()
     manifest = verify_frozen_manifest(output_root)
+    _verify_manifest_identity(manifest)
     state = _load_state(output_root)
     if state.get("state") not in ("PILOT_VALIDATED", "COHORT_RUNNING"):
         raise PacketCensusToolError("cohort requires PILOT_VALIDATED or resumable COHORT_RUNNING")
@@ -298,6 +319,7 @@ def command_retry(output_root, pair_id, reason):
     if summary_path.exists():
         raise PacketCensusToolError("retry forbidden after descriptive summary exists")
     manifest = verify_frozen_manifest(output_root)
+    _verify_manifest_identity(manifest)
     state = _load_state(output_root)
     if state.get("state") != "ENGINEERING_FAILED" or state.get("failed_pair") != str(pair_id):
         raise PacketCensusToolError("retry must target the recorded engineering-failed pair")
