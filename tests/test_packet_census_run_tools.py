@@ -117,6 +117,13 @@ def _write_valid_attempt(root: Path, pair_record: dict):
     return paths
 
 
+def test_expected_pair_paths_place_prediction_json_in_author_result_root(tmp_path):
+    paths = expected_pair_paths(tmp_path, "23")
+
+    assert paths["prediction_view1"] == tmp_path / "results" / "mia_train_23" / "23-1.json"
+    assert paths["prediction_view2"] == tmp_path / "results" / "mia_train_23" / "23-2.json"
+
+
 def test_filename_digest_and_strict_jsonl(tmp_path: Path):
     assert filename_list_digest(["00000001.jpg", "00000002.jpg"]) == filename_list_digest([
         "00000001.jpg", "00000002.jpg"

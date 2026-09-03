@@ -267,8 +267,8 @@ def expected_pair_paths(attempt_root, pair_id):
         "runtime_validation": runtime_root / "packet_census_validation_{}.json".format(sequence),
         "author_manifest": runtime_root / "async_packet_manifest_{}.json".format(sequence),
         "trace": runtime_root / "async_packet_trace_{}.jsonl".format(sequence),
-        "prediction_view1": Path(attempt_root) / "view1" / "{}.json".format(sequence),
-        "prediction_view2": Path(attempt_root) / "view2" / "{}-2.json".format(pair_id),
+        "prediction_view1": runtime_root / "{}.json".format(sequence),
+        "prediction_view2": runtime_root / "{}-2.json".format(pair_id),
         "rng_report": Path(attempt_root) / "torch_rng.json",
         "author_log": Path(attempt_root) / "author.log",
     }
