@@ -37,9 +37,9 @@ from tracking.packet_census_run_tools import (
 WORKTREE_ROOT = Path(__file__).resolve().parents[1]
 DATASET_ROOT = Path("/mnt/data/yzm/datasets/Multi-Drone-Multi-Object-Detection-and-Tracking")
 MIA_ROOT = Path("/mnt/data/yzm/experiments/mdmt_mia_official")
-VARIANT_ROOT = MIA_ROOT / "variants" / "packet_census_step4_d9af00f"
+VARIANT_ROOT = MIA_ROOT / "variants" / "packet_census_homography_fallback_successor_v1"
 FROZEN_PYTHON = MIA_ROOT / ".conda-env" / "bin" / "python"
-CONTRACT_PATH = WORKTREE_ROOT / "summary_md" / "PACKET_CENSUS_RUN_CONTRACT.md"
+CONTRACT_PATH = WORKTREE_ROOT / "summary_md" / "PACKET_CENSUS_HOMOGRAPHY_FALLBACK_SUCCESSOR_CONTRACT.md"
 RNG_WRAPPER = WORKTREE_ROOT / "scripts" / "step4_packet_census_author_rng_wrapper.py"
 AUTHOR_ENTRY = VARIANT_ROOT / "demo" / "supplement_MIA.py"
 RUN_CONFIG = MIA_ROOT / "run_configs" / "one_carafe_bytetrack_full_mdmt_reproduction.py"
@@ -74,7 +74,8 @@ PAIR_SPECS = (
 )
 
 ASSET_HASHES = {
-    AUTHOR_ENTRY: "f7113f3d0ff08891b526c320051a3801bccb2a14891226a900c62e71946d5316",
+    AUTHOR_ENTRY: "8f4a75ec1e41831a4767aa00e7c027df542d5cb43c2333987204f9bc5e4b246d",
+    VARIANT_ROOT / "demo" / "utils" / "trans_matrix.py": "ba14dbd9ab27a822a454c496fb1c3d657e3a9884a06e02e1b353485e11f87f73",
     VARIANT_ROOT / "demo" / "utils" / "async_deadline_runtime.py": "58dc55c15bacae8f63ca1ca05432736a1499356e76e32e58399249d9ce6d2300",
     WORKTREE_ROOT / "src" / "tracking" / "mdmt_mia_async_deadline_runtime.py": "58dc55c15bacae8f63ca1ca05432736a1499356e76e32e58399249d9ce6d2300",
     VARIANT_ROOT / "mmtrack" / "models" / "__init__.py": "643e5aa1e06057b79b9d45fa166f3c86e197b352aaf272ad102e64aabc63c2d1",
@@ -197,6 +198,7 @@ def _run_author(attempt_root, pair):
         "MIA_ASYNC_CHANNEL_DELAYS": json.dumps(Z0_DELAYS, sort_keys=True),
         "MIA_ACTIVE_PACKET_STAGES": "all",
         "MIA_PACKET_CENSUS_RUN_ID": CENSUS_RUN_ID,
+        "MIA_HOMOGRAPHY_REPAIR_AUDIT_PATH": str(Path(attempt_root) / "homography_repair_audit.jsonl"),
     })
     command = [
         str(FROZEN_PYTHON), str(RNG_WRAPPER), "--rng-report", str(Path(attempt_root) / "torch_rng.json"),

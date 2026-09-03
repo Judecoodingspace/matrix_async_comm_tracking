@@ -64,12 +64,13 @@ def _run(args: argparse.Namespace, condition: str, name: str, census: bool) -> N
         "PYTHONPATH": f"{source}:{source / 'demo'}:{source / 'demo/utils'}",
         "MIA_ASYNC_CHANNEL_DELAYS": json.dumps(delays, sort_keys=True),
         "MIA_ACTIVE_PACKET_STAGES": "all",
+        "MIA_HOMOGRAPHY_REPAIR_AUDIT_PATH": str(root / "homography_repair_audit.jsonl"),
     })
     if census:
-        environment["MIA_PACKET_CENSUS_RUN_ID"] = f"step4-{condition}"
+        environment["MIA_PACKET_CENSUS_RUN_ID"] = args.census_run_id
     else:
         environment.pop("MIA_PACKET_CENSUS_RUN_ID", None)
-    command = [str(args.python), str(args.wrapper), "--rng-report", str(root / "torch_rng.json"),
+    command = [str(args.python), str(args.wrapper.resolve()), "--rng-report", str(root / "torch_rng.json"),
                "--entry", str(entry), "--seed", str(args.seed), "--", "--config", str(args.config),
                "--input", str(input_dir) + "/", "--xml_dir", str(xml_dir) + "/", "--result_dir", str(result_dir),
                "--method", f"mia_train_{args.pair}", "--output", str(root / "view1"),
@@ -96,7 +97,10 @@ def main() -> None:
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--condition", choices=tuple(CONDITIONS), required=True)
     parser.add_argument("--run", choices=("off_a", "off_b", "on"), required=True)
+    parser.add_argument("--census-run-id", default="step4-validation")
     args = parser.parse_args()
+    for name in ("dataset_root", "variant_root", "config", "python", "wrapper", "input_root", "output_root"):
+        setattr(args, name, getattr(args, name).resolve())
     _run(args, args.condition, args.run, dict(RUNS)[args.run])
 
 
