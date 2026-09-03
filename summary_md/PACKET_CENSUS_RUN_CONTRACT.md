@@ -63,6 +63,22 @@ link load, capacity requirement, service time, or transport behavior.
 exp/20260902-001-mdmt-mia-semantic-freshness-mve
 ```
 
+**DESIGN DECISION:** `3a071174331805b8eb55eeb3cc33951541711f5a` remains
+the frozen runtime-evidence checkpoint: it anchors the completed Step 4
+non-interference evidence and the unchanged production-runtime hash. The formal
+execution tooling was necessarily published later, at execution-baseline commit
+`0e2880f1cd860ac1134dcbacb5f2fb94a2d1dda0`; it cannot itself execute while
+requiring the worktree HEAD to equal the earlier runtime-evidence checkpoint.
+
+**DESIGN DECISION:** Before any author launch, the runner must require the
+frozen branch, a clean tracked worktree, and that execution-baseline commit
+`0e2880f1cd860ac1134dcbacb5f2fb94a2d1dda0` is an ancestor of the current
+HEAD. It must additionally verify the frozen production/runtime/environment
+hashes and require the preflight manifest's contract and tooling SHA-256 values
+to match the files about to execute. A tooling or contract repair after
+preflight therefore requires a new preflight manifest; an old manifest cannot
+be silently reused.
+
 **FACT:** The relevant frozen implementation history includes:
 
 ```text
@@ -72,8 +88,8 @@ d9af00f  synthetic re-validation evidence
 3a07117  dataset-level non-interference evidence
 ```
 
-**DESIGN DECISION:** Every formal launch must verify the exact 40-character
-checkpoint before any dataset input is opened. A mismatch is
+**DESIGN DECISION:** Every formal launch must verify these execution-baseline
+and manifest-identity gates before opening author inputs. A mismatch is
 `PACKET_CENSUS_CONTRACT_DRIFT` and stops execution.
 
 ## 4. Authorized runtime and environment

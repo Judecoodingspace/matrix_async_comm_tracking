@@ -23,8 +23,8 @@ exp/20260902-001-mdmt-mia-semantic-freshness-mve
 
 | File | Role | SHA-256 |
 | --- | --- | --- |
-| `src/tracking/packet_census_run_tools.py` | Pure manifest, strict ledger loading, outer validation, audit, frame grid, and aggregation | `2233de09adb60b3d3ff65b6b34db5846b7c696ab260abf5dbdca9e0b171d7989` |
-| `scripts/run_packet_census_z0.py` | Frozen preflight/pilot/cohort/retry/status CLI | `e8e335cd1a198bd1756b0f566fc16d602722ccd3caafe757f63dc223876f1fc7` |
+| `src/tracking/packet_census_run_tools.py` | Pure manifest, strict ledger loading, outer validation, audit, frame grid, and aggregation | `ffdbe7e6e2b1495afa50281c083b24c4a94d46b2a1aaa0d512f0fd908b1f69ee` |
+| `scripts/run_packet_census_z0.py` | Frozen preflight/pilot/cohort/retry/status CLI | `6648f3f5b3654f32a63fde145ffd2f35fc42ee65a1a084e9ee885a386858812e` |
 | `scripts/summarize_packet_census_z0.py` | Closed-cohort independent revalidation and aggregation CLI | `440676bb022e9b17ddaea19ce0c0b39d9ef2094e52a15cf9ac30cebd1aea2e39` |
 | `tests/test_packet_census_run_tools.py` | Dataset-free manifest, gate, frame-grid, and aggregation tests | `e20ea6093f1e3ee45f34970fa50af34f4b42508b658e209847b3d0fd22911772` |
 
@@ -55,6 +55,7 @@ src/tracking/mdmt_mia_async_deadline_runtime.py
 | Partial-cohort aggregation rejection | PASS |
 | Engineering-only retry restrictions | PASS (static) |
 | Physical, scheduler, and tracking metrics absent from generated summary schema | PASS |
+| Execution-baseline ancestry, tracked-worktree-cleanliness, and preflight manifest contract/tooling identity gates | PASS |
 
 ## Dataset-free verification
 
@@ -81,6 +82,18 @@ Result:
 Both new CLIs were also invoked with `--help` only. No `preflight`, `pilot`,
 `cohort`, `retry-pair`, or summarization command was run. Static search found
 no XML parser import in the new tools, and no trailing whitespace was found.
+
+## Checkpoint-alignment repair
+
+The runtime-evidence checkpoint remains `3a071174331805b8eb55eeb3cc33951541711f5a`.
+The separately published execution baseline is
+`0e2880f1cd860ac1134dcbacb5f2fb94a2d1dda0`. The runner no longer requires
+HEAD to equal the historical runtime-evidence checkpoint, which would make a
+later tooling commit self-invalidating. Instead it requires the execution
+baseline as a HEAD ancestor, a clean tracked worktree, the frozen runtime and
+environment hashes, and exact preflight-manifest contract/tooling hashes. Thus
+a tooling or contract amendment invalidates an earlier manifest and requires a
+fresh preflight before any author launch.
 
 ## Remaining execution boundary
 
