@@ -167,7 +167,7 @@ def _link(source, destination):
 
 
 def _prepare_attempt_inputs(attempt_root, pair):
-    input_root = Path(attempt_root) / "input"
+    input_root = Path(attempt_root).resolve() / "input"
     _link(pair["view1_image_dir"], input_root / "1" / pair["view1_sequence"])
     _link(pair["view2_image_dir"], input_root / "2" / pair["view2_sequence"])
     _link(pair["view1_xml_path"], input_root / "xml" / Path(pair["view1_xml_path"]).name)
@@ -186,6 +186,7 @@ def _last_log_line(path):
 
 
 def _run_author(attempt_root, pair):
+    attempt_root = Path(attempt_root).resolve()
     input_dir, xml_dir = _prepare_attempt_inputs(attempt_root, pair)
     result_dir = Path(attempt_root) / "results"
     environment = os.environ.copy()
@@ -267,7 +268,7 @@ def _run_one(output_root, manifest, state, pair_id):
 
 
 def command_preflight(output_root):
-    output_root = Path(output_root)
+    output_root = Path(output_root).resolve()
     if output_root.exists():
         raise PacketCensusToolError("formal output root already exists")
     runtime_inputs = verify_frozen_environment()
@@ -282,6 +283,7 @@ def command_preflight(output_root):
 
 
 def command_pilot(output_root):
+    output_root = Path(output_root).resolve()
     verify_frozen_environment()
     manifest = verify_frozen_manifest(output_root)
     _verify_manifest_identity(manifest)
@@ -296,6 +298,7 @@ def command_pilot(output_root):
 
 
 def command_cohort(output_root):
+    output_root = Path(output_root).resolve()
     verify_frozen_environment()
     manifest = verify_frozen_manifest(output_root)
     _verify_manifest_identity(manifest)
@@ -312,6 +315,7 @@ def command_cohort(output_root):
 
 
 def command_retry(output_root, pair_id, reason):
+    output_root = Path(output_root).resolve()
     banned = ("count", "byte", "content", "outlier", "hypothesis", "tracking", "quality")
     if not reason.strip() or any(word in reason.lower() for word in banned):
         raise PacketCensusToolError("retry reason is not a permissible engineering reason")
@@ -332,6 +336,7 @@ def command_retry(output_root, pair_id, reason):
 
 
 def command_status(output_root):
+    output_root = Path(output_root).resolve()
     state = _load_state(output_root)
     current_pair = state.get("current_pair", "")
     current_attempt = state.get("current_attempt")

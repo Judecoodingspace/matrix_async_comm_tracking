@@ -24,7 +24,7 @@ exp/20260902-001-mdmt-mia-semantic-freshness-mve
 | File | Role | SHA-256 |
 | --- | --- | --- |
 | `src/tracking/packet_census_run_tools.py` | Pure manifest, strict ledger loading, outer validation, audit, frame grid, and aggregation | `ffdbe7e6e2b1495afa50281c083b24c4a94d46b2a1aaa0d512f0fd908b1f69ee` |
-| `scripts/run_packet_census_z0.py` | Frozen preflight/pilot/cohort/retry/status CLI | `6648f3f5b3654f32a63fde145ffd2f35fc42ee65a1a084e9ee885a386858812e` |
+| `scripts/run_packet_census_z0.py` | Frozen preflight/pilot/cohort/retry/status CLI | `36231de7edef85e58fe33a9584f06f0d52c4ddc4c57c5a032a8278b92c6f1ea2` |
 | `scripts/summarize_packet_census_z0.py` | Closed-cohort independent revalidation and aggregation CLI | `440676bb022e9b17ddaea19ce0c0b39d9ef2094e52a15cf9ac30cebd1aea2e39` |
 | `tests/test_packet_census_run_tools.py` | Dataset-free manifest, gate, frame-grid, and aggregation tests | `e20ea6093f1e3ee45f34970fa50af34f4b42508b658e209847b3d0fd22911772` |
 
@@ -94,6 +94,11 @@ baseline as a HEAD ancestor, a clean tracked worktree, the frozen runtime and
 environment hashes, and exact preflight-manifest contract/tooling hashes. Thus
 a tooling or contract amendment invalidates an earlier manifest and requires a
 fresh preflight before any author launch.
+
+The runner also resolves attempt-local paths before setting the author working
+directory. This prevents a relative output-root argument from being interpreted
+twice and failing before author initialization; the repair preserves every
+frozen author argument value other than making its filesystem path absolute.
 
 ## Remaining execution boundary
 
