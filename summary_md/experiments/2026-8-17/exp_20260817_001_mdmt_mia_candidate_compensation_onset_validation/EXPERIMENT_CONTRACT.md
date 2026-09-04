@@ -176,6 +176,19 @@ For every analyzed delay `d`:
 `Y00` and `Y01` may be physically run once per pair and reused across delays
 only after a parity gate proves delay-independent byte-identical predictions.
 
+### Y01 singleton physical-realization clarification
+
+The Y01 parity target is the prediction artifact, not raw transport metadata or
+packet-terminal trace identity. A source-only audit of the frozen E023 deadline
+runtime has established byte-identical d1/d3/d5 author prediction JSON
+artifacts through the frozen `result_dict` plus `json.dump(indent=4)` path:
+each positive delay returns the pre-Supplement state at capture and later
+expires before receiver Supplement consumption. Therefore the canonical
+singleton physical realization is `Y01_d1`, the smallest frozen nonzero delay.
+This is a semantics-preserving implementation choice justified only by the
+parity audit; it is not a Supplement delay-response result. See
+`Y01_SINGLETON_AUTHORITY_PARITY_AUDIT.md`.
+
 ### Dataset / split
 
 Official test pairs are frozen and must not be rerun or used to choose an onset.

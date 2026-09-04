@@ -4,9 +4,9 @@
 
 | Required component | State | Evidence / limiting boundary |
 | --- | --- | --- |
-| independent MVE runner | `BLOCKED` | It cannot safely lower singleton `Y01` to a concrete inherited E023 command. |
-| authoritative 22-run manifest | `BLOCKED` | The 22 logical conditions are frozen, but the physical singleton `Y01` command is not. |
-| accepted H fallback integration | `NOT_IMPLEMENTED` | No composition was created while the condition authority is unresolved. |
+| independent MVE runner | `BLOCKED` | The Y01 realization is now fixed, but the isolated non-test runner remains absent. |
+| authoritative 22-run manifest | `BLOCKED` | The logical matrix and Y01 realization are fixed; its execution manifest is not implemented. |
+| accepted H fallback integration | `NOT_IMPLEMENTED` | No composition has been created. |
 | synchronous reference path | `NOT_IMPLEMENTED` | Must use the same final composed variant; no such variant was created. |
 | Y00 parity machinery | `NOT_IMPLEMENTED` | The inherited component is not an integrated non-test implementation. |
 | Source-MDA prediction adapter | `NOT_IMPLEMENTED` | Not implemented because no executable condition variant may be selected. |
@@ -17,14 +17,12 @@
 | outcome embargo | `NOT_IMPLEMENTED` | No new non-test runner was created. |
 | implementation-freeze support | `NOT_IMPLEMENTED` | Must be tied to the final, authority-resolved implementation. |
 
-Blocking finding: `Y01_PARAMETERIZATION_AUTHORITY_GAP`.
+Historical blocking finding: `Y01_PARAMETERIZATION_AUTHORITY_GAP`.
 
-The Contract names `Y01` once per pair and permits reuse only after a
-byte-identical parity gate.  It does not identify the physical
-Supplement-delay parameter for that singleton.  The inherited E023 runner
-instead exposes three non-equivalent command identities: `Y01_d1`, `Y01_d3`,
-and `Y01_d5`.  Choosing one would be a new comparison definition, not an
-implementation detail.
+It is now closed by `Y01_SINGLETON_AUTHORITY_PARITY_AUDIT.md`: the frozen
+Contract's prediction-artifact target was tested in a source-only fixture, and
+`Y01_d1` is the canonical physical singleton. Every other implementation item
+in this report remains blocked or unimplemented.
 
 ## B. Runtime Gates Armed
 
@@ -70,11 +68,10 @@ or val outcome was run or read.
 ```text
 PAIR53_PAIR66_MVE_IMPLEMENTATION_PREFLIGHT_BLOCKED
 EXPERIMENT_AUDITOR_VERDICT = BLOCK_EXPERIMENT
-Y01_PARAMETERIZATION_AUTHORITY_GAP
 TRACKING_MVE_NOT_AUTHORIZED
 TRACKING_MVE_EXECUTED = NO
 ```
 
-The minimum next action is a narrowly scoped authority decision: define the
-physical singleton `Y01` parameter and the parity evidence that permits its
-reuse.  It must not use Pair53/66 outcomes to make that decision.
+The next action is separate implementation-only work for the remaining runner,
+variant, evaluator, governance, suppression, and freeze blockers. It must not
+execute Pair53/66 without a separate authorization.

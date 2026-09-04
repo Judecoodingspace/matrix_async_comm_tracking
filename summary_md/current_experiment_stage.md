@@ -23,9 +23,9 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
   22 条，MVE-R0--R9 已冻结。当前为 `PAIR53_PAIR66_MVE_PREFLIGHT_BLOCKED /
   TRACKING_MVE_NOT_EXECUTED`：缺少独立 non-test onset runner/variant、Source-MDA real-prediction
   integration、accepted Homography successor composition、MVE scientific-value suppression 与
-  post-MVE implementation-freeze artifact。另有 `Y01_PARAMETERIZATION_AUTHORITY_GAP`：合同未指定
-  11-condition 单例 `Y01` 的物理 Supplement-delay 参数，不能从继承的 `Y01_d1/d3/d5` 中猜选一个。
-  不得运行旧 `RUN_PLAN.md` 的 Pair22/72 命令。
+  post-MVE implementation-freeze artifact。此前的 `Y01_PARAMETERIZATION_AUTHORITY_GAP` 已由
+  source-only parity audit 关闭：canonical singleton 为 `Y01_d1`。不得运行旧 `RUN_PLAN.md` 的
+  Pair22/72 命令。
 - 后续 MVE 只能使用冻结 development manifest 的前两个 pairs `53, 66`；10 train holdout 和全部
   val pairs 必须保持未消费直至 locked confirmation。
 - R3 契约修订要求：实际 delay-only candidate -> High-score Supplement write-in 至少

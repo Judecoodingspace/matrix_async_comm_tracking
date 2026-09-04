@@ -134,15 +134,11 @@ also names val Pair22/72 and missing commands; it is non-executable.
    `HOLD_LAST_VALID_HOMOGRAPHY_FAIL_CLOSED_OTHERWISE` successor and prove the
    composition by source hashes, static tests, and synthetic/non-tracking
    parity fixtures before any pair run.
-3. `Y01_PARAMETERIZATION_AUTHORITY_GAP` (P1): the Contract fixes a singleton
-   reusable `Y01`, but supplies no unique Supplement-delay parameter for the
-   physical reference run.  It specifies only the inherited nonzero-delay
-   expiry rule and makes reuse conditional on a byte-identical parity proof.
-   The inherited E023 runner instead has three distinct concrete commands,
-   `Y01_d1`, `Y01_d3`, and `Y01_d5`.  Selecting one of them as the singleton,
-   or treating their parity as already proved, would change the accepted
-   comparison without authority.  Stop for a narrowly scoped Contract
-   clarification; do not silently run 13 conditions or choose an anchor.
+3. Resolved authority prerequisite: the prior singleton-`Y01` ambiguity was
+   closed by `Y01_SINGLETON_AUTHORITY_PARITY_AUDIT.md`. Its source-only runtime
+   fixture proves prediction-facing d1/d3/d5 parity; `Y01_d1` is the canonical
+   minimum-nonzero physical realization. Do not revert to 13 accepted
+   conditions.
 4. Add a frozen Pair53/66 synchronous reference path and strict Y00 parity
    pipeline using Source-MDA-v1.
 5. Add a real-prediction Source-MDA-v1 evaluation adapter that does not require
@@ -155,12 +151,9 @@ also names val Pair22/72 and missing commands; it is non-executable.
 8. Replace or retire the stale non-executable commands in `RUN_PLAN.md` only in
    that future implementation authorization; do not run them now.
 
-Most listed items are implementation gaps.  The `Y01` issue is an authority
-gap, not an implementation bug: an implementation cannot close it without
-choosing an un-frozen physical parameter or changing the accepted-run count.
-Accordingly, implementation closure is blocked pending a narrowly scoped
-research/Contract clarification.  It is not safe to substitute an engineering
-default.
+The remaining listed items are implementation gaps. The former `Y01` authority
+issue is closed only as recorded in its dedicated source-only audit; it must not
+be replaced by an engineering default or treated as a Pair53/66 result.
 
 The frozen successor author entry SHA-256 is
 `8f4a75ec1e41831a4767aa00e7c027df542d5cb43c2333987204f9bc5e4b246d`;
@@ -237,9 +230,9 @@ OFFICIAL_EXPORT_FILTER_POLICY = UNKNOWN
 PAIR53_PAIR66_MVE_PREFLIGHT_BLOCKED
 TRACKING_MVE_NOT_AUTHORIZED
 TRACKING_MVE_EXECUTED = NO
-Y01_PARAMETERIZATION_AUTHORITY_GAP
 ```
 
-The next minimal action is a narrowly scoped authority clarification defining
-the singleton physical `Y01` parameter and its required parity evidence.  No
-Pair53/66 execution is authorized while that definition is absent.
+The former `Y01_PARAMETERIZATION_AUTHORITY_GAP` is closed by the source-only
+audit in `Y01_SINGLETON_AUTHORITY_PARITY_AUDIT.md`: `Y01_d1` is the canonical
+physical singleton after prediction-facing parity with d3/d5.  The remaining
+implementation blockers above still prohibit Pair53/66 execution.

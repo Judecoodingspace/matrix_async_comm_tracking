@@ -63,9 +63,10 @@ artifact digest 相同；没有漏行、额外行、provenance 冲突或语义�
 确认权威矩阵为 Pair53/66 各 11 条、共 22 条，但 non-test onset runner/variant、Source-MDA
 real-prediction integration、accepted Homography successor composition、scientific-value suppression
 和 implementation-freeze artifact 尚未实现，因此不得授权 MVE。10 train holdout 与全部 5 val
-pairs 在 locked confirmation 前不得被 MVE 消费。实现闭环审计还识别出
-`Y01_PARAMETERIZATION_AUTHORITY_GAP`：Contract 未冻结单例 `Y01` 的物理 Supplement-delay 参数，
-不得从历史 `Y01_d1/d3/d5` 中自行选择。
+pairs 在 locked confirmation 前不得被 MVE 消费。此前的
+`Y01_PARAMETERIZATION_AUTHORITY_GAP` 已由 source-only frozen-runtime parity audit 关闭：
+`Y01_d1` 是与 d3/d5 prediction-facing 等价的 canonical singleton；其余 MVE implementation
+blockers 仍然存在。
 
 计划目录：
 `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/`
