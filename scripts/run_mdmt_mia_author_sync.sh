@@ -17,6 +17,11 @@ STAGE="${1:-}"
 SPLIT="${2:-test}"
 PAIR_ID="${3:-26}"
 DEVICE="${DEVICE:-cuda:0}"
+# The executor and author entry must use the same absolute artifact root.  The
+# wrapper intentionally changes directory before launch, so relative paths here
+# would otherwise be interpreted a second time below RUN_ROOT.
+MIA_OUTPUT_ROOT="$(realpath -m "${MIA_OUTPUT_ROOT:-$MIA_ROOT/outputs/exp_20260804_002}")"
+MIA_RUN_INPUT_ROOT="$(realpath -m "${MIA_RUN_INPUT_ROOT:-$MIA_ROOT/run_inputs}")"
 # Import the isolated source tree itself before the editable-installed upstream
 # package.  Otherwise demo patches load from the variant while ``mmtrack`` and
 # its detector-cache hook silently load from upstream.
@@ -47,8 +52,9 @@ V1_XML="$MDMT_ROOT/new_xml/1/$V1_SEQUENCE.xml"
 V2_XML="$MDMT_ROOT/new_xml/2/$V2_SEQUENCE.xml"
 CONFIG="${MIA_CONFIG:-$MIA_ROOT/run_configs/one_carafe_bytetrack_full_mdmt_reproduction.py}"
 CHECKPOINT="$MDMT_ROOT/checkpoints/work_dirsfaster_rcnn_r50_fpn_carafe_1x_full_mdmt/epoch_12.pth"
-RUN_INPUT="${MIA_RUN_INPUT_ROOT:-$MIA_ROOT/run_inputs}/$PAIR_ID/$SPLIT"
-RUN_ROOT="${MIA_OUTPUT_ROOT:-$MIA_ROOT/outputs/exp_20260804_002}/$STAGE/${SPLIT}_${PAIR_ID}"
+RUN_INPUT="$MIA_RUN_INPUT_ROOT/$PAIR_ID/$SPLIT"
+RUN_ROOT="$(realpath -m "$MIA_OUTPUT_ROOT/$STAGE/${SPLIT}_${PAIR_ID}")"
+RESULT_ROOT="$(realpath -m "$RUN_ROOT/results")"
 
 for required in "$V1_SOURCE" "$V2_SOURCE" "$V1_XML" "$V2_XML" "$CONFIG" "$CHECKPOINT"; do
   [[ -e "$required" ]] || { echo "Missing required path: $required" >&2; exit 1; }
@@ -71,7 +77,7 @@ if [[ ! -e "$XML_DIR$V2_SEQUENCE.xml" ]]; then
 fi
 
 echo "[author-sync] stage=$STAGE split=$SPLIT pair=$PAIR_ID device=$DEVICE"
-echo "[author-sync] entry=$ENTRY output=$RUN_ROOT"
+echo "[author-sync] entry=$ENTRY output=$RUN_ROOT result=$RESULT_ROOT"
 echo "[author-sync] isolated_input=$RUN_INPUT"
 cd "$RUN_ROOT"
 LOG_FILE="$RUN_ROOT/author.log"
@@ -80,7 +86,7 @@ set +e
   --config "$CONFIG" \
   --input "$RUN_INPUT/1/" \
   --xml_dir "$XML_DIR" \
-  --result_dir "$RUN_ROOT/results" \
+  --result_dir "$RESULT_ROOT" \
   --method "${STAGE}_${SPLIT}_${PAIR_ID}" \
   --output "$RUN_ROOT/view1" \
   --output2 "$RUN_ROOT/view2" \

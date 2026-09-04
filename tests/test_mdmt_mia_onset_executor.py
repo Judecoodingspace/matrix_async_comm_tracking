@@ -1,6 +1,8 @@
 from __future__ import annotations
 import json
+import os
 from pathlib import Path
+import subprocess
 import pytest
 import tracking.mdmt_mia_onset_executor as executor
 from tracking.mdmt_mia_onset_mve import MvePreflightError
@@ -167,6 +169,7 @@ def test_exact_eight_qualification_specs_are_isolated_from_scientific_matrix(mon
         ('66', 'Y10_d5_shadow_off'), ('66', 'Yec_d5_repeat'),
     ]
     assert all(q.execution.output_root.parts[-3] == 'qualification' for q in qualifications)
+    assert all(q.execution.output_root.is_absolute() for q in qualifications)
     assert all(q.name not in {spec.logical for spec in scientific} for q in qualifications)
     logger = next(q for q in qualifications if q.name == 'Y10_d5_logging_off')
     shadow = next(q for q in qualifications if q.name == 'Y10_d5_shadow_off')
@@ -175,6 +178,9 @@ def test_exact_eight_qualification_specs_are_isolated_from_scientific_matrix(mon
     assert shadow.execution.env['MIA_CASCADE_SHADOW'] == '0'
     assert repeat.execution.env['MIA_CASCADE_LOGGING'] == '1'
     assert repeat.execution.env['MIA_CASCADE_SHADOW'] == '1'
+    standard = next(spec for spec in scientific if spec.pair == '53' and spec.logical == 'Y10_d5')
+    assert standard.output_root.is_absolute()
+    assert standard.output_root != logger.execution.output_root
 
 
 def test_logger_and_shadow_qualification_parity_fail_closed(monkeypatch, tmp_path):
@@ -245,3 +251,48 @@ def test_package_status_is_the_gate_and_exposes_no_scientific_values(monkeypatch
     invalid.write_text(json.dumps(payload))
     with pytest.raises(MvePreflightError, match='INSTRUMENTATION_QUALIFICATION_REQUIRED'):
         executor.require_qualification_pass(invalid)
+
+
+def test_shell_author_write_path_matches_executor_lookup_after_cd(tmp_path):
+    """A fake author confirms that the wrapper passes an absolute result root."""
+    mia = tmp_path / 'mia'; source = tmp_path / 'source'; dataset = tmp_path / 'dataset'
+    fake_python = mia / '.conda-env' / 'bin' / 'python'
+    fake_python.parent.mkdir(parents=True)
+    fake_python.write_text("""#!/usr/bin/env bash
+set -euo pipefail
+result=''; method=''
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --result_dir) result="$2"; shift 2 ;;
+    --method) method="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+mkdir -p "$result/$method"
+printf '{}' > "$result/$method/53-1.json"
+printf '{}' > "$result/$method/53-2.json"
+printf '%s' "$result" > "$FAKE_RESULT_CAPTURE"
+""")
+    fake_python.chmod(0o755)
+    (mia / 'run_configs').mkdir(parents=True)
+    (mia / 'run_configs' / 'one_carafe_bytetrack_full_mdmt_reproduction.py').write_text('fixture')
+    (source / 'demo').mkdir(parents=True)
+    for view in ('1', '2'):
+        (dataset / 'train' / view / f'53-{view}').mkdir(parents=True)
+        (dataset / 'new_xml' / view).mkdir(parents=True)
+        (dataset / 'new_xml' / view / f'53-{view}.xml').write_text('<xml/>')
+    checkpoint = dataset / 'checkpoints' / 'work_dirsfaster_rcnn_r50_fpn_carafe_1x_full_mdmt'
+    checkpoint.mkdir(parents=True); (checkpoint / 'epoch_12.pth').write_text('fixture')
+    capture = tmp_path / 'result-root.txt'
+    env = {**os.environ, 'MIA_ROOT': str(mia), 'MIA_SOURCE_ROOT': str(source),
+           'MDMT_ROOT': str(dataset), 'MIA_OUTPUT_ROOT': 'output', 'MIA_RUN_INPUT_ROOT': 'inputs',
+           'FAKE_RESULT_CAPTURE': str(capture)}
+    wrapper = Path(__file__).resolve().parents[1] / 'scripts' / 'run_mdmt_mia_author_sync.sh'
+    subprocess.run(['bash', str(wrapper), 'mia', 'train', '53'], cwd=tmp_path, env=env, check=True)
+    output_root = (tmp_path / 'output').resolve()
+    spec = executor.ExecutionSpec('53', 'Y10_d5', 'Y10_d5', 5, 'PACKETIZED', source,
+                                  output_root, tmp_path / 'g1', tmp_path / 'g2', (), {})
+    expected = executor.prediction_paths(spec)
+    assert Path(capture.read_text()) / 'mia_train_53' == expected[0].parent
+    assert all(path.is_file() for path in expected)
+    assert not (expected[0].parent / 'output').exists()
