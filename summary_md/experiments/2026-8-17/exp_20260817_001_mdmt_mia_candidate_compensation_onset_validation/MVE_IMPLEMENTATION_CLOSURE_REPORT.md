@@ -116,3 +116,45 @@ Focused verification passed: `60 passed`; `py_compile` and `git diff --check`
 also passed. Tests use only synthetic fixtures or prior source-only/runtime
 fixtures. No Pair53/66 run, real prediction, MDA result, contrast value, val
 outcome, or onset result was generated or read.
+
+## 2026-09-04 Limited Instrumentation Qualification Integration
+
+The final-preflight logger/shadow-invariance blocker is closed at the execution
+package boundary without changing the scientific matrix.  The executor now
+renders exactly eight `INSTRUMENTATION_QUALIFICATION` attempts, outside the
+22-run scientific condition manifest:
+
+```text
+Pair53, Pair66:
+  Y10_d5_logging_off
+  Yec_d5_logging_off
+  Y10_d5_shadow_off
+  Yec_d5_repeat
+```
+
+The logging-off attempts set the existing, runtime-consumed
+`MIA_CASCADE_LOGGING=0`; the shadow-off attempt sets the existing,
+runtime-consumed `MIA_CASCADE_SHADOW=0`.  They preserve the corresponding
+standard d5 condition's packetized scientific semantics.  Qualification
+compares the E023 precedent's artifact surfaces only: dual-view prediction
+JSON plus the async packet trace for logging/shadow, and additionally the
+cascade edge/candidate traces for the determinism repeat.  No evaluator or
+scientific metric is invoked by a qualification attempt.
+
+An exact eight-record, no-metric qualification status is now required before
+any non-baseline scientific condition can enter the executor acceptance path.
+The two standard d5 artifacts are the explicit prerequisite baselines; a
+failed or missing qualification status fails closed and prevents continuation.
+Auxiliary artifacts are rooted under `qualification/`, are not members of
+`LOGICAL_TO_PHYSICAL`, and cannot contribute to the 22 scientific rows or
+contrast computation.
+
+The auxiliary dry-render artifact is ignored at
+`outputs/20260904_mdmt_mia_pair53_66_reference_fix_refreeze/`
+with SHA-256 `1c7392a67268637f07e4f9ce0dcf57b25af76086f034542f9d59499e38cc5ac0`.
+It records `SCIENTIFIC_EXPECTED=22` and `QUALIFICATION_EXPECTED=8`.
+
+Focused synthetic/static verification passed: `24 passed`; `py_compile` and
+`git diff --check` passed.  No Pair53/66 author process, detector, ByteTrack,
+MIA, real prediction, Source-MDA evaluation, contrast calculation, or val
+outcome was run or read.

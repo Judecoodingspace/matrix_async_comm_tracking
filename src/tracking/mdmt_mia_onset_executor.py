@@ -5,9 +5,9 @@ frozen author shell wrapper.  It never selects pairs, conditions, or metrics.
 """
 from __future__ import annotations
 import hashlib, json, os, subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Mapping, Sequence
 from tracking.mdmt_mia_onset_mve import LOGICAL_TO_PHYSICAL, MVE_PAIRS, MvePreflightError, canonical_json
 from evaluation.mdmt_mia_paper import cross_view_mda, load_author_json, load_mot_gt
 
@@ -54,6 +54,42 @@ class ReferenceArtifacts:
     view1: Path
     view2: Path
 
+
+# These are measurement-only repeats inherited from the E023 MVE precedent.
+# They deliberately do not appear in LOGICAL_TO_PHYSICAL or the 22-run matrix.
+QUALIFICATION_DEFINITIONS = (
+    ('Y10_d5_logging_off', 'Y10_d5', 'LOGGER_INVARIANCE',
+     {'MIA_CASCADE_LOGGING': '0'}, ('async_packet_trace_',)),
+    ('Yec_d5_logging_off', 'Yec_d5', 'LOGGER_INVARIANCE',
+     {'MIA_CASCADE_LOGGING': '0'}, ('async_packet_trace_',)),
+    ('Y10_d5_shadow_off', 'Y10_d5', 'SHADOW_INVARIANCE',
+     {'MIA_CASCADE_SHADOW': '0'}, ('async_packet_trace_',)),
+    ('Yec_d5_repeat', 'Yec_d5', 'DETERMINISM', {},
+     ('async_packet_trace_', 'cascade_edge_trace_', 'cascade_edge_candidates_')),
+)
+QUALIFICATION_BASELINES = frozenset(source for _, source, _, _, _ in QUALIFICATION_DEFINITIONS)
+
+
+@dataclass(frozen=True)
+class QualificationSpec:
+    pair: str
+    name: str
+    source_logical: str
+    gate: str
+    execution: ExecutionSpec
+    state_trace_prefixes: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            'classification': 'INSTRUMENTATION_QUALIFICATION',
+            'pair': self.pair,
+            'qualification': self.name,
+            'source_scientific_condition': self.source_logical,
+            'gate': self.gate,
+            'execution': self.execution.as_dict(),
+            'state_trace_prefixes': list(self.state_trace_prefixes),
+        }
+
 def tree_digest(root: Path) -> str:
     if not root.is_dir(): raise MvePreflightError('final composed variant missing')
     rows=[(str(p.relative_to(root)),digest(p)) for p in sorted(root.rglob('*')) if p.is_file() and p.name != 'onset_mve_composition_manifest.json']
@@ -84,6 +120,23 @@ def plan(output_root: Path) -> list[ExecutionSpec]:
     if len(specs)!=22 or len({(s.pair,s.logical) for s in specs})!=22: raise MvePreflightError('22-row resolution failure')
     return specs
 
+
+def qualification_plan(output_root: Path) -> list[QualificationSpec]:
+    """Render exactly the eight non-scientific E023-style qualification runs."""
+    specs: list[QualificationSpec] = []
+    for pair in MVE_PAIRS:
+        for name, source_logical, gate, env_patch, trace_prefixes in QUALIFICATION_DEFINITIONS:
+            source = resolve(pair, source_logical, output_root)
+            root = output_root / 'qualification' / pair / name
+            env = {**source.env, **env_patch, 'MIA_OUTPUT_ROOT': str(root),
+                   'MIA_RUN_INPUT_ROOT': str(root / 'run_inputs')}
+            execution = replace(source, logical=name, physical=name, output_root=root, env=env)
+            specs.append(QualificationSpec(pair, name, source_logical, gate, execution, trace_prefixes))
+    expected = {(pair, name) for pair in MVE_PAIRS for name, *_ in QUALIFICATION_DEFINITIONS}
+    if len(specs) != 8 or {(spec.pair, spec.name) for spec in specs} != expected:
+        raise MvePreflightError('qualification plan resolution failure')
+    return specs
+
 def run(spec: ExecutionSpec, *, launch: bool=False, runner: Callable=subprocess.run) -> None:
     if not launch: raise MvePreflightError('launch requires separate explicit authorization')
     spec.output_root.mkdir(parents=True,exist_ok=False)
@@ -104,11 +157,14 @@ def _state(path: Path, value: str, **fields: object) -> None:
     path.write_bytes(canonical_json(payload))
 
 def execute_and_accept(spec: ExecutionSpec, *, reference: ReferenceArtifacts | None = None,
+                       qualification_status: Path | None = None,
                        launch: bool=False, runner: Callable=subprocess.run) -> None:
     """Future complete state machine; no metric is returned or printed."""
     if not launch: raise MvePreflightError('launch requires separate explicit authorization')
     if spec.role != 'PACKETIZED':
         raise MvePreflightError('reference role may supply parity artifacts but cannot be accepted')
+    if spec.logical not in QUALIFICATION_BASELINES:
+        require_qualification_pass(qualification_status)
     state=spec.output_root/'attempt_state.json'
     spec.output_root.mkdir(parents=True,exist_ok=False)
     _state(state,'PLANNED'); _state(state,'RUNNING')
@@ -139,6 +195,108 @@ def execute_and_accept(spec: ExecutionSpec, *, reference: ReferenceArtifacts | N
                packetized_artifact_digest=[digest(predictions[0]), digest(predictions[1])])
     evaluate_private(predictions,(spec.gt1,spec.gt2)); _state(state,'EVALUATION_COMPLETE')
     _state(state,'ACCEPTED')
+
+
+def _trace_paths(spec: ExecutionSpec, prefixes: Sequence[str]) -> tuple[Path, ...]:
+    base = evidence_root(spec)
+    return tuple(base / f'{prefix}{spec.pair}-1.jsonl' for prefix in prefixes)
+
+
+def _qualification_surface(spec: ExecutionSpec, prefixes: Sequence[str]) -> tuple[Path, ...]:
+    return prediction_paths(spec) + _trace_paths(spec, prefixes)
+
+
+def verify_qualification(baseline: ExecutionSpec, qualification: QualificationSpec) -> dict[str, object]:
+    """Compare only E023's prediction/state artifact surfaces, never metrics."""
+    candidate = qualification.execution
+    if (baseline.pair != qualification.pair or baseline.logical != qualification.source_logical
+            or baseline.role != 'PACKETIZED'):
+        raise MvePreflightError('qualification baseline identity mismatch')
+    baseline_paths = _qualification_surface(baseline, qualification.state_trace_prefixes)
+    candidate_paths = _qualification_surface(candidate, qualification.state_trace_prefixes)
+    if not all(path.is_file() for path in baseline_paths + candidate_paths):
+        raise MvePreflightError('qualification artifact missing')
+    baseline_digests = [digest(path) for path in baseline_paths]
+    candidate_digests = [digest(path) for path in candidate_paths]
+    if baseline_digests != candidate_digests:
+        raise MvePreflightError('qualification prediction/state parity mismatch')
+    return {
+        'classification': 'INSTRUMENTATION_QUALIFICATION',
+        'pair': qualification.pair,
+        'qualification': qualification.name,
+        'gate': qualification.gate,
+        'passed': True,
+        'baseline_artifact_digest': baseline_digests,
+        'qualification_artifact_digest': candidate_digests,
+    }
+
+
+def execute_qualification(qualification: QualificationSpec, baseline: ExecutionSpec, *, launch: bool = False,
+                          runner: Callable = subprocess.run) -> dict[str, object]:
+    """Run a separate qualification attempt and fail before any metric evaluation."""
+    if not launch:
+        raise MvePreflightError('launch requires separate explicit authorization')
+    state = qualification.execution.output_root / 'qualification_state.json'
+    qualification.execution.output_root.mkdir(parents=True, exist_ok=False)
+    _state(state, 'PLANNED', classification='INSTRUMENTATION_QUALIFICATION')
+    _state(state, 'RUNNING')
+    result = runner(qualification.execution.argv, cwd=Path.cwd(),
+                    env={**os.environ, **qualification.execution.env}, check=False)
+    if getattr(result, 'returncode', 1):
+        _state(state, 'FAILED')
+        raise MvePreflightError('qualification author process failed')
+    _state(state, 'PROCESS_COMPLETE')
+    try:
+        record = verify_qualification(baseline, qualification)
+    except MvePreflightError as exc:
+        _state(state, 'INVALID', qualification_pass=False, qualification_error=str(exc))
+        raise
+    _state(state, 'QUALIFICATION_PASSED', **record)
+    return record
+
+
+def qualification_status_payload(records: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    expected = {(pair, name): gate for pair in MVE_PAIRS
+                for name, _, gate, _, _ in QUALIFICATION_DEFINITIONS}
+    actual = {(str(row.get('pair')), str(row.get('qualification'))) for row in records}
+    required_fields = {'classification', 'pair', 'qualification', 'gate', 'passed',
+                       'baseline_artifact_digest', 'qualification_artifact_digest'}
+    passed = (actual == set(expected) and len(records) == 8
+              and all(set(row) == required_fields
+                      and row.get('classification') == 'INSTRUMENTATION_QUALIFICATION'
+                      and row.get('gate') == expected[(str(row.get('pair')), str(row.get('qualification')))]
+                      and row.get('passed') is True
+                      for row in records))
+    return {
+        'classification': 'INSTRUMENTATION_QUALIFICATION',
+        'scientific_expected': 22,
+        'qualification_expected': 8,
+        'qualification_records': list(records),
+        'state': 'INSTRUMENTATION_QUALIFICATION_PASS' if passed else 'INSTRUMENTATION_QUALIFICATION_FAIL',
+    }
+
+
+def write_qualification_status(path: Path, records: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    payload = qualification_status_payload(records)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(canonical_json(payload))
+    return payload
+
+
+def require_qualification_pass(status: Path | None) -> None:
+    if status is None or not status.is_file():
+        raise MvePreflightError('INSTRUMENTATION_QUALIFICATION_REQUIRED')
+    try:
+        payload = json.loads(status.read_text())
+    except (OSError, ValueError) as exc:
+        raise MvePreflightError('INSTRUMENTATION_QUALIFICATION_REQUIRED') from exc
+    reconstructed = qualification_status_payload(payload.get('qualification_records', []))
+    if (payload.get('classification') != 'INSTRUMENTATION_QUALIFICATION'
+            or payload.get('state') != 'INSTRUMENTATION_QUALIFICATION_PASS'
+            or payload.get('scientific_expected') != 22
+            or payload.get('qualification_expected') != 8
+            or reconstructed.get('state') != 'INSTRUMENTATION_QUALIFICATION_PASS'):
+        raise MvePreflightError('INSTRUMENTATION_QUALIFICATION_REQUIRED')
 
 def verify_y00_parity(reference: tuple[Path,Path], packetized: tuple[Path,Path]) -> None:
     if not all(path.is_file() for path in reference + packetized): raise MvePreflightError('y00 parity artifact missing')

@@ -51,7 +51,8 @@ def test_gate_violation_is_not_accepted(monkeypatch,tmp_path):
 def test_real_state_machine_rejects_process_success_without_artifacts(monkeypatch,tmp_path):
     _roots(monkeypatch,tmp_path); spec=executor.resolve('53','Y00',tmp_path/'out')
     class Ok: returncode=0
-    with pytest.raises(MvePreflightError): executor.execute_and_accept(spec,launch=True,runner=lambda *a,**k: Ok())
+    with pytest.raises(MvePreflightError): executor.execute_and_accept(
+        spec, qualification_status=_qualification_status(tmp_path), launch=True, runner=lambda *a,**k: Ok())
     assert json.loads((spec.output_root/'attempt_state.json').read_text())['state']=='INVALID'
 
 
@@ -75,11 +76,37 @@ def _reference(tmp_path: Path, pair: str, payload: str, attempt: str = 'referenc
     return executor.ReferenceArtifacts(pair, attempt, view1, view2)
 
 
+def _qualification_status(tmp_path: Path):
+    records = []
+    for spec in executor.qualification_plan(tmp_path / 'package'):
+        records.append({
+            'classification': 'INSTRUMENTATION_QUALIFICATION',
+            'pair': spec.pair,
+            'qualification': spec.name,
+            'gate': spec.gate,
+            'passed': True,
+            'baseline_artifact_digest': ['fixture'],
+            'qualification_artifact_digest': ['fixture'],
+        })
+    path = tmp_path / 'instrumentation_qualification.json'
+    assert executor.write_qualification_status(path, records)['state'] == 'INSTRUMENTATION_QUALIFICATION_PASS'
+    return path
+
+
+def _write_qualification_surface(spec, payload: str, prefixes=()):
+    first, second = executor.prediction_paths(spec)
+    first.parent.mkdir(parents=True, exist_ok=True)
+    first.write_text(payload); second.write_text(payload)
+    for prefix in prefixes:
+        (first.parent / f'{prefix}{spec.pair}-1.jsonl').write_text('fixture trace\n')
+
+
 def test_y00_parity_pass_is_retained_by_accepted_state(monkeypatch,tmp_path):
     _roots(monkeypatch,tmp_path); spec=executor.resolve('53','Y00',tmp_path/'out')
     monkeypatch.setattr(executor, 'evaluate_private', lambda *args: {})
     def runner(*args, **kwargs): _complete_packetized_attempt(spec, '{}'); return type('Ok', (), {'returncode': 0})()
-    executor.execute_and_accept(spec, reference=_reference(tmp_path, '53', '{}'), launch=True, runner=runner)
+    executor.execute_and_accept(spec, reference=_reference(tmp_path, '53', '{}'),
+                                qualification_status=_qualification_status(tmp_path), launch=True, runner=runner)
     state=json.loads((spec.output_root/'attempt_state.json').read_text())
     assert state['state']=='ACCEPTED'
     assert state['y00_reference_parity_checked'] is True
@@ -92,7 +119,8 @@ def test_y00_parity_failure_prevents_accepted(monkeypatch,tmp_path):
     monkeypatch.setattr(executor, 'evaluate_private', lambda *args: pytest.fail('must not evaluate after parity failure'))
     def runner(*args, **kwargs): _complete_packetized_attempt(spec, '{"packetized":true}'); return type('Ok', (), {'returncode': 0})()
     with pytest.raises(MvePreflightError, match='y00 prediction parity mismatch'):
-        executor.execute_and_accept(spec, reference=_reference(tmp_path, '53', '{"reference":true}'), launch=True, runner=runner)
+        executor.execute_and_accept(spec, reference=_reference(tmp_path, '53', '{"reference":true}'),
+                                    qualification_status=_qualification_status(tmp_path), launch=True, runner=runner)
     state=json.loads((spec.output_root/'attempt_state.json').read_text())
     assert state['state']=='INVALID' and state['y00_reference_parity_pass'] is False
 
@@ -102,7 +130,7 @@ def test_y00_missing_reference_prevents_accepted(monkeypatch,tmp_path):
     monkeypatch.setattr(executor, 'evaluate_private', lambda *args: pytest.fail('must not evaluate without reference'))
     def runner(*args, **kwargs): _complete_packetized_attempt(spec, '{}'); return type('Ok', (), {'returncode': 0})()
     with pytest.raises(MvePreflightError, match='Y00_REFERENCE_ARTIFACT_MISSING'):
-        executor.execute_and_accept(spec, launch=True, runner=runner)
+        executor.execute_and_accept(spec, qualification_status=_qualification_status(tmp_path), launch=True, runner=runner)
     assert json.loads((spec.output_root/'attempt_state.json').read_text())['state']=='INVALID'
 
 
@@ -112,7 +140,8 @@ def test_y00_missing_reference_view_prevents_accepted(monkeypatch,tmp_path):
     def runner(*args, **kwargs): _complete_packetized_attempt(spec, '{}'); return type('Ok', (), {'returncode': 0})()
     reference=executor.ReferenceArtifacts('53', 'reference_attempt_001', tmp_path/'missing-1.json', tmp_path/'missing-2.json')
     with pytest.raises(MvePreflightError, match='Y00_REFERENCE_ARTIFACT_MISSING'):
-        executor.execute_and_accept(spec, reference=reference, launch=True, runner=runner)
+        executor.execute_and_accept(spec, reference=reference,
+                                    qualification_status=_qualification_status(tmp_path), launch=True, runner=runner)
     assert json.loads((spec.output_root/'attempt_state.json').read_text())['state']=='INVALID'
 
 
@@ -120,6 +149,99 @@ def test_non_y00_does_not_require_reference_parity(monkeypatch,tmp_path):
     _roots(monkeypatch,tmp_path); spec=executor.resolve('53','Y10_d1',tmp_path/'out')
     monkeypatch.setattr(executor, 'evaluate_private', lambda *args: {})
     def runner(*args, **kwargs): _complete_packetized_attempt(spec, '{}'); return type('Ok', (), {'returncode': 0})()
-    executor.execute_and_accept(spec, launch=True, runner=runner)
+    executor.execute_and_accept(spec, qualification_status=_qualification_status(tmp_path), launch=True, runner=runner)
     state=json.loads((spec.output_root/'attempt_state.json').read_text())
     assert state['state']=='ACCEPTED' and 'y00_reference_parity_checked' not in state
+
+
+def test_exact_eight_qualification_specs_are_isolated_from_scientific_matrix(monkeypatch, tmp_path):
+    _roots(monkeypatch, tmp_path)
+    scientific = executor.plan(tmp_path / 'out')
+    qualifications = executor.qualification_plan(tmp_path / 'out')
+    assert len(scientific) == 22
+    assert len(qualifications) == 8
+    assert [(q.pair, q.name) for q in qualifications] == [
+        ('53', 'Y10_d5_logging_off'), ('53', 'Yec_d5_logging_off'),
+        ('53', 'Y10_d5_shadow_off'), ('53', 'Yec_d5_repeat'),
+        ('66', 'Y10_d5_logging_off'), ('66', 'Yec_d5_logging_off'),
+        ('66', 'Y10_d5_shadow_off'), ('66', 'Yec_d5_repeat'),
+    ]
+    assert all(q.execution.output_root.parts[-3] == 'qualification' for q in qualifications)
+    assert all(q.name not in {spec.logical for spec in scientific} for q in qualifications)
+    logger = next(q for q in qualifications if q.name == 'Y10_d5_logging_off')
+    shadow = next(q for q in qualifications if q.name == 'Y10_d5_shadow_off')
+    repeat = next(q for q in qualifications if q.name == 'Yec_d5_repeat')
+    assert logger.execution.env['MIA_CASCADE_LOGGING'] == '0'
+    assert shadow.execution.env['MIA_CASCADE_SHADOW'] == '0'
+    assert repeat.execution.env['MIA_CASCADE_LOGGING'] == '1'
+    assert repeat.execution.env['MIA_CASCADE_SHADOW'] == '1'
+
+
+def test_logger_and_shadow_qualification_parity_fail_closed(monkeypatch, tmp_path):
+    _roots(monkeypatch, tmp_path)
+    baseline = executor.resolve('53', 'Y10_d5', tmp_path / 'out')
+    _write_qualification_surface(baseline, '{}', ('async_packet_trace_',))
+    qualifications = executor.qualification_plan(tmp_path / 'out')
+    for name in ('Y10_d5_logging_off', 'Y10_d5_shadow_off'):
+        qualification = next(q for q in qualifications if q.pair == '53' and q.name == name)
+        def equal_runner(*args, **kwargs):
+            _write_qualification_surface(qualification.execution, '{}', qualification.state_trace_prefixes)
+            return type('Ok', (), {'returncode': 0})()
+        record = executor.execute_qualification(qualification, baseline, launch=True, runner=equal_runner)
+        assert record['passed'] is True
+
+    failed = next(q for q in qualifications if q.pair == '66' and q.name == 'Y10_d5_logging_off')
+    baseline66 = executor.resolve('66', 'Y10_d5', tmp_path / 'out')
+    _write_qualification_surface(baseline66, '{}', ('async_packet_trace_',))
+    def mismatched_runner(*args, **kwargs):
+        _write_qualification_surface(failed.execution, '{"different":true}', failed.state_trace_prefixes)
+        return type('Ok', (), {'returncode': 0})()
+    with pytest.raises(MvePreflightError, match='qualification prediction/state parity mismatch'):
+        executor.execute_qualification(failed, baseline66, launch=True, runner=mismatched_runner)
+    assert json.loads((failed.execution.output_root / 'qualification_state.json').read_text())['state'] == 'INVALID'
+
+
+def test_repeat_failure_blocks_package_progression(monkeypatch, tmp_path):
+    _roots(monkeypatch, tmp_path)
+    baseline = executor.resolve('53', 'Yec_d5', tmp_path / 'out')
+    repeat = next(q for q in executor.qualification_plan(tmp_path / 'out')
+                  if q.pair == '53' and q.name == 'Yec_d5_repeat')
+    _write_qualification_surface(baseline, '{}', repeat.state_trace_prefixes)
+    def mismatched_runner(*args, **kwargs):
+        _write_qualification_surface(repeat.execution, '{}', repeat.state_trace_prefixes)
+        trace = executor.evidence_root(repeat.execution) / 'cascade_edge_trace_53-1.jsonl'
+        trace.write_text('different trace\n')
+        return type('Ok', (), {'returncode': 0})()
+    with pytest.raises(MvePreflightError, match='qualification prediction/state parity mismatch'):
+        executor.execute_qualification(repeat, baseline, launch=True, runner=mismatched_runner)
+    failed_status = tmp_path / 'failed-qualification.json'
+    assert executor.write_qualification_status(failed_status, [])['state'] == 'INSTRUMENTATION_QUALIFICATION_FAIL'
+    blocked = executor.resolve('53', 'Y10_d1', tmp_path / 'out')
+    with pytest.raises(MvePreflightError, match='INSTRUMENTATION_QUALIFICATION_REQUIRED'):
+        executor.execute_and_accept(blocked, qualification_status=failed_status, launch=True,
+                                    runner=lambda *args, **kwargs: pytest.fail('must not launch'))
+
+
+def test_only_d5_qualification_baselines_may_start_before_package_pass(monkeypatch, tmp_path):
+    _roots(monkeypatch, tmp_path)
+    baseline = executor.resolve('53', 'Y10_d5', tmp_path / 'out')
+    monkeypatch.setattr(executor, 'evaluate_private', lambda *args: {})
+    def runner(*args, **kwargs):
+        _complete_packetized_attempt(baseline, '{}')
+        return type('Ok', (), {'returncode': 0})()
+    executor.execute_and_accept(baseline, launch=True, runner=runner)
+    assert json.loads((baseline.output_root / 'attempt_state.json').read_text())['state'] == 'ACCEPTED'
+
+
+def test_package_status_is_the_gate_and_exposes_no_scientific_values(monkeypatch, tmp_path):
+    _roots(monkeypatch, tmp_path)
+    status = _qualification_status(tmp_path)
+    executor.require_qualification_pass(status)
+    payload = json.loads(status.read_text())
+    rendered = json.dumps(payload).lower()
+    assert 'private_metric' not in rendered and 'r_edge' not in rendered and 'c_comp' not in rendered
+    payload['qualification_records'][0]['private_metric'] = 1.0
+    invalid = tmp_path / 'invalid-qualification.json'
+    invalid.write_text(json.dumps(payload))
+    with pytest.raises(MvePreflightError, match='INSTRUMENTATION_QUALIFICATION_REQUIRED'):
+        executor.require_qualification_pass(invalid)
