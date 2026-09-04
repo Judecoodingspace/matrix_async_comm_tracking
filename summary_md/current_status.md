@@ -30,8 +30,11 @@ tracked report and this status record.
 
 `exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation` 已完成 Source-MDA-v1
 测量协议实现与 source-only preflight；Pair53/66 Tracking MVE 的 R0-R9 决策也已冻结。
-当前处于 `PAIR53_PAIR66_MVE_PREFLIGHT_BLOCKED / TRACKING_MVE_NOT_EXECUTED`，尚未进入
-tracking implementation 或执行。该实验遵循 E023 的 P0 决策：先在非测试数据上验证 d1-d5
+当前处于 `PAIR53_PAIR66_MVE_IMPLEMENTATION_CLOSURE_COMPLETE /
+EXECUTION_PREFLIGHT_REQUIRED_BEFORE_ANY_LAUNCH / TRACKING_MVE_NOT_EXECUTED`；隔离
+runner、22-run manifest、Source-MDA adapter、attempt governance、scientific-value
+embargo 和 Homography composition builder 已实现并经 focused tests 验证，但尚未进入
+tracking 执行。该实验遵循 E023 的 P0 决策：先在非测试数据上验证 d1-d5
 候选集合补偿的出现边界，再决定是否为非 oracle、版本感知 Supplement recovery 建立独立方法契约。
 
 历史 E024 的 R1-R3 研究设计答辩已完成；Route B 的 Source-MDA 协议权威审计已另行完成：
@@ -56,17 +59,17 @@ candidate -> High-score Supplement write-in 至少出现在 `10/15` development 
 随后独立的 Route-B R1/R2 authority audit 已通过：它把 Source-MDA-v1 定义为内部机制复现的
 source-annotation protocol，而不是 official-test export equivalent protocol。当前状态是
 `SOURCE_MDA_V1_IMPLEMENTATION_COMPLETE / FRESH_G1_G7_SOURCE_PROTOCOL_PREFLIGHT_PASS /
-PAIR53_PAIR66_MVE_DECISIONS_FROZEN / PAIR53_PAIR66_MVE_PREFLIGHT_BLOCKED /
-TRACKING_MVE_NOT_EXECUTED`。本轮 fresh clean-root
+PAIR53_PAIR66_MVE_IMPLEMENTATION_CLOSURE_COMPLETE /
+EXECUTION_PREFLIGHT_REQUIRED_BEFORE_ANY_LAUNCH / TRACKING_MVE_NOT_EXECUTED`。本轮 fresh clean-root
 preflight 对 60 个 train/val XML、1,610,691 条 source rows 全数通过，且两次 deterministic
 artifact digest 相同；没有漏行、额外行、provenance 冲突或语义修复。最新 execution-preflight
-确认权威矩阵为 Pair53/66 各 11 条、共 22 条，但 non-test onset runner/variant、Source-MDA
-real-prediction integration、accepted Homography successor composition、scientific-value suppression
-和 implementation-freeze artifact 尚未实现，因此不得授权 MVE。10 train holdout 与全部 5 val
+确认权威矩阵为 Pair53/66 各 11 条、共 22 条。其 implementation-only closure 已完成，
+但组合 variant 尚未在 author environment materialize，所有 runtime gates 仍为 ARMED/NOT_RUN，
+因此本状态更新不授权 MVE。10 train holdout 与全部 5 val
 pairs 在 locked confirmation 前不得被 MVE 消费。此前的
 `Y01_PARAMETERIZATION_AUTHORITY_GAP` 已由 source-only frozen-runtime parity audit 关闭：
-`Y01_d1` 是与 d3/d5 prediction-facing 等价的 canonical singleton；其余 MVE implementation
-blockers 仍然存在。
+`Y01_d1` 是与 d3/d5 prediction-facing 等价的 canonical singleton。下一步只可做单独授权的
+execution preflight；Pair53/66 仍未运行。
 
 计划目录：
 `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/`
