@@ -32,7 +32,10 @@ def compose_variant(e023_root: Path, fallback_module: Path, destination: Path) -
         raise VariantCompositionError("required frozen composition input missing")
     shutil.copytree(e023_root, destination, symlinks=True)
     shutil.copy2(fallback_module, target)
-    return audit_composition(e023_root, fallback_module, destination)
+    result = audit_composition(e023_root, fallback_module, destination)
+    (destination / "onset_mve_composition_manifest.json").write_text(
+        json.dumps(result, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    return result
 
 
 def audit_composition(e023_root: Path, fallback_module: Path, variant_root: Path) -> dict[str, str]:
@@ -51,6 +54,13 @@ def audit_composition(e023_root: Path, fallback_module: Path, variant_root: Path
         raise VariantCompositionError("E023 author entry drift during composition")
     if result["fallback_source_sha256"] != result["variant_trans_matrix_sha256"]:
         raise VariantCompositionError("accepted fallback not installed exactly")
+    source_files = {str(path.relative_to(e023_root)): sha256(path) for path in e023_root.rglob("*") if path.is_file()}
+    variant_files = {str(path.relative_to(variant_root)): sha256(path) for path in variant_root.rglob("*") if path.is_file() and path.name != "onset_mve_composition_manifest.json"}
+    differences = sorted(key for key in set(source_files) | set(variant_files) if source_files.get(key) != variant_files.get(key))
+    if differences != ["demo/utils/trans_matrix.py"]:
+        raise VariantCompositionError("unauthorized E023 composition diff")
+    result["unauthorized_diff_count"] = "0"
+    result["final_variant_digest"] = hashlib.sha256(json.dumps(sorted(variant_files.items()), separators=(",", ":")).encode()).hexdigest()
     return result
 
 
