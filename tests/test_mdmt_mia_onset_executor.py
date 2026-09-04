@@ -34,3 +34,9 @@ def test_gate_violation_is_not_accepted(monkeypatch,tmp_path):
     for stem,field in executor.GATE_ARTIFACTS.values(): (tmp_path/f'{stem}.json').write_text(json.dumps({field:0}))
     # Missing semantic fields are rejected; no boolean schema can promote it.
     with pytest.raises(MvePreflightError): executor.accept_attempt((a,b),tmp_path)
+
+def test_real_state_machine_rejects_process_success_without_artifacts(monkeypatch,tmp_path):
+    _roots(monkeypatch,tmp_path); spec=executor.resolve('53','Y00',tmp_path/'out')
+    class Ok: returncode=0
+    with pytest.raises(MvePreflightError): executor.execute_and_accept(spec,launch=True,runner=lambda *a,**k: Ok())
+    assert json.loads((spec.output_root/'attempt_state.json').read_text())['state']=='INVALID'

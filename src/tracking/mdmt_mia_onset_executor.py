@@ -40,7 +40,7 @@ class ExecutionSpec:
         return {'pair':self.pair,'logical_condition':self.logical,'physical_condition':self.physical,'delay':self.delay,
                 'role':self.role,'author_variant':str(self.variant),'author_variant_digest':tree_digest(self.variant),
                 'author_entrypoint':'demo/supplement_MIA.py','argv':list(self.argv),'environment':self.env,
-                'prediction_artifacts':[str(self.output_root/'mia'/f'train_{self.pair}'/'view1'/f'{self.pair}-1.json'),str(self.output_root/'mia'/f'train_{self.pair}'/'view2'/f'{self.pair}-2.json')],
+                'prediction_artifacts':[str(path) for path in prediction_paths(self)],
                 'source_mda_gt':[str(self.gt1),str(self.gt2)],'evaluator':'evaluation.mdmt_mia_paper.cross_view_mda',
                 'runtime_gate_profile':list(GATE_ARTIFACTS),'attempt_root_template':str(self.output_root/'attempts'/self.pair/self.logical/'attempt_<n>')}
 
@@ -75,6 +75,33 @@ def run(spec: ExecutionSpec, *, launch: bool=False, runner: Callable=subprocess.
     spec.output_root.mkdir(parents=True,exist_ok=False)
     result=runner(spec.argv,cwd=Path.cwd(),env={**os.environ,**spec.env},check=False)
     if getattr(result,'returncode',1): raise MvePreflightError('author process failed')
+
+def prediction_paths(spec: ExecutionSpec) -> tuple[Path,Path]:
+    base=spec.output_root/'mia'/f'train_{spec.pair}'/'results'/f'mia_train_{spec.pair}'
+    return base/f'{spec.pair}-1.json',base/f'{spec.pair}-2.json'
+
+def evidence_root(spec: ExecutionSpec) -> Path:
+    return spec.output_root/'mia'/f'train_{spec.pair}'/'results'/f'mia_train_{spec.pair}'
+
+def _state(path: Path, value: str) -> None:
+    path.write_bytes(canonical_json({'state':value}))
+
+def execute_and_accept(spec: ExecutionSpec, *, launch: bool=False, runner: Callable=subprocess.run) -> None:
+    """Future complete state machine; no metric is returned or printed."""
+    if not launch: raise MvePreflightError('launch requires separate explicit authorization')
+    state=spec.output_root/'attempt_state.json'
+    spec.output_root.mkdir(parents=True,exist_ok=False)
+    _state(state,'PLANNED'); _state(state,'RUNNING')
+    # run() expects to own the output root, so invoke the frozen wrapper here.
+    result=runner(spec.argv,cwd=Path.cwd(),env={**os.environ,**spec.env},check=False)
+    if getattr(result,'returncode',1): _state(state,'FAILED'); raise MvePreflightError('author process failed')
+    _state(state,'PROCESS_COMPLETE')
+    predictions=prediction_paths(spec)
+    if not all(p.is_file() for p in predictions): _state(state,'INVALID'); raise MvePreflightError('missing prediction artifact')
+    _state(state,'ARTIFACT_VALIDATED')
+    accept_attempt(predictions,evidence_root(spec)); _state(state,'RUNTIME_GATES_CHECKED')
+    evaluate_private(predictions,(spec.gt1,spec.gt2)); _state(state,'EVALUATION_COMPLETE')
+    _state(state,'ACCEPTED')
 
 def verify_y00_parity(reference: tuple[Path,Path], packetized: tuple[Path,Path]) -> None:
     if not all(path.is_file() for path in reference + packetized): raise MvePreflightError('y00 parity artifact missing')

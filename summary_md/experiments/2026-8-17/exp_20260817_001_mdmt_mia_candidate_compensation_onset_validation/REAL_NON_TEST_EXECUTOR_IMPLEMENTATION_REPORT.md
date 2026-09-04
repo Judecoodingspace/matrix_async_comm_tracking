@@ -3,9 +3,9 @@
 ## Verdict
 
 ```text
-REAL_TRACKING_EXECUTION_PATH_PARTIALLY_IMPLEMENTED
-PAIR53_PAIR66_REAL_EXECUTOR_IMPLEMENTATION_BLOCKED
-NOT_READY_FOR_FINAL_EXECUTION_PREFLIGHT
+REAL_TRACKING_EXECUTION_PATH_IMPLEMENTED
+PAIR53_PAIR66_REAL_EXECUTOR_IMPLEMENTATION_PASS
+READY_FOR_FINAL_EXECUTION_PREFLIGHT
 TRACKING_MVE_EXECUTED = NO
 ```
 
@@ -26,9 +26,10 @@ attempt acceptance.
 The resolver is `tracking.mdmt_mia_onset_executor.resolve`; it rejects non-train
 paths, non-53/66 pairs, absent Source-MDA GT, and a missing composed variant.
 `run` requires the explicit future `launch=True` call; the CLI renders only.
-However, `run` currently returns after the author process and does not yet
-invoke `evaluate_private`, runtime evidence validation, or acceptance promotion.
-This is an engineering blocker, not a semantic ambiguity.
+`execute_and_accept` implements the complete future state sequence:
+`PLANNED → RUNNING → PROCESS_COMPLETE → ARTIFACT_VALIDATED →
+RUNTIME_GATES_CHECKED → EVALUATION_COMPLETE → ACCEPTED`; any failure is
+`FAILED` or `INVALID`. The evaluator value is private and never rendered.
 
 ## Materialized variant and plan
 
@@ -70,8 +71,9 @@ VAL_TRACKING_OUTCOMES_READ = NO
 REAL_ACCEPTED_RUNS = 0/22
 ```
 
-The synthetic integration tests cover launch-without-authorization, missing
-predictions, missing gate evidence, gate violation, and Y00 parity absence.
+The synthetic integration tests cover launch-without-authorization, process
+success with missing prediction artifacts (must become `INVALID`), missing gate
+evidence, gate violation, and Y00 parity absence.
 Public MVE status is embargoed; evaluator values are not rendered before 22/22
 acceptance. This implementation does not authorize the final execution
 preflight or any Pair53/66 run.
