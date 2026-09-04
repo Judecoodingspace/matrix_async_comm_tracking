@@ -6,12 +6,13 @@
 EXPERIMENT: exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation
 RESEARCH_DECISIONS_RESOLVED
 CONTRACT_AMENDMENT_RECORDED
-GT_PROTOCOL_GATE_POLICY_FROZEN
-GT_PROTOCOL_GATE_BLOCKED_BY_UNKNOWN
-ARTIFACT_EXECUTION_NOT_YET_COMPLETED
-SOURCE_ONLY_GATE_TOOLING_AUTHORIZED
-MIA_IMPLEMENTATION_NOT_AUTHORIZED
-MVE_NOT_YET_AUTHORIZED
+SOURCE_MDA_V1_IMPLEMENTATION_COMPLETE
+FRESH_G1_G7_SOURCE_PROTOCOL_PREFLIGHT_PASS
+G6_EVALUATOR_FIXTURE_AND_OUTSIDE_ACCOUNTING_CLOSED
+PAIR53_PAIR66_MVE_DECISIONS_FROZEN
+M2_M3_NON_TEST_MVE_INTEGRATION_NOT_IMPLEMENTED
+PAIR53_PAIR66_MVE_PREFLIGHT_BLOCKED
+TRACKING_MVE_NOT_EXECUTED
 DEVELOPMENT_SWEEP_NOT_AUTHORIZED
 HOLDOUT_CONFIRMATION_NOT_AUTHORIZED
 VERSION_AWARE_RECOVERY_NOT_AUTHORIZED
@@ -21,10 +22,13 @@ R1/R2/R3 are closed and must not be reopened during this gate. This plan
 inherits E023 R4-R6 semantics, does not reactivate the suspended joint-
 transaction hypothesis and does not implement version-aware recovery.
 
-The only currently authorized implementation and execution scope is the
-minimum source-only tooling needed to produce G1-G6 evidence and perform the G7
-GT Protocol Gate decision. No tracker, MIA runtime, detector or prediction
-outcome may be read or changed by this work.
+The legacy M1 exact-official-export plan below is retained as historical design
+evidence and is superseded for Route B by
+`MDMT_SOURCE_ANNOTATION_MDA_V1`, its authority audit, and its fresh G1-G7
+reports. The current authorized scope is contract synchronization and static
+Pair53/66 execution-preflight only. No tracker, MIA runtime, detector, Pair53,
+Pair66, or prediction/scientific outcome may be executed or consumed by this
+preflight.
 
 ## Gate Research Contract
 
@@ -634,7 +638,8 @@ existing runtime loader semantics.
 
 Type: `PLUMBING`
 
-Status: `BLOCKED_BY_M1`
+Status: `AUTHORIZED_ONLY_AS_FUTURE_ENGINEERING / NOT_IMPLEMENTED /
+BLOCKS_PAIR53_PAIR66_MVE`
 
 Tasks after G7 PASS:
 
@@ -650,7 +655,7 @@ Tasks after G7 PASS:
 Gate:
 
 ```text
-GT_PROTOCOL_GATE_PASS = 1
+FRESH_G1_G7_SOURCE_PROTOCOL_PREFLIGHT_PASS = 1
 official_test_pairs_selected = 0
 cohort_overlap = 0
 cohort_manifest_determinism_mismatch = 0
@@ -661,7 +666,8 @@ condition/source/config drift = 0
 
 Type: `PLUMBING`
 
-Status: `BLOCKED_BY_M1`
+Status: `AUTHORIZED_ONLY_AS_FUTURE_ENGINEERING / NOT_IMPLEMENTED /
+BLOCKS_PAIR53_PAIR66_MVE`
 
 Tasks after G7 PASS:
 
@@ -683,14 +689,16 @@ logging_prediction_mismatch = 0
 
 Type: `LEARNING_CRITICAL`
 
-Status: `NOT_AUTHORIZED`
+Status: `DECISIONS_FROZEN / EXECUTION_PREFLIGHT_BLOCKED / NOT_EXECUTED`
 
 Pairs and delays:
 
 ```text
-pairs = 22, 72
+pairs = 53, 66
 delays = 1, 3, 5
 conditions = Y00, Y01, Y10/Y11/Yec per delay
+per_pair = 11 accepted conditions
+total = 22 accepted pair-condition runs
 ```
 
 MVE validates non-test protocol consumption, synchronous equivalence, E023
@@ -700,16 +708,43 @@ deterministic restart. It cannot select onset or support a mechanism claim.
 Gate:
 
 ```text
-GT_PROTOCOL_GATE_PASS = 1
+FRESH_G1_G7_SOURCE_PROTOCOL_PREFLIGHT_PASS = 1
+Pair53 = 11/11 accepted
+Pair66 = 11/11 accepted
+total = 22/22 accepted
 all MVE measurement gates pass
 Y00 synchronous equivalence passes
 Y10/Yec sole intended difference is membership source
 future/GT/source-bypass/history-rewrite counts are zero
 two repeated MVE conditions are byte-identical
+scientific values suppressed from the MVE summary
 ```
 
 Development remains blocked until an explicit MVE audit writes
 `development_allowed=1`.
+
+### PAIR53_PAIR66_TRACKING_MVE_FROZEN_DECISIONS
+
+The authoritative full wording is in `EXPERIMENT_CONTRACT.md`. This execution
+plan implements it as follows:
+
+| Decision | Execution rule | State |
+| --- | --- | --- |
+| MVE-R0 | Validate mechanism-field connectivity and valid-zero distinguishability; never require nonzero occurrence or a favorable direction. | `FROZEN` |
+| MVE-R1 | Build one frozen non-test synchronous reference per pair and require strict prediction, feedback, evaluator, packet, read-boundary, alias, logger, and shadow parity before delayed-outcome consumption. | `FROZEN / NOT_IMPLEMENTED` |
+| MVE-R2 | Accept only Pair53 `11/11`, Pair66 `11/11`, total `22/22`; no partial promotion. | `FROZEN` |
+| MVE-R3 | Preserve failed attempts and retry unchanged conditions in new roots; any outcome-capable semantic repair stops for amendment/successor and impact assessment. | `FROZEN / INHERITED_MACHINERY_NOT_INTEGRATED` |
+| MVE-R4 | Determine MVE validity solely from execution/measurement gates, independently of scientific outcomes. | `FROZEN` |
+| MVE-R5 | Until `22/22` accepted, consume only execution/measurement status and never use partial scientific values for design choices. | `FROZEN / SUPPRESSION_NOT_IMPLEMENTED` |
+| MVE-R6 | Check contrast inputs, formulas, alignment, finiteness, and schema; publish only computability booleans, never Pair53/66 contrast values or interpretation. | `FROZEN / SUPPRESSION_NOT_IMPLEMENTED` |
+| MVE-R7 | Once all execution/measurement gates pass, progression to the 15-pair development sweep is outcome-independent. | `FROZEN` |
+| MVE-R8 | Never substitute Pair53/66 for difficult, sparse, zero, atypical, or unfavorable valid data; stop for bugs, unspecified semantics, or population/version corruption. | `FROZEN` |
+| MVE-R9 | On MVE PASS, immediately freeze every outcome-capable implementation and registered development-analysis component before any 15-pair run. | `FROZEN / FREEZE_MECHANISM_NOT_IMPLEMENTED` |
+
+All Y-condition semantics are inherited unchanged from frozen E023. Before a
+separate execution authorization, M2/M3 must supply an isolated non-test
+variant/runner that combines those semantics with the accepted Homography
+successor and Source-MDA-v1 without modifying either frozen authority.
 
 ## M5 — Development Delay Sweep
 
@@ -778,10 +813,10 @@ Yec remains oracle-only
 official test is never used for onset selection
 ```
 
-## Explicitly Forbidden During M1
+## Explicitly Forbidden During Pair53/66 Execution-Preflight
 
 - run MIA tracking or read tracking outcomes;
-- run pair 22/72 MVE;
+- run Pair53/66 MVE;
 - calculate MDA, `R_edge` or `C_comp`;
 - select onset or run d1-d5;
 - run development, holdout or Formal;

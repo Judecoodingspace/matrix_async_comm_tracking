@@ -9,13 +9,25 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
 - 新实验契约：`exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation`。
 - 本轮只验证 E023 候选集合补偿在 MDMT 非测试序列上的复现性与 d1-d5 出现区间；不实现
   version-aware recovery，不重新读取 official test 选择 delay。
-- R1-R3 已完成研究设计答辩并落盘：R1 `APPROVED / RESOLVED_CONDITIONAL`，R2
-  `APPROVED / RESOLVED`，R3 `APPROVED / RESOLVED_WITH_CONTRACT_AMENDMENT`。
-- GT protocol gate 已在 2026-08-19 执行并以 `GT_PROTOCOL_GATE_FAIL` 结束：G1 通过，G2
-  仅 5/28 official-test 文件精确匹配，且 source-derived GT 多出 347 行；test XML 没有
-  `outside=1` 见证。G3-G6 未执行，MVE/tracking 未运行。
-- 当前仅允许独立、重新批准的 source annotation/export protocol 调查；不得以 tracker/MVE
-  结果修补转换规则，也不得继续 non-test GT 或 compensation-onset 实验。
+- 历史 official-export-equivalence gate 于 2026-08-19 以 `GT_PROTOCOL_GATE_FAIL` 结束：G1
+  通过，G2 仅 5/28 official-test 文件精确匹配，另有 347 source-only rows。该结果只保留为
+  historical invalid predecessor/fingerprint；`OFFICIAL_EXPORT_FILTER_POLICY = UNKNOWN`，不得
+  用它推断过滤规则。
+- 随后的独立 Route-B 审计已通过：`R1_CROSS_VIEW_IDENTITY_AUTHORITY` 与 R2 frame/ID/bbox
+  mapping authority 均为 `PASS`。`MDMT_SOURCE_ANNOTATION_MDA_V1` 仅是 internal mechanism
+  replication 的 source-annotation protocol，不是 official-test export equivalent protocol。
+- 独立 `MDMT_SOURCE_ANNOTATION_MDA_V1` implementation 与 clean-root fresh G1-G7 source-protocol
+  preflight 已完成：60 个 train/val XML、1,610,691 source rows 的七项 structural gates 均为
+  `PASS`，两次 deterministic artifact digest 相同。
+- Pair53/66 Tracking MVE execution-preflight 已完成合同层审计，权威矩阵为每 pair 11 条、共
+  22 条，MVE-R0--R9 已冻结。当前为 `PAIR53_PAIR66_MVE_PREFLIGHT_BLOCKED /
+  TRACKING_MVE_NOT_EXECUTED`：缺少独立 non-test onset runner/variant、Source-MDA real-prediction
+  integration、accepted Homography successor composition、MVE scientific-value suppression 与
+  post-MVE implementation-freeze artifact。另有 `Y01_PARAMETERIZATION_AUTHORITY_GAP`：合同未指定
+  11-condition 单例 `Y01` 的物理 Supplement-delay 参数，不能从继承的 `Y01_d1/d3/d5` 中猜选一个。
+  不得运行旧 `RUN_PLAN.md` 的 Pair22/72 命令。
+- 后续 MVE 只能使用冻结 development manifest 的前两个 pairs `53, 66`；10 train holdout 和全部
+  val pairs 必须保持未消费直至 locked confirmation。
 - R3 契约修订要求：实际 delay-only candidate -> High-score Supplement write-in 至少
   出现在 `10/15` development pairs，不能只在 pooled 数据中非零。
 - 执行顺序冻结为：Research Decisions resolved -> GT protocol gate -> infrastructure -> two-pair MVE ->
@@ -23,7 +35,9 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
 - Contract：
   `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/EXPERIMENT_CONTRACT.md`
 - Gate report:
-  `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/GT_PROTOCOL_GATE_REPORT.md`
+  `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/SOURCE_MDA_V1_G1_G7_PREFLIGHT_REPORT.md`
+- MVE execution-preflight audit:
+  `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/MVE_INHERITED_EVIDENCE_AUDIT.md`
 
 ### Latest Update: E023 Cascade Formal Completed (2026-08-14)
 

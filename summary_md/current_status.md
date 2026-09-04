@@ -28,35 +28,54 @@ tracked report and this status record.
 
 ## Next Planned Experiment
 
-`exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation` 已完成研究计划与文件骨架，
-当前未进入实现。该实验遵循 E023 的 P0 决策：先在非测试数据上验证 d1-d5 候选集合补偿的
-出现边界，再决定是否为非 oracle、版本感知 Supplement recovery 建立独立方法契约。
+`exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation` 已完成 Source-MDA-v1
+测量协议实现与 source-only preflight；Pair53/66 Tracking MVE 的 R0-R9 决策也已冻结。
+当前处于 `PAIR53_PAIR66_MVE_PREFLIGHT_BLOCKED / TRACKING_MVE_NOT_EXECUTED`，尚未进入
+tracking implementation 或执行。该实验遵循 E023 的 P0 决策：先在非测试数据上验证 d1-d5
+候选集合补偿的出现边界，再决定是否为非 oracle、版本感知 Supplement recovery 建立独立方法契约。
 
-R1-R3 已完成研究设计答辩：
+历史 E024 的 R1-R3 研究设计答辩已完成；Route B 的 Source-MDA 协议权威审计已另行完成：
 
 ```text
-R1: APPROVED / RESOLVED_CONDITIONAL
-R2: APPROVED / RESOLVED
-R3: APPROVED / RESOLVED_WITH_CONTRACT_AMENDMENT
+R1_CROSS_VIEW_IDENTITY_AUTHORITY: PASS
+R2_FRAME_MAPPING_AUTHORITY: PASS
+R2_IDENTITY_INDEXING_AUTHORITY: PASS
+R2_BBOX_MAPPING_AUTHORITY: PASS
+SOURCE_ANNOTATION_PROTOCOL_R1_R2_AUTHORITY_PASS
 ```
 
 R3 的契约修订把机制门从 pooled nonzero write-in 收紧为：实际 delay-only
 candidate -> High-score Supplement write-in 至少出现在 `10/15` development pairs。
 冻结的 d1-d5 扫描选择最早通过完整 Gate A-F 的 onset，而不是幅度最大的 delay。
 
-GT protocol gate 已执行并以 `GT_PROTOCOL_GATE_FAIL` 结束。G1 严格来源审计通过（88 XML），
-但 G2 official-test 精确多重集复现仅 `5/28` 文件通过；其余 23 文件合计有 347 个
-source-derived extra rows，且 test XML 没有 `outside=1` 样本用于验证排除规则。依据
-fail-closed 协议，G3-G6 未执行，未运行 tracking/MVE、development/holdout 或 recovery。
+历史 official-export-equivalence gate 已以 `GT_PROTOCOL_GATE_FAIL` 结束：G1 严格来源审计
+通过（88 XML），但 G2 仅 `5/28` 文件精确相等；其余 23 文件有 347 个 source-only rows。
+该失败仅冻结为 official divergence fingerprint，
+`OFFICIAL_EXPORT_FILTER_POLICY = UNKNOWN`；不得以它推断 filtering rule。
 
-当前仅允许新的、独立批准的 source annotation/export protocol 调查，以解释 extra rows 并
-解决 outside-rule witness 缺失；不得根据任何 tracking/MVE 结果修补转换规则。
+随后独立的 Route-B R1/R2 authority audit 已通过：它把 Source-MDA-v1 定义为内部机制复现的
+source-annotation protocol，而不是 official-test export equivalent protocol。当前状态是
+`SOURCE_MDA_V1_IMPLEMENTATION_COMPLETE / FRESH_G1_G7_SOURCE_PROTOCOL_PREFLIGHT_PASS /
+PAIR53_PAIR66_MVE_DECISIONS_FROZEN / PAIR53_PAIR66_MVE_PREFLIGHT_BLOCKED /
+TRACKING_MVE_NOT_EXECUTED`。本轮 fresh clean-root
+preflight 对 60 个 train/val XML、1,610,691 条 source rows 全数通过，且两次 deterministic
+artifact digest 相同；没有漏行、额外行、provenance 冲突或语义修复。最新 execution-preflight
+确认权威矩阵为 Pair53/66 各 11 条、共 22 条，但 non-test onset runner/variant、Source-MDA
+real-prediction integration、accepted Homography successor composition、scientific-value suppression
+和 implementation-freeze artifact 尚未实现，因此不得授权 MVE。10 train holdout 与全部 5 val
+pairs 在 locked confirmation 前不得被 MVE 消费。实现闭环审计还识别出
+`Y01_PARAMETERIZATION_AUTHORITY_GAP`：Contract 未冻结单例 `Y01` 的物理 Supplement-delay 参数，
+不得从历史 `Y01_d1/d3/d5` 中自行选择。
 
 计划目录：
 `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/`
 
-Gate 报告：
-`summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/GT_PROTOCOL_GATE_REPORT.md`
+Gate reports:
+
+- `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/SOURCE_MDA_V1_IMPLEMENTATION_REPORT.md`
+- `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/SOURCE_MDA_V1_G1_G7_PREFLIGHT_REPORT.md`
+- `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/SOURCE_MDA_V1_G6_FIXTURE_CLOSURE_REPORT.md`
+- `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/MVE_INHERITED_EVIDENCE_AUDIT.md`
 
 ## Latest Formal Result
 

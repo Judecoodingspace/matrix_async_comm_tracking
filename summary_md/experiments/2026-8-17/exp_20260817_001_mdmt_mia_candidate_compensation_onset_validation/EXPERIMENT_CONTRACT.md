@@ -4,10 +4,14 @@
 
 - Experiment ID: `exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation`
 - Short name: MDMT MIA candidate-set compensation onset validation
-- Status: `APPROVED / RESEARCH_DECISIONS_RESOLVED / CONTRACT_AMENDED /
-  BLOCKED_PENDING_GT_PROTOCOL_GATE`
-- Research decisions:
-  - R1: `APPROVED / RESOLVED_CONDITIONAL`
+- Status: `ROUTE_B_CONCEPT_APPROVED / R1_R2_AUTHORITY_PASS /
+  SOURCE_MDA_V1_IMPLEMENTATION_COMPLETE /
+  FRESH_G1_G7_SOURCE_PROTOCOL_PREFLIGHT_PASS /
+  PAIR53_PAIR66_MVE_DECISIONS_FROZEN /
+  PAIR53_PAIR66_MVE_PREFLIGHT_BLOCKED /
+  TRACKING_MVE_NOT_EXECUTED`
+- Historical E024 research decisions:
+  - R1: `SUPERSEDED_FOR_ROUTE_B_BY_G-ID_AND_G-MAP`
   - R2: `APPROVED / RESOLVED`
   - R3: `APPROVED / RESOLVED_WITH_CONTRACT_AMENDMENT`
 - Parent experiment: `exp_20260808_001_mdmt_mia_id_supplement_joint_transaction` (E023)
@@ -16,6 +20,10 @@
   - `summary_md/experiments/2026-8-8/exp_20260808_001_mdmt_mia_id_supplement_joint_transaction/RESULTS.md`
   - `summary_md/experiments/2026-8-8/exp_20260808_001_mdmt_mia_id_supplement_joint_transaction/FORMAL_ANALYSIS_REPORT.md`
   - `outputs/20260813_mdmt_mia_id_supplement_cascade_formal_v8/`
+  - `summary_md/MDMT_SOURCE_ANNOTATION_R1_R2_AUTHORITY_AUDIT.md`
+  - `SOURCE_MDA_V1_G1_G7_PREFLIGHT_REPORT.md`
+  - `SOURCE_MDA_V1_G6_FIXTURE_CLOSURE_REPORT.md`
+  - `MVE_INHERITED_EVIDENCE_AUDIT.md`
 
 ## Question And Evidence
 
@@ -38,8 +46,16 @@ delay interval does it first become distinguishable from zero?
   was inconclusive at `d1` and positive at `d5`.
 - `Yec` is an oracle membership-only causal diagnostic. It is not a deployable
   method or a performance upper bound.
-- The published MDMT test protocol can be reconciled exactly to raw annotation
-  IDs using the already audited XML-to-official mapping.
+- On the test shared rows, paired-view equal XML `track_id` has verified
+  cross-view identity semantics; frame, ID indexing, and bbox projection have
+  verified mechanical mappings. See the R1/R2 authority audit.
+- The full XML conversion is **not** equivalent to official-test TXT export:
+  the frozen test fingerprint remains `5/28` exact files, `23/28` mismatches,
+  zero missing official rows, and 347 source-only rows.
+- `MDMT_SOURCE_ANNOTATION_MDA_V1` is implemented and its fresh source-protocol
+  G1-G7 preflight, evaluator row-order fixture closure, and train/val
+  `outside=1` accounting have passed. This is measurement-protocol evidence,
+  not tracking evidence.
 
 #### INFERENCE
 
@@ -49,8 +65,6 @@ delay interval does it first become distinguishable from zero?
 
 #### ASSUMPTION
 
-- The audited test mapping rule can be applied without semantic drift to MDMT
-  train/validation annotations after an explicit protocol-equivalence gate.
 - Non-test sequences contain enough candidate disagreements to distinguish an
   onset rather than only reproduce a zero-effect regime.
 - Fixed frame delays are comparable within MDMT even though reliable physical
@@ -64,6 +78,40 @@ delay interval does it first become distinguishable from zero?
   explains pair heterogeneity.
 - Whether a deployable version-aware recovery can preserve the beneficial
   opportunity. This experiment does not test that method.
+- `OFFICIAL_EXPORT_FILTER_POLICY`: unknown. The 347 source-only rows may not
+  be used to infer it.
+
+### Source-annotation protocol authority amendment
+
+`MDMT_SOURCE_ANNOTATION_MDA_V1` is a separately named Route-B measurement
+protocol. It supports **internal mechanism replication only**. It must never
+be described as reproducing official-test export semantics.
+
+The following gates are complete and are frozen only for this source protocol:
+
+| Gate | State | Verified semantic / boundary |
+| --- | --- | --- |
+| `G-ID — CROSS_VIEW_IDENTITY_AUTHORITY` | `PASS` | Equal XML `track_id` across the paired views denotes the shared cross-view identity. This is verified by the author evaluator's direct GT-ID equality and contradiction-free official-test shared-row evidence. |
+| `G-MAP — FRAME_ID_BBOX_MAPPING_AUTHORITY` | `PASS` | `evaluation_frame = XML_frame + 1`; `evaluation_id = XML_track_id + 1`; `(x,y,w,h) = (xtl,ytl,xbr-xtl,ybr-ytl)` on all 600,923 official-test shared rows. |
+
+The authority report is
+`summary_md/MDMT_SOURCE_ANNOTATION_R1_R2_AUTHORITY_AUDIT.md`. It also records
+the documentary limitation: no located official annotation specification
+explicitly defines the XML ID namespace. This is not treated as a contrary
+fact because the author-code and shared-row evidence are independently
+consistent.
+
+Frozen conversion semantics for a future separately authorized implementation:
+
+```text
+parse XML coordinates as Decimal
+do not pass coordinates through binary float
+compute width and height with Decimal arithmetic
+serialize deterministically
+```
+
+The semantics above do not authorize inspection, deletion, or filtering of the
+347 source-only test rows. `OFFICIAL_EXPORT_FILTER_POLICY` remains unknown.
 
 ### Primary hypothesis
 
@@ -132,15 +180,19 @@ only after a parity gate proves delay-independent byte-identical predictions.
 
 Official test pairs are frozen and must not be rerun or used to choose an onset.
 
-Approved non-test cohorts:
+Frozen non-test roles:
 
 ```text
-MDMT train: 25 paired sequences
-MDMT val:    5 paired sequences (22, 36, 46, 49, 72)
+25 train pairs
+├── 15 development pairs: infrastructure/MVE and onset selection
+└── 10 train-holdout pairs: untouched before locked confirmation
+
+5 val pairs (22, 36, 46, 49, 72)
+└── locked cross-split confirmation: untouched before that confirmation
 ```
 
-Before any scientific run, a stable `seed=7` sequence-level manifest will split
-the 25 train pairs into:
+Before converter implementation, a stable `seed=7` sequence-level manifest
+will split the 25 train pairs into:
 
 ```text
 development cohort: 15 pairs
@@ -148,18 +200,23 @@ train holdout:       10 pairs
 MDMT val holdout:     5 val pairs
 ```
 
-The development cohort identifies the earliest qualifying delay. The combined
-15-pair holdout confirms only that locked delay and its immediately preceding
-delay. Results must also be reported separately for train-holdout and val.
-The val cohort is an external holdout only with respect to the MDMT train split;
-it provides cross-MDMT-split reproducibility evidence, not cross-dataset
-external validation.
+The development cohort identifies the earliest qualifying delay and supplies
+the MVE infrastructure pairs. The combined 15-pair holdout confirms only that
+locked delay and its immediately preceding delay. Results must also be reported
+separately for train-holdout and val. The val cohort is an external holdout
+only with respect to the MDMT train split; it provides cross-MDMT-split
+reproducibility evidence, not cross-dataset external validation.
 
 The 25 train pair IDs must first be placed in a canonical order. A single
 documented deterministic algorithm with `seed=7` then generates the 15/10
 assignment before any tracking outcome is read. The frozen manifest may depend
 only on sequence identity, canonical ordering and the seed. Pair membership
 cannot be exchanged after outcomes are observed.
+
+The MVE pair set is exactly the first two development pairs in that frozen
+canonical development-manifest order. It must not depend on tracking/MDA,
+mechanism, causal-contrast, runtime-diagnostic, operational difficulty, or
+effect-size outcomes. No val pair may be read by the MVE.
 
 ### Detector / tracker / checkpoint
 
@@ -231,20 +288,30 @@ C_comp(d) = M_delay(d) - M_sync
 
 ### Measurement gates
 
-- The source annotation is authoritative. The converter may perform only format
-  conversion, the predefined deterministic ID mapping and mechanical projection
-  into the MDA representation. It has no semantic repair authority: no image-
-  based identity judgment, result-dependent identity change, manual ID fix or
-  source-annotation patch is allowed.
-- The same conversion rule must exactly reproduce all available official-test
-  MDA GT before the converter is allowed on non-test annotations:
-  `official_test_row_mismatch=0`, `official_test_frame_mismatch=0` and
-  `official_test_id_mismatch=0`. Any mismatch fails closed; GT cannot be
-  manually patched to continue.
-- Non-test GT must satisfy `non_test_duplicate_identity_keys=0`,
-  `non_test_missing_source_rows=0` and `frame_offset=0`, and must separately
-  audit whether equal cross-view IDs follow the train/val annotation convention.
-  Official-test equivalence alone does not prove train/val identity semantics.
+- For `MDMT_SOURCE_ANNOTATION_MDA_V1`, the source XML annotation is the frozen
+  measurement authority under this independently defined source-annotation
+  protocol. This does not establish official-test export equivalence. A
+  converter may perform only the frozen deterministic format projection. It
+  has no semantic repair authority: no image-based identity judgment,
+  result-dependent identity change, manual ID fix, source-annotation patch, or
+  inferred official-export filter is allowed.
+- The protocol gates are `G-ID` and `G-MAP`, both recorded as passed in
+  `summary_md/MDMT_SOURCE_ANNOTATION_R1_R2_AUTHORITY_AUDIT.md`. They establish
+  source-protocol semantics, not all-row official-test export equivalence.
+  The previous 28/28 exact-export gate is historical invalid for Route B:
+  current evidence is exactly `5/28` file equality, 23 mismatches, zero
+  missing official rows, and 347 source-only rows. That fingerprint is not a
+  repair target.
+- A future implementation must begin a new source-protocol G1-G7 audit from
+  a clean root. Every source annotation row must have a unique immutable
+  provenance key (for example `(xml_path, track_index, box_index)`), and
+  source-row multiplicity must be preserved exactly. The converter must neither
+  create source rows nor silently deduplicate source rows. These are
+  source-row provenance and multiplicity checks, not a prohibition on repeated
+  `(frame, identity)` values. The audit must also prove deterministic source
+  coverage, no missing source rows, frozen frame/ID/bbox semantics, and the
+  required non-test structural checks before any tracker or mechanism result
+  is read. It may not relitigate `G-ID`/`G-MAP` by using tracking outcomes.
 - Cohort assignment must depend only on sequence ID and seed, not metrics.
 - `Y00` must reproduce the non-test synchronous packetized reference.
 - Runtime GT/future/source-bypass reads must be zero.
@@ -254,6 +321,10 @@ C_comp(d) = M_delay(d) - M_sync
 - `Y10` and `Yec` may differ only in High-score membership source.
 - No official-test output may be read by onset selection code.
 - Every interrupted attempt must use the E023 isolated clean-restart policy.
+- Converter determinism and evaluator row-order invariance are distinct gates:
+  repeated conversion of the same source must yield byte-identical output;
+  independently, reordering the same GT-row multiset must yield identical
+  evaluator metrics. Neither property substitutes for the other.
 
 ### Confounders and checks
 
@@ -274,7 +345,7 @@ C_comp(d) = M_delay(d) - M_sync
 ### Required outputs
 
 ```text
-non_test_mda_gt_equivalence.csv
+source_mda_protocol_validation.csv
 cohort_manifest.csv
 condition_manifest.csv
 condition_metrics_by_pair.csv
@@ -292,12 +363,84 @@ checkpoints/
 
 ### Minimum viable experiment
 
-- Pairs: val `22` and `72`, chosen by sequence order before reading outcomes.
+- Pairs: the first two development pairs under the frozen canonical
+  `seed=7` development-manifest order; this pair set must be frozen before any
+  tracking/MDA, mechanism, causal-contrast, or runtime-diagnostic outcome is
+  read.
+- Val isolation: no val pair is read by the MVE, including its tracking,
+  MDA, mechanism-log, causal-contrast, or runtime-specific diagnostic outcome.
 - Delays: `1, 3, 5`.
 - Conditions: `Y00`, `Y01`, and `Y10/Y11/Yec` at each delay.
 - Pair-condition count: `2 x 11 = 22`.
 - Purpose: protocol conversion, parity, causal invariants, logging and resume;
   no mechanism conclusion.
+
+### PAIR53_PAIR66_TRACKING_MVE_FROZEN_DECISIONS
+
+These decisions govern only the infrastructure/measurement MVE on the first
+two frozen development-manifest pairs, `53` and `66`. All Y-condition
+scientific semantics are inherited unchanged from the frozen E023 experiment.
+The Pair53/66 MVE only verifies faithful non-test implementation, execution
+integrity, measurement validity, and observability. It is not an onset screen,
+scientific pilot, E023 replication decision, or parameter-tuning stage.
+
+- **MVE-R0 — observability, not occurrence.** The MVE must prove that the
+  inherited `S_delay`, `S_cf`, delay-only/cf-only disagreement, High-score
+  trigger/write-in, Low-score path, pre-branch lineage, shadow quarantine, and
+  Homography-fallback evidence are connected and distinguish a valid measured
+  zero from a disconnected logger. No mechanism event or contrast direction is
+  required to be nonzero or favorable.
+- **MVE-R1 — strict Y00 parity.** A frozen synchronous non-test reference must
+  use the same pair, data, detector, ByteTrack, MIA, configuration, and
+  Source-MDA-v1 evaluator. Y00 must pass exact prediction, feedback, evaluator,
+  packet-conservation, no-future/no-runtime-GT/no-alias, logger-invariance, and
+  shadow-invariance checks. Metric equality alone is insufficient; failure
+  stops the MVE before delayed outcomes are consumed.
+- **MVE-R2 — complete authoritative matrix.** Each of Pair53 and Pair66 has
+  exactly `Y00`, `Y01`, and `Y10/Y11/Yec` at each of `d1`, `d3`, and `d5`:
+  `11/11` accepted attempts per pair and `22/22` total. Partial, crashed,
+  missing, or unvalidated attempts cannot be promoted.
+- **MVE-R3 — retry boundary.** A transient engineering retry keeps every
+  scientific input and semantic fixed, preserves the failed attempt, and uses
+  a new clean attempt root. Any repair that may change prediction, state,
+  candidate/delay/Supplement/Homography semantics, GT, evaluator, or metric is
+  a contract amendment or successor decision. If impact on accepted attempts
+  is possible or unknown, those attempts are invalidated and cleanly rerun.
+- **MVE-R4 — verdict separation.** MVE PASS/FAIL is determined only by
+  execution and measurement integrity. `D_ID`, `R_edge`, `C_comp`, MDA
+  direction, pair direction, mechanism counts, and delay-response patterns do
+  not determine the MVE verdict.
+- **MVE-R5 — outcome embargo until completion.** Before all 22 accepted
+  conditions complete, only execution/measurement status may be consumed.
+  Scientific values cannot change pairs, parameters, delays, gates, candidate
+  rules, evaluator behavior, or progression policy.
+- **MVE-R6 — computability without value disclosure.** The MVE verifies that
+  registered contrasts are complete, aligned, finite where defined, and
+  computable, but its summary may expose only boolean/schema status such as
+  `D_ID_COMPUTABLE`, `R_EDGE_COMPUTABLE`, and `C_COMP_COMPUTABLE`. It must not
+  show or interpret actual MVE contrast values.
+- **MVE-R7 — outcome-independent progression.** Once all preregistered MVE
+  execution and measurement gates pass, progression to the 15-pair development
+  sweep is outcome-independent. Only invalid execution/measurement may block
+  progression.
+- **MVE-R8 — frozen-pair anomaly handling.** Pair53/66 cannot be replaced for
+  difficulty, sparse or zero events, atypical but valid inputs, or an
+  unfavorable scientific direction. A specified protocol case continues; an
+  implementation defect stops, records evidence, and receives only a
+  semantics-preserving clean retry; an unspecified semantic case stops for a
+  research decision. Population/version corruption stops cohort audit and does
+  not authorize substitution.
+- **MVE-R9 — immediate implementation freeze after PASS.** A passing MVE must
+  freeze detector, tracker, MIA, E023 Y/delay/Supplement/candidate/shadow
+  semantics, Homography fallback, packet/runtime behavior, Source-MDA-v1,
+  evaluator and formulas, development `d1..d5`, the 15-pair cohort, Gate A-F,
+  bootstrap, and the `10/15` thresholds. Any later change that could alter a
+  pair-condition outcome requires impact assessment and, where needed, an MVE
+  rerun, amendment, or successor.
+
+The decisions above freeze requirements only. They do not authorize execution.
+The current execution-preflight verdict and implementation gaps are recorded in
+`MVE_INHERITED_EVIDENCE_AUDIT.md`.
 
 ### Development sweep
 
@@ -387,7 +530,8 @@ must show the path from delay-only membership through actual High-score write-in
 
 ### Stop criteria
 
-- Stop before MVE if the approved conditional non-test GT protocol gate fails.
+- Stop before MVE if the separately authorized Source-MDA implementation or
+  its fresh G1-G7 source-protocol audit fails.
 - Stop after MVE if any scientific measurement gate fails.
 - Stop before holdout if development selects no onset. The registered result is:
   `Within the preregistered d1-d5 range, no reliable candidate-compensation
@@ -414,12 +558,18 @@ must show the path from delay-only membership through actual High-score write-in
 
 ### R1 — Non-test MDA protocol extension
 
-Status: `APPROVED / RESOLVED_CONDITIONAL`.
+Status: `ROUTE_B_CONCEPT_APPROVED / R1_R2_AUTHORITY_PASS /
+SOURCE_MDA_V1_IMPLEMENTATION_COMPLETE /
+FRESH_G1_G7_SOURCE_PROTOCOL_PREFLIGHT_PASS`.
 
-Deterministic construction of train/val MDA GT is approved only under the
-converter-authority, official-test exact-equivalence, non-test structural and
-annotation-inconsistency gates above. The converter has no semantic repair
-authority. The next blocking gate is the unexecuted GT protocol gate.
+The historical predecessor's official-test exact-export gate failed and is
+invalid as a Route-B gate. It is retained only as historical evidence, not as
+a target for repair. The separately named
+`MDMT_SOURCE_ANNOTATION_MDA_V1` now has verified source-protocol authority:
+paired-view equal XML IDs are shared identities, and frame/ID/bbox conversion
+is frozen by `G-ID` and `G-MAP`. Its separately authorized implementation and
+fresh source-protocol G1-G7 audit are complete. This does not by itself
+authorize non-test tracking.
 
 ### R2 — Cohort and holdout policy
 
@@ -440,6 +590,8 @@ strengthens mechanism recurrence from a pooled nonzero write-in requirement to
 actual delay-only candidate -> High-score Supplement write-in in at least
 `10/15` development pairs.
 
-R1-R3 are resolved and the amendment is incorporated. This does not authorize
-implementation or MVE: the GT protocol gate and subsequent lifecycle gates in
-`EXEC_PLAN.md` remain pending.
+R1-R3 and the Pair53/66 MVE decisions are resolved and incorporated. Source-MDA
+implementation and its source-protocol preflight are complete. Pair53/66
+tracking remains unexecuted and blocked until the execution-layer gaps in
+`EXEC_PLAN.md` and `MVE_INHERITED_EVIDENCE_AUDIT.md` are closed under a
+separate authorization.
