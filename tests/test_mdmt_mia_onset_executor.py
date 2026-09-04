@@ -6,13 +6,14 @@ import tracking.mdmt_mia_onset_executor as executor
 from tracking.mdmt_mia_onset_mve import MvePreflightError
 
 def _roots(monkeypatch, tmp_path: Path):
-    data=tmp_path/'data'; gt=tmp_path/'gt'; variant=tmp_path/'variant'
+    data=tmp_path/'data'; gt=tmp_path/'gt'; variant=tmp_path/'variant'; reference=tmp_path/'reference'
     for pair in ('53','66'):
         for view in ('1','2'):
             (data/'train'/view/f'{pair}-{view}').mkdir(parents=True)
             gt.mkdir(exist_ok=True); (gt/f'{pair}-{view}.txt').write_text('fixture\n')
     (variant/'demo').mkdir(parents=True); (variant/'demo'/'supplement_MIA.py').write_text('entry\n')
-    monkeypatch.setattr(executor,'DATASET',data); monkeypatch.setattr(executor,'SOURCE_GT',gt); monkeypatch.setattr(executor,'VARIANT',variant)
+    (reference/'demo').mkdir(parents=True); (reference/'demo'/'supplement_MIA.py').write_text('legacy entry\n')
+    monkeypatch.setattr(executor,'DATASET',data); monkeypatch.setattr(executor,'SOURCE_GT',gt); monkeypatch.setattr(executor,'VARIANT',variant); monkeypatch.setattr(executor,'REFERENCE_VARIANT',reference)
 
 def test_22_real_dry_run_specs_are_train_only(monkeypatch, tmp_path):
     _roots(monkeypatch,tmp_path); specs=executor.plan(tmp_path/'out')
@@ -28,6 +29,18 @@ def test_launch_and_acceptance_fail_closed(monkeypatch,tmp_path):
     with pytest.raises(MvePreflightError): executor.verify_y00_parity((tmp_path/'a',tmp_path/'b'),(tmp_path/'a',tmp_path/'missing'))
     (tmp_path/'a').write_text('{}'); (tmp_path/'b').write_text('{}')
     with pytest.raises(MvePreflightError): executor.accept_attempt((tmp_path/'a',tmp_path/'b'),tmp_path)
+
+
+def test_reference_role_uses_distinct_legacy_variant_without_packet_env(monkeypatch,tmp_path):
+    _roots(monkeypatch,tmp_path)
+    reference=executor.resolve('53','Y00',tmp_path/'out',role='REFERENCE')
+    y00=executor.resolve('53','Y00',tmp_path/'out')
+    assert reference.variant != y00.variant
+    assert reference.argv != () and y00.argv != () and reference.env['MIA_SOURCE_ROOT'] != y00.env['MIA_SOURCE_ROOT']
+    assert 'MIA_ACTIVE_PACKET_STAGES' not in reference.env
+    assert 'MIA_ASYNC_CHANNEL_DELAYS' not in reference.env
+    assert y00.env['MIA_ASYNC_CHANNEL_DELAYS'] == '{"homography": 0, "id_state": 0, "local": 0, "supplement": 0}'
+    with pytest.raises(MvePreflightError): executor.resolve('53','Y10_d1',tmp_path/'out',role='REFERENCE')
 
 def test_gate_violation_is_not_accepted(monkeypatch,tmp_path):
     _roots(monkeypatch,tmp_path); a,b=tmp_path/'a',tmp_path/'b'; a.write_text('{}'); b.write_text('{}')

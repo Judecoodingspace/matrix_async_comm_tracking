@@ -64,6 +64,35 @@ def audit_composition(e023_root: Path, fallback_module: Path, variant_root: Path
     return result
 
 
+def compose_legacy_reference_variant(
+        paper_aligned_root: Path, fallback_module: Path, destination: Path) -> dict[str, str]:
+    """Compose the legacy synchronous reference with only the accepted H fallback.
+
+    This intentionally reuses the byte-level composition rule above: the
+    legacy entry is copied unchanged and only ``trans_matrix.py`` may differ.
+    It neither imports nor adds any packet-runtime or cascade instrumentation.
+    """
+    result = compose_variant(paper_aligned_root, fallback_module, destination)
+    result["reference_entry_sha256"] = result["e023_entry_sha256"]
+    result["reference_uses_packet_runtime"] = "0"
+    (destination / "onset_mve_composition_manifest.json").write_text(
+        json.dumps(result, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    return result
+
+
+def audit_legacy_reference_composition(
+        paper_aligned_root: Path, fallback_module: Path, variant_root: Path) -> dict[str, str]:
+    """Fail closed unless the legacy reference has exactly one approved diff."""
+    result = audit_composition(paper_aligned_root, fallback_module, variant_root)
+    demo_files = (path for path in (variant_root / "demo").rglob("*.py"))
+    if any(b"PacketRuntime" in path.read_bytes() or b"async_deadline_runtime" in path.read_bytes()
+           for path in demo_files):
+        raise VariantCompositionError("legacy reference gained packet runtime")
+    result["reference_entry_sha256"] = result["e023_entry_sha256"]
+    result["reference_uses_packet_runtime"] = "0"
+    return result
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--e023-root", type=Path, required=True)

@@ -4,7 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from prepare_mdmt_mia_onset_validation_variant import VariantCompositionError, audit_composition, compose_variant
+from prepare_mdmt_mia_onset_validation_variant import (
+    VariantCompositionError, audit_composition, audit_legacy_reference_composition,
+    compose_legacy_reference_variant, compose_variant,
+)
 
 
 def _seed_e023(root: Path) -> None:
@@ -33,3 +36,27 @@ def test_composition_refuses_overwrite(tmp_path: Path) -> None:
     compose_variant(e023, fallback, destination)
     with pytest.raises(VariantCompositionError):
         compose_variant(e023, fallback, destination)
+
+
+def test_legacy_reference_composition_retains_non_packetized_entry(tmp_path: Path) -> None:
+    legacy = tmp_path / "paper_aligned"
+    _seed_e023(legacy)
+    fallback = tmp_path / "fallback.py"
+    fallback.write_text("accepted fallback\n", encoding="utf-8")
+    destination = tmp_path / "legacy_reference"
+    result = compose_legacy_reference_variant(legacy, fallback, destination)
+    assert result["reference_uses_packet_runtime"] == "0"
+    assert result["reference_entry_sha256"] == result["variant_entry_sha256"]
+    assert audit_legacy_reference_composition(legacy, fallback, destination)["unauthorized_diff_count"] == "0"
+
+
+def test_legacy_reference_rejects_packet_runtime_entry(tmp_path: Path) -> None:
+    legacy = tmp_path / "paper_aligned"
+    _seed_e023(legacy)
+    (legacy / "demo" / "supplement_MIA.py").write_text("PacketRuntime()\n", encoding="utf-8")
+    fallback = tmp_path / "fallback.py"
+    fallback.write_text("accepted fallback\n", encoding="utf-8")
+    destination = tmp_path / "legacy_reference"
+    compose_variant(legacy, fallback, destination)
+    with pytest.raises(VariantCompositionError):
+        audit_legacy_reference_composition(legacy, fallback, destination)

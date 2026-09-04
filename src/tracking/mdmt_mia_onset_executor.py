@@ -15,6 +15,7 @@ DATASET = Path('/mnt/data/yzm/datasets/Multi-Drone-Multi-Object-Detection-and-Tr
 SOURCE_GT = Path('outputs/20260904_mdmt_source_annotation_mda_v1_preflight_retry3/run_b/generated_gt/train')
 AUTHOR_ROOT = Path('/mnt/data/yzm/experiments/mdmt_mia_official')
 VARIANT = AUTHOR_ROOT / 'variants/packetized_candidate_compensation_onset_mve_v1'
+REFERENCE_VARIANT = AUTHOR_ROOT / 'variants/paper_aligned_mia_hfallback_onset_mve_v1'
 AUTHOR_WRAPPER = Path('scripts/run_mdmt_mia_author_sync.sh')
 GATE_ARTIFACTS = {
     'lineage': ('cascade_edge_manifest', 'prebranch_missing_count'),
@@ -53,17 +54,21 @@ def resolve(pair: str, logical: str, output_root: Path, *, role: str='PACKETIZED
     row=next(((l,ph,d) for l,ph,d in LOGICAL_TO_PHYSICAL if l==logical),None)
     if str(pair) not in MVE_PAIRS or row is None: raise MvePreflightError('unauthorized pair or condition')
     if role not in ('PACKETIZED','REFERENCE'): raise MvePreflightError('unknown execution role')
+    if role == 'REFERENCE' and logical != 'Y00': raise MvePreflightError('reference role is defined only for Y00 parity')
+    variant = REFERENCE_VARIANT if role == 'REFERENCE' else VARIANT
     gt1,gt2=(SOURCE_GT/f'{pair}-1.txt',SOURCE_GT/f'{pair}-2.txt')
-    inputs=[DATASET/'train'/'1'/f'{pair}-1',DATASET/'train'/'2'/f'{pair}-2',gt1,gt2,VARIANT/'demo'/'supplement_MIA.py']
+    inputs=[DATASET/'train'/'1'/f'{pair}-1',DATASET/'train'/'2'/f'{pair}-2',gt1,gt2,variant/'demo'/'supplement_MIA.py']
     if not all(x.exists() for x in inputs): raise MvePreflightError('train-only execution input unresolved')
     delays=delay_map(logical,row[2]) if role=='PACKETIZED' else {'local':0,'homography':0,'id_state':0,'supplement':0}
     root=output_root/role.lower()/str(pair)/logical
-    env={'MIA_ROOT':str(AUTHOR_ROOT),'MIA_SOURCE_ROOT':str(VARIANT),'MDMT_ROOT':str(DATASET),'MIA_OUTPUT_ROOT':str(root),
-         'MIA_RUN_INPUT_ROOT':str(root/'run_inputs'),'MIA_ACTIVE_PACKET_STAGES':'all' if role=='PACKETIZED' else 'none',
-         'MIA_ASYNC_CHANNEL_DELAYS':json.dumps(delays,sort_keys=True),'MIA_CASCADE_EDGE_CUT':'1' if logical.startswith('Yec_') else '0',
-         'MIA_CASCADE_SHADOW':'1' if logical.startswith(('Y10_','Yec_')) else '0','MIA_CASCADE_LOGGING':'1',
-         'MIA_DETECTION_CACHE_ROOT':str(output_root/'detector_cache'),'MIA_DETECTION_CACHE_MODE':'read','DEVICE':'cuda:0','PYTHONHASHSEED':'7','PYTHONNOUSERSITE':'1'}
-    return ExecutionSpec(str(pair),row[0],row[1],row[2],role,VARIANT,root,gt1,gt2,('bash',str(AUTHOR_WRAPPER),'mia','train',str(pair)),env)
+    env={'MIA_ROOT':str(AUTHOR_ROOT),'MIA_SOURCE_ROOT':str(variant),'MDMT_ROOT':str(DATASET),'MIA_OUTPUT_ROOT':str(root),
+         'MIA_RUN_INPUT_ROOT':str(root/'run_inputs'),'DEVICE':'cuda:0','PYTHONHASHSEED':'7','PYTHONNOUSERSITE':'1'}
+    if role == 'PACKETIZED':
+        env.update({'MIA_ACTIVE_PACKET_STAGES':'all','MIA_ASYNC_CHANNEL_DELAYS':json.dumps(delays,sort_keys=True),
+                    'MIA_CASCADE_EDGE_CUT':'1' if logical.startswith('Yec_') else '0',
+                    'MIA_CASCADE_SHADOW':'1' if logical.startswith(('Y10_','Yec_')) else '0','MIA_CASCADE_LOGGING':'1',
+                    'MIA_DETECTION_CACHE_ROOT':str(output_root/'detector_cache'),'MIA_DETECTION_CACHE_MODE':'read'})
+    return ExecutionSpec(str(pair),row[0],row[1],row[2],role,variant,root,gt1,gt2,('bash',str(AUTHOR_WRAPPER),'mia','train',str(pair)),env)
 
 def plan(output_root: Path) -> list[ExecutionSpec]:
     specs=[resolve(pair,logical,output_root) for pair in MVE_PAIRS for logical,_,_ in LOGICAL_TO_PHYSICAL]
