@@ -1,6 +1,30 @@
 # Current Status
 
-Updated: 2026-08-19
+Updated: 2026-09-04
+
+## Latest governance closure
+
+The formal successor Packet Census has been closed and its tracked report is
+`summary_md/PACKET_CENSUS_RUN_REPORT.md`. This is a record-governance action;
+it does not add a new scientific conclusion beyond the completed aggregation.
+
+- Formal successor ID: `mdmt-mia-packet-census-z0-train-all-hfallback-v1`.
+- Branch: `exp/20260903-001-mdmt-mia-p39-homography-fallback-successor-census`.
+- State: `AGGREGATION_COMPLETE`; 25/25 accepted pairs and 12,026/12,026
+  `CENSUS_FRAME_UNIT`s.
+- The predecessor Census is **historical invalid** because Pair 39 encountered
+  the scalar-homography failure; predecessor artifacts must never be mixed into
+  the successor result.
+- Aggregates are locally ignored and are not committed. Their frozen hashes are:
+  `CENSUS_PAIR_MANIFEST.json`
+  `152f2d7f3f76747aade836063a951034963bfb41f525a22ecf696d091bbf08b6`;
+  `PACKET_CENSUS_PACKET_AUDIT.jsonl`
+  `ab2440e1776cdd30ba8f793bc5da713580343ac342db29e153653cdf1bc2421a`;
+  `PACKET_CENSUS_DESCRIPTIVE_SUMMARY.json`
+  `5dbdd6c36b88c7705cdf6140faa2f1133d079424cc84c6864d86fc90828f923a`.
+
+The raw audit remains ignored by design; only its hash is retained in the
+tracked report and this status record.
 
 ## Next Planned Experiment
 
