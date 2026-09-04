@@ -158,3 +158,36 @@ Focused synthetic/static verification passed: `24 passed`; `py_compile` and
 `git diff --check` passed.  No Pair53/66 author process, detector, ByteTrack,
 MIA, real prediction, Source-MDA evaluation, contrast calculation, or val
 outcome was run or read.
+
+## 2026-09-04 Absolute Artifact-Path Resolution Closure
+
+The first authorized-launch preflight found, before any author process started,
+that relative `MIA_OUTPUT_ROOT` values would be interpreted again after the
+shell wrapper changed into `RUN_ROOT`.  The resulting nested author output
+would not be found by the executor's `prediction_paths()` reader.  This was an
+engineering path-resolution defect, not a scientific-semantic change.
+
+The wrapper and executor now canonicalize the output, run-input, detector-cache
+and result roots to absolute paths.  The wrapper derives an absolute
+`RESULT_ROOT` from the same absolute `RUN_ROOT` that defines the executor's
+prediction paths.  A mock-author regression test writes both JSON artifacts
+through the wrapper after `cd "$RUN_ROOT"` and verifies that the executor finds
+them at its exact expected locations, with no `RUN_ROOT/RUN_ROOT` nesting.
+
+The old reference-fix plan digest
+`996d2be2063585ae7615bb5d5ec34cdf2b30af5ceedb895c3b3d026d94af9532`
+is retained as `HISTORICAL_PRE_ABSOLUTE_PATH_FIX_PLAN`.  The new dry-rendered
+execution package is isolated under
+`outputs/20260904_mdmt_mia_pair53_66_mve_execution_7d52da2/` and has package
+manifest SHA-256
+`2d1037acc2a0e42bf5b744b8676e1af465949db7738b44245ec4ed30eb3a44a8`.
+Its structural audit found 215 authorized path/provenance changes and zero
+unauthorized scientific-drift fields; the normalized scientific semantic
+projection is identical.  It retains 22 scientific specs and 8 qualification
+specs.
+
+Implementation commit: `b4f66fde609097e8eda851baeb785169864f7329`.
+Focused synthetic/static verification passed: `25 passed`; `py_compile` and
+`git diff --check` passed.  This closure did not launch Pair53/66, a
+qualification attempt, an author process, detector, ByteTrack, MIA, evaluator,
+or any scientific computation.
