@@ -38,12 +38,12 @@ variant: /mnt/data/yzm/experiments/mdmt_mia_official/variants/packetized_candida
 variant digest: b753576fbdba955ede2cc1417a0676501860b1713cc6635fbe36e494970ceea5
 E023 unauthorized diffs: 0
 H fallback exact match: YES
-execution plan digest: 94bf435c12fb1eb263246324c11b10b1d7bc1c0373f7f4c499b6cab07efec590
+execution plan digest: 7de7f0a58c7dea341c2e3eb6e94de306362761c4cd0139b447882858bde73286
 22 expected / 22 resolved / 0 missing / 0 duplicate / 0 unauthorized
 ```
 
 The dry-run plan is ignored at
-`outputs/20260904_mdmt_mia_pair53_66_executor_preflight/MVE_EXECUTION_PLAN_MANIFEST.json`.
+`outputs/20260904_mdmt_mia_pair53_66_executor_preflight_v2/MVE_EXECUTION_PLAN_MANIFEST.json`.
 Y01 resolves only to `Y01_d1`.
 
 ## Runtime evidence wiring
