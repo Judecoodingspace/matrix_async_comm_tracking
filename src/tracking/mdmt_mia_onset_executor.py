@@ -45,6 +45,15 @@ class ExecutionSpec:
                 'source_mda_gt':[str(self.gt1),str(self.gt2)],'evaluator':'evaluation.mdmt_mia_paper.cross_view_mda',
                 'runtime_gate_profile':list(GATE_ARTIFACTS),'attempt_root_template':str(self.output_root/'attempts'/self.pair/self.logical/'attempt_<n>')}
 
+
+@dataclass(frozen=True)
+class ReferenceArtifacts:
+    """Explicit legacy-reference prediction surface for one Y00 pair."""
+    pair: str
+    attempt_identity: str
+    view1: Path
+    view2: Path
+
 def tree_digest(root: Path) -> str:
     if not root.is_dir(): raise MvePreflightError('final composed variant missing')
     rows=[(str(p.relative_to(root)),digest(p)) for p in sorted(root.rglob('*')) if p.is_file() and p.name != 'onset_mve_composition_manifest.json']
@@ -88,12 +97,18 @@ def prediction_paths(spec: ExecutionSpec) -> tuple[Path,Path]:
 def evidence_root(spec: ExecutionSpec) -> Path:
     return spec.output_root/'mia'/f'train_{spec.pair}'/'results'/f'mia_train_{spec.pair}'
 
-def _state(path: Path, value: str) -> None:
-    path.write_bytes(canonical_json({'state':value}))
+def _state(path: Path, value: str, **fields: object) -> None:
+    payload = json.loads(path.read_text()) if path.is_file() else {}
+    payload['state'] = value
+    payload.update(fields)
+    path.write_bytes(canonical_json(payload))
 
-def execute_and_accept(spec: ExecutionSpec, *, launch: bool=False, runner: Callable=subprocess.run) -> None:
+def execute_and_accept(spec: ExecutionSpec, *, reference: ReferenceArtifacts | None = None,
+                       launch: bool=False, runner: Callable=subprocess.run) -> None:
     """Future complete state machine; no metric is returned or printed."""
     if not launch: raise MvePreflightError('launch requires separate explicit authorization')
+    if spec.role != 'PACKETIZED':
+        raise MvePreflightError('reference role may supply parity artifacts but cannot be accepted')
     state=spec.output_root/'attempt_state.json'
     spec.output_root.mkdir(parents=True,exist_ok=False)
     _state(state,'PLANNED'); _state(state,'RUNNING')
@@ -105,6 +120,23 @@ def execute_and_accept(spec: ExecutionSpec, *, launch: bool=False, runner: Calla
     if not all(p.is_file() for p in predictions): _state(state,'INVALID'); raise MvePreflightError('missing prediction artifact')
     _state(state,'ARTIFACT_VALIDATED')
     accept_attempt(predictions,evidence_root(spec)); _state(state,'RUNTIME_GATES_CHECKED')
+    if spec.logical == 'Y00':
+        if (reference is None or str(reference.pair) != spec.pair
+                or not reference.view1.is_file() or not reference.view2.is_file()):
+            _state(state, 'INVALID', y00_reference_parity_checked=True,
+                   y00_reference_parity_pass=False, y00_reference_error='Y00_REFERENCE_ARTIFACT_MISSING')
+            raise MvePreflightError('Y00_REFERENCE_ARTIFACT_MISSING')
+        try:
+            verify_y00_parity((reference.view1, reference.view2), predictions)
+        except MvePreflightError as exc:
+            _state(state, 'INVALID', y00_reference_parity_checked=True,
+                   y00_reference_parity_pass=False, y00_reference_attempt_identity=reference.attempt_identity,
+                   y00_reference_error=str(exc))
+            raise
+        _state(state, 'Y00_REFERENCE_PARITY_CHECKED', y00_reference_parity_checked=True,
+               y00_reference_parity_pass=True, y00_reference_attempt_identity=reference.attempt_identity,
+               reference_artifact_digest=[digest(reference.view1), digest(reference.view2)],
+               packetized_artifact_digest=[digest(predictions[0]), digest(predictions[1])])
     evaluate_private(predictions,(spec.gt1,spec.gt2)); _state(state,'EVALUATION_COMPLETE')
     _state(state,'ACCEPTED')
 

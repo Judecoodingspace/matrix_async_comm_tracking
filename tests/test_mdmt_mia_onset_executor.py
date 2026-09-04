@@ -53,3 +53,73 @@ def test_real_state_machine_rejects_process_success_without_artifacts(monkeypatc
     class Ok: returncode=0
     with pytest.raises(MvePreflightError): executor.execute_and_accept(spec,launch=True,runner=lambda *a,**k: Ok())
     assert json.loads((spec.output_root/'attempt_state.json').read_text())['state']=='INVALID'
+
+
+def _complete_packetized_attempt(spec, payload: str):
+    prediction1, prediction2 = executor.prediction_paths(spec)
+    prediction1.parent.mkdir(parents=True)
+    prediction1.write_text(payload); prediction2.write_text(payload)
+    evidence = {}
+    for stem, field in executor.GATE_ARTIFACTS.values():
+        value = 1 if field == 'logger_read_only' else 0
+        evidence.setdefault(stem, {})[field] = value
+        if field == 'packet_emission_count': evidence[stem]['packet_consumption_count'] = 0
+    for stem, fields in evidence.items():
+        (prediction1.parent / f'{stem}_fixture.json').write_text(json.dumps(fields))
+    (prediction1.parent / 'async_packet_trace_fixture.jsonl').write_text('')
+
+
+def _reference(tmp_path: Path, pair: str, payload: str, attempt: str = 'reference_attempt_001'):
+    view1, view2 = tmp_path / 'reference-1.json', tmp_path / 'reference-2.json'
+    view1.write_text(payload); view2.write_text(payload)
+    return executor.ReferenceArtifacts(pair, attempt, view1, view2)
+
+
+def test_y00_parity_pass_is_retained_by_accepted_state(monkeypatch,tmp_path):
+    _roots(monkeypatch,tmp_path); spec=executor.resolve('53','Y00',tmp_path/'out')
+    monkeypatch.setattr(executor, 'evaluate_private', lambda *args: {})
+    def runner(*args, **kwargs): _complete_packetized_attempt(spec, '{}'); return type('Ok', (), {'returncode': 0})()
+    executor.execute_and_accept(spec, reference=_reference(tmp_path, '53', '{}'), launch=True, runner=runner)
+    state=json.loads((spec.output_root/'attempt_state.json').read_text())
+    assert state['state']=='ACCEPTED'
+    assert state['y00_reference_parity_checked'] is True
+    assert state['y00_reference_parity_pass'] is True
+    assert state['y00_reference_attempt_identity']=='reference_attempt_001'
+
+
+def test_y00_parity_failure_prevents_accepted(monkeypatch,tmp_path):
+    _roots(monkeypatch,tmp_path); spec=executor.resolve('53','Y00',tmp_path/'out')
+    monkeypatch.setattr(executor, 'evaluate_private', lambda *args: pytest.fail('must not evaluate after parity failure'))
+    def runner(*args, **kwargs): _complete_packetized_attempt(spec, '{"packetized":true}'); return type('Ok', (), {'returncode': 0})()
+    with pytest.raises(MvePreflightError, match='y00 prediction parity mismatch'):
+        executor.execute_and_accept(spec, reference=_reference(tmp_path, '53', '{"reference":true}'), launch=True, runner=runner)
+    state=json.loads((spec.output_root/'attempt_state.json').read_text())
+    assert state['state']=='INVALID' and state['y00_reference_parity_pass'] is False
+
+
+def test_y00_missing_reference_prevents_accepted(monkeypatch,tmp_path):
+    _roots(monkeypatch,tmp_path); spec=executor.resolve('53','Y00',tmp_path/'out')
+    monkeypatch.setattr(executor, 'evaluate_private', lambda *args: pytest.fail('must not evaluate without reference'))
+    def runner(*args, **kwargs): _complete_packetized_attempt(spec, '{}'); return type('Ok', (), {'returncode': 0})()
+    with pytest.raises(MvePreflightError, match='Y00_REFERENCE_ARTIFACT_MISSING'):
+        executor.execute_and_accept(spec, launch=True, runner=runner)
+    assert json.loads((spec.output_root/'attempt_state.json').read_text())['state']=='INVALID'
+
+
+def test_y00_missing_reference_view_prevents_accepted(monkeypatch,tmp_path):
+    _roots(monkeypatch,tmp_path); spec=executor.resolve('53','Y00',tmp_path/'out')
+    monkeypatch.setattr(executor, 'evaluate_private', lambda *args: pytest.fail('must not evaluate without both reference views'))
+    def runner(*args, **kwargs): _complete_packetized_attempt(spec, '{}'); return type('Ok', (), {'returncode': 0})()
+    reference=executor.ReferenceArtifacts('53', 'reference_attempt_001', tmp_path/'missing-1.json', tmp_path/'missing-2.json')
+    with pytest.raises(MvePreflightError, match='Y00_REFERENCE_ARTIFACT_MISSING'):
+        executor.execute_and_accept(spec, reference=reference, launch=True, runner=runner)
+    assert json.loads((spec.output_root/'attempt_state.json').read_text())['state']=='INVALID'
+
+
+def test_non_y00_does_not_require_reference_parity(monkeypatch,tmp_path):
+    _roots(monkeypatch,tmp_path); spec=executor.resolve('53','Y10_d1',tmp_path/'out')
+    monkeypatch.setattr(executor, 'evaluate_private', lambda *args: {})
+    def runner(*args, **kwargs): _complete_packetized_attempt(spec, '{}'); return type('Ok', (), {'returncode': 0})()
+    executor.execute_and_accept(spec, launch=True, runner=runner)
+    state=json.loads((spec.output_root/'attempt_state.json').read_text())
+    assert state['state']=='ACCEPTED' and 'y00_reference_parity_checked' not in state
