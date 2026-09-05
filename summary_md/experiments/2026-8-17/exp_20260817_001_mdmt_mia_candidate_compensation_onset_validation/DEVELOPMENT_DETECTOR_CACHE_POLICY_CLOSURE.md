@@ -40,7 +40,7 @@ packetized specifications have:
 ```text
 MIA_DETECTION_CACHE_MODE = read
 MIA_DETECTION_CACHE_ROOT =
-.../outputs/20260905_mdmt_mia_frozen_15_pair_development_v3/detector_cache
+.../outputs/20260905_mdmt_mia_frozen_15_pair_development_v4/detector_cache
 ```
 
 The legacy `REFERENCE` specifications have no detector-cache environment key
@@ -50,17 +50,17 @@ consumer hook; no live-detector fallback was introduced.
 
 ## Current package
 
-The earlier v2 render is retained as an implementation-only historical
-artifact and is not an execution package. The repaired immutable package is:
+The earlier v2/v3 renders are retained as implementation-only historical
+artifacts and are not execution packages. The repaired immutable package is:
 
 ```text
-outputs/20260905_mdmt_mia_frozen_15_pair_development_v3
+outputs/20260905_mdmt_mia_frozen_15_pair_development_v4
 
 DEVELOPMENT_EXECUTION_PACKAGE_MANIFEST.json
-c9e9823be41dd672e24f2d71722dab7f1a9e6b4fb97b295a4abee77394592f35
+32bbd18419e0369319a7d6fc3d8725fd2625a4bcfa835bc5e7bcd6524fefcf90
 
 DEVELOPMENT_EXECUTION_PLAN_MANIFEST.json
-a99ee6bb76e77159449ac38bb71fefc5396500bd7e9ebfd6fe50239194e6e7ab
+24b7f71b530870c0181f36128f34d45e01f8a3a7a6534b85f17f9d0bea27bf1d
 
 condition_manifest.json
 7f26902773abf26d1a061b33768877238d7c1f1d93eca8ce8c9bea8c8e76fb0e
@@ -70,7 +70,7 @@ The exact failed preflight path was re-run against v3 and passed:
 
 ```text
 package_manifest(
-  Path('outputs/20260905_mdmt_mia_frozen_15_pair_development_v3')
+  Path('outputs/20260905_mdmt_mia_frozen_15_pair_development_v4')
 ) = PASS
 ```
 
