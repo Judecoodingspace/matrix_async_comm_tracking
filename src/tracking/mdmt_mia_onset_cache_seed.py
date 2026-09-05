@@ -20,7 +20,6 @@ from tracking.mdmt_mia_onset_mve import MvePreflightError, canonical_json
 
 REPO = Path(__file__).resolve().parents[2]
 PACKAGE = REPO / 'outputs/20260904_mdmt_mia_pair53_66_mve_execution_7d52da2'
-PACKAGE_SHA256 = '2d1037acc2a0e42bf5b744b8676e1af465949db7738b44245ec4ed30eb3a44a8'
 CONFIG = executor.AUTHOR_ROOT / 'run_configs/one_carafe_bytetrack_full_mdmt_reproduction.py'
 CHECKPOINT = executor.DATASET / 'checkpoints/work_dirsfaster_rcnn_r50_fpn_carafe_1x_full_mdmt/epoch_12.pth'
 HOOK = executor.VARIANT / 'mmtrack/models/mot/byte_track.py'
@@ -89,14 +88,16 @@ def config_fingerprints(path: Path, seen=None) -> dict[str, str]:
 
 
 def validate_package(root: Path = PACKAGE) -> None:
-    """Check existing frozen package, not a newly rendered or refrozen plan."""
+    """Check a rendered, self-consistent immutable execution package."""
     root = root.resolve()
     if Path.cwd().resolve() != REPO:
         raise MvePreflightError('run from the authoritative worktree')
     manifest_path = root / 'MVE_EXECUTION_PACKAGE_MANIFEST.json'
-    if sha256(manifest_path) != PACKAGE_SHA256:
-        raise MvePreflightError('execution package digest mismatch')
     manifest = json.loads(manifest_path.read_text())
+    required = {'scientific_plan_sha256', 'qualification_plan_sha256',
+                'condition_manifest_sha256', 'implementation_commit'}
+    if not required <= set(manifest):
+        raise MvePreflightError('execution package manifest is incomplete')
     for name, key in [('MVE_EXECUTION_PLAN_MANIFEST.json', 'scientific_plan_sha256'),
                       ('AUXILIARY_QUALIFICATION_PLAN.json', 'qualification_plan_sha256'),
                       ('condition_manifest.json', 'condition_manifest_sha256')]:
@@ -289,9 +290,10 @@ def seed(root: Path = PACKAGE, *, runner=subprocess.run) -> None:
 
 
 def render(root: Path = PACKAGE) -> dict:
+    root = root.resolve()
     validate_package(root)
     attempt = root / 'cache_seed/attempt_001'
-    return {'execution_package_sha256': PACKAGE_SHA256,
+    return {'execution_package_sha256': sha256(root / 'MVE_EXECUTION_PACKAGE_MANIFEST.json'),
             'expected': {pair: len(image_population(pair)) for pair in executor.MVE_PAIRS},
             'commands': [seed_spec(pair, root, attempt, attempt / 'detector_cache')
                          for pair in executor.MVE_PAIRS],

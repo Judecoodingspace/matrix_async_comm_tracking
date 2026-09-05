@@ -2,20 +2,24 @@
 """Manual-only E023 cache seed adapter; plan/status/verify never launch."""
 import argparse
 import json
+from pathlib import Path
 
-from tracking.mdmt_mia_onset_cache_seed import render, seed, status
+from tracking.mdmt_mia_onset_cache_seed import PACKAGE, render, seed, status
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('plan', 'seed', 'status', 'verify'))
+    parser.add_argument('--package-root', type=Path, default=PACKAGE,
+                        help='immutable execution package root (default: historical package)')
     args = parser.parse_args()
+    root = args.package_root.resolve()
     if args.action == 'plan':
-        print(json.dumps(render(), indent=2, sort_keys=True))
+        print(json.dumps(render(root), indent=2, sort_keys=True))
     elif args.action == 'seed':
-        seed()
+        seed(root)
     else:
-        result = status(verify=args.action == 'verify')
+        result = status(root, verify=args.action == 'verify')
         if args.action == 'status':
             print('CACHE_SEED_STATE =', result['state'], 'current_pair =', result['current_pair'])
         for pair, row in result['pairs'].items():
