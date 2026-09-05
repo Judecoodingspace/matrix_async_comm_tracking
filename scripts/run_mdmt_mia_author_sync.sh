@@ -22,10 +22,17 @@ DEVICE="${DEVICE:-cuda:0}"
 # would otherwise be interpreted a second time below RUN_ROOT.
 MIA_OUTPUT_ROOT="$(realpath -m "${MIA_OUTPUT_ROOT:-$MIA_ROOT/outputs/exp_20260804_002}")"
 MIA_RUN_INPUT_ROOT="$(realpath -m "${MIA_RUN_INPUT_ROOT:-$MIA_ROOT/run_inputs}")"
-# Import the isolated source tree itself before the editable-installed upstream
-# package.  Otherwise demo patches load from the variant while ``mmtrack`` and
-# its detector-cache hook silently load from upstream.
-export PYTHONPATH="$MIA_SOURCE_ROOT:$MIA_SOURCE_ROOT/demo/utils${PYTHONPATH:+:$PYTHONPATH}"
+# Packetized variants need their in-tree ``mmtrack`` first so that the frozen
+# detector-cache hook is used.  The legacy synchronous REFERENCE intentionally
+# keeps its historical topology: only its demo utilities are prepended and
+# ``mmtrack`` resolves from the pinned upstream environment.  This is a role
+# selection, not a runtime semantic switch.
+MIA_IMPORT_VARIANT_MMTRACK="${MIA_IMPORT_VARIANT_MMTRACK:-1}"
+case "$MIA_IMPORT_VARIANT_MMTRACK" in
+  1) export PYTHONPATH="$MIA_SOURCE_ROOT:$MIA_SOURCE_ROOT/demo/utils${PYTHONPATH:+:$PYTHONPATH}" ;;
+  0) export PYTHONPATH="$MIA_SOURCE_ROOT/demo/utils${PYTHONPATH:+:$PYTHONPATH}" ;;
+  *) echo "MIA_IMPORT_VARIANT_MMTRACK must be 0 (legacy) or 1 (packetized)" >&2; exit 2 ;;
+esac
 
 if [[ -z "$STAGE" || "$STAGE" == "-h" || "$STAGE" == "--help" ]]; then
   cat <<'EOF'

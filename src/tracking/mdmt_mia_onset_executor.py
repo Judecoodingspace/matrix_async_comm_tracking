@@ -108,7 +108,8 @@ def resolve(pair: str, logical: str, output_root: Path, *, role: str='PACKETIZED
     delays=delay_map(logical,row[2]) if role=='PACKETIZED' else {'local':0,'homography':0,'id_state':0,'supplement':0}
     root=output_root/role.lower()/str(pair)/logical
     env={'MIA_ROOT':str(AUTHOR_ROOT),'MIA_SOURCE_ROOT':str(variant),'MDMT_ROOT':str(DATASET),'MIA_OUTPUT_ROOT':str(root),
-         'MIA_RUN_INPUT_ROOT':str((root/'run_inputs').resolve()),'DEVICE':'cuda:0','PYTHONHASHSEED':'7','PYTHONNOUSERSITE':'1'}
+         'MIA_RUN_INPUT_ROOT':str((root/'run_inputs').resolve()),'DEVICE':'cuda:0','PYTHONHASHSEED':'7','PYTHONNOUSERSITE':'1',
+         'MIA_IMPORT_VARIANT_MMTRACK':'0' if role == 'REFERENCE' else '1'}
     if role == 'PACKETIZED':
         env.update({'MIA_ACTIVE_PACKET_STAGES':'all','MIA_ASYNC_CHANNEL_DELAYS':json.dumps(delays,sort_keys=True),
                     'MIA_CASCADE_EDGE_CUT':'1' if logical.startswith('Yec_') else '0',

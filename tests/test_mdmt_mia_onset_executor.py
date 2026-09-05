@@ -41,6 +41,8 @@ def test_reference_role_uses_distinct_legacy_variant_without_packet_env(monkeypa
     assert reference.argv != () and y00.argv != () and reference.env['MIA_SOURCE_ROOT'] != y00.env['MIA_SOURCE_ROOT']
     assert 'MIA_ACTIVE_PACKET_STAGES' not in reference.env
     assert 'MIA_ASYNC_CHANNEL_DELAYS' not in reference.env
+    assert reference.env['MIA_IMPORT_VARIANT_MMTRACK'] == '0'
+    assert y00.env['MIA_IMPORT_VARIANT_MMTRACK'] == '1'
     assert y00.env['MIA_ASYNC_CHANNEL_DELAYS'] == '{"homography": 0, "id_state": 0, "local": 0, "supplement": 0}'
     with pytest.raises(MvePreflightError): executor.resolve('53','Y10_d1',tmp_path/'out',role='REFERENCE')
 
@@ -296,3 +298,44 @@ printf '%s' "$result" > "$FAKE_RESULT_CAPTURE"
     assert Path(capture.read_text()) / 'mia_train_53' == expected[0].parent
     assert all(path.is_file() for path in expected)
     assert not (expected[0].parent / 'output').exists()
+
+
+def test_wrapper_selects_legacy_or_packetized_import_topology(tmp_path):
+    """The role flag changes imports only; no author/tracker code is invoked."""
+    mia = tmp_path / 'mia'; source = tmp_path / 'source'; dataset = tmp_path / 'dataset'
+    fake_python = mia / '.conda-env' / 'bin' / 'python'
+    fake_python.parent.mkdir(parents=True)
+    fake_python.write_text("""#!/usr/bin/env bash
+set -euo pipefail
+printf '%s' "$PYTHONPATH" > "$IMPORT_CAPTURE"
+result=''; method=''
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --result_dir) result="$2"; shift 2 ;;
+    --method) method="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+mkdir -p "$result/$method"
+printf '{}' > "$result/$method/53-1.json"
+printf '{}' > "$result/$method/53-2.json"
+""")
+    fake_python.chmod(0o755)
+    (mia / 'run_configs').mkdir(parents=True)
+    (mia / 'run_configs' / 'one_carafe_bytetrack_full_mdmt_reproduction.py').write_text('fixture')
+    (source / 'demo' / 'utils').mkdir(parents=True)
+    for view in ('1', '2'):
+        (dataset / 'train' / view / f'53-{view}').mkdir(parents=True)
+        (dataset / 'new_xml' / view).mkdir(parents=True)
+        (dataset / 'new_xml' / view / f'53-{view}.xml').write_text('<xml/>')
+    checkpoint = dataset / 'checkpoints' / 'work_dirsfaster_rcnn_r50_fpn_carafe_1x_full_mdmt'
+    checkpoint.mkdir(parents=True); (checkpoint / 'epoch_12.pth').write_text('fixture')
+    wrapper = Path(__file__).resolve().parents[1] / 'scripts' / 'run_mdmt_mia_author_sync.sh'
+    for mode, first_path in (('0', source / 'demo' / 'utils'), ('1', source)):
+        capture = tmp_path / f'import-{mode}.txt'
+        env = {**os.environ, 'MIA_ROOT': str(mia), 'MIA_SOURCE_ROOT': str(source),
+               'MDMT_ROOT': str(dataset), 'MIA_OUTPUT_ROOT': str(tmp_path / f'output-{mode}'),
+               'MIA_RUN_INPUT_ROOT': str(tmp_path / f'inputs-{mode}'),
+               'MIA_IMPORT_VARIANT_MMTRACK': mode, 'IMPORT_CAPTURE': str(capture)}
+        subprocess.run(['bash', str(wrapper), 'mia', 'train', '53'], cwd=tmp_path, env=env, check=True)
+        assert capture.read_text().split(':', 1)[0] == str(first_path)
