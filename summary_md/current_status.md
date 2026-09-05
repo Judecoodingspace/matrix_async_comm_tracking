@@ -32,11 +32,13 @@ tracked report and this status record.
 测量协议实现与 source-only preflight；Pair53/66 Tracking MVE 的 R0-R9 决策也已冻结。
 Pair53/66 MVE 已在独立 package 完整执行，当前为
 `PAIR53_PAIR66_MVE_PASS / POST_MVE_IMPLEMENTATION_FREEZE_READY /
-READY_FOR_FROZEN_15_PAIR_DEVELOPMENT / SCIENTIFIC_OUTCOME_EMBARGO_ACTIVE`：22/22
+FROZEN_15_PAIR_DEVELOPMENT_EXECUTOR_READY /
+READY_FOR_MANUAL_15_PAIR_DEVELOPMENT_LAUNCH / SCIENTIFIC_OUTCOME_EMBARGO_ACTIVE`：22/22
 scientific attempts accepted、8/8 instrumentation qualifications passed，运行时 guard、Y00
 exact parity、cache 完整性和 Source-MDA real integration 已通过 execution/measurement audit。
 本状态不读取或解释 Pair53/66 的 scientific outcome；下一步只能单独授权冻结的 15-pair
-development，不能先解封这两个 MVE pairs 的科学数值。
+development。15-pair/d1--d5 的 255-row package 已静态 render，但尚未启动；不能先解封这两个
+MVE pairs 的科学数值。
 
 历史 E024 的 R1-R3 研究设计答辩已完成；Route B 的 Source-MDA 协议权威审计已另行完成：
 
@@ -63,7 +65,8 @@ XML、1,610,691 条 source rows 的 fresh preflight 已通过。其后 Pair53/66
 successful package 已完成 execution/measurement audit：22/22 accepted、8/8 qualification passed，
 Y00 exact parity、runtime guards、cache integrity 和 Source-MDA real integration 均为 PASS。
 当前状态是 `PAIR53_PAIR66_MVE_PASS / POST_MVE_IMPLEMENTATION_FREEZE_READY /
-READY_FOR_FROZEN_15_PAIR_DEVELOPMENT / SCIENTIFIC_OUTCOME_EMBARGO_ACTIVE`。10 train holdout 与全部
+FROZEN_15_PAIR_DEVELOPMENT_EXECUTOR_READY /
+READY_FOR_MANUAL_15_PAIR_DEVELOPMENT_LAUNCH / SCIENTIFIC_OUTCOME_EMBARGO_ACTIVE`。10 train holdout 与全部
 5 val pairs 仍未被 tracking 消费；Pair53/66 的 scientific values 不得读取或解释。此前的
 `Y01_PARAMETERIZATION_AUTHORITY_GAP` 已由 source-only frozen-runtime parity audit 关闭，
 `Y01_d1` 是与 d3/d5 prediction-facing 等价的 canonical singleton。下一步只能是单独授权的
