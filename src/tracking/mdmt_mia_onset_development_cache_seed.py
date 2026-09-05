@@ -60,7 +60,8 @@ def package_manifest(root: Path) -> dict:
     frozen = json.loads((root / 'DEVELOPMENT_EXECUTION_PLAN_MANIFEST.json').read_text())
     specs = development.plan(root)
     references = development.reference_plan(root)
-    if frozen.get('specs') != [spec.as_dict() for spec in specs] or frozen.get('reference_parity_specs') != [spec.as_dict() for spec in references]:
+    if (frozen.get('specs') != development.rendered_specs(specs)
+            or frozen.get('reference_parity_specs') != development.rendered_specs(references)):
         raise MvePreflightError('development execution mapping differs from frozen package')
     for spec in specs:
         if (spec.env.get('MIA_DETECTION_CACHE_MODE') != 'read'

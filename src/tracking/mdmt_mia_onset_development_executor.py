@@ -10,7 +10,7 @@ import json
 import os
 import subprocess
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Mapping
 
 from tracking.mdmt_mia_onset_mve import MvePreflightError, canonical_json
 from tracking import mdmt_mia_onset_executor as inherited
@@ -125,6 +125,26 @@ def plan(output_root: Path) -> list[inherited.ExecutionSpec]:
 
 def reference_plan(output_root: Path) -> list[inherited.ExecutionSpec]:
     return [resolve(pair, 'Y00', output_root, role='REFERENCE') for pair in DEVELOPMENT_PAIRS]
+
+
+def rendered_specs(specs: list[inherited.ExecutionSpec]) -> list[dict[str, object]]:
+    """Serialize a plan without repeatedly re-hashing unchanged variant trees."""
+    variant_digests: dict[Path, str] = {}
+    rows = []
+    for spec in specs:
+        tree = variant_digests.setdefault(spec.variant, inherited.tree_digest(spec.variant))
+        rows.append({
+            'pair': spec.pair, 'logical_condition': spec.logical, 'physical_condition': spec.physical,
+            'delay': spec.delay, 'role': spec.role, 'author_variant': str(spec.variant),
+            'author_variant_digest': tree, 'author_entrypoint': 'demo/supplement_MIA.py',
+            'argv': list(spec.argv), 'environment': spec.env,
+            'prediction_artifacts': [str(path) for path in inherited.prediction_paths(spec)],
+            'source_mda_gt': [str(spec.gt1), str(spec.gt2)],
+            'evaluator': 'evaluation.mdmt_mia_paper.cross_view_mda',
+            'runtime_gate_profile': list(inherited.GATE_ARTIFACTS),
+            'attempt_root_template': str(spec.output_root / 'attempts' / spec.pair / spec.logical / 'attempt_<n>'),
+        })
+    return rows
 
 
 def execute_and_accept(spec: inherited.ExecutionSpec, *, reference: inherited.ReferenceArtifacts | None = None,
