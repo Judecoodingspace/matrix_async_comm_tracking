@@ -92,3 +92,36 @@ OUTCOME_EMBARGO_CHANGED = NO
 No detector was run or seeded, and no development or MVE scientific output was
 opened. This closure changes only development cache-root rendering, validation,
 and seed plumbing.
+
+## Interrupted seed attempt closure
+
+The first manual v4 cache seed reached Pair53's staging cache successfully but
+stopped before Pair66 because the implementation reused an exclusive
+`author.log` path. It is now immutable failed evidence:
+
+```text
+v4/cache_seed/attempt_001
+state = FAILED
+failed_pair = 66
+failure = AUTHOR_LOG_PATH_COLLISION_PRE_REPAIR
+canonical cache entries = 0
+```
+
+The repair gives each pair a unique `author_<pair>.log`, dynamically allocates
+the next `attempt_NNN`, and fail-closes both the attempt manifest and public
+status on any exception. No staging cache is promoted after failure.
+
+The new manual-seed package is:
+
+```text
+outputs/20260905_mdmt_mia_frozen_15_pair_development_v5
+
+DEVELOPMENT_EXECUTION_PACKAGE_MANIFEST.json
+649a73d36d8b0f1a49627d7b69585e91280e3232260ee401a390b44c373ef05d
+
+DEVELOPMENT_EXECUTION_PLAN_MANIFEST.json
+c5b1aa40bbe1c2d2caf84f5f0e368ca7b9e5559abef887d0be1819c98fce0e08
+```
+
+`package_manifest(v5)` passes. The v5 root has no cache entries and no
+scientific attempt; it is the only root to use for the next manual seed.
