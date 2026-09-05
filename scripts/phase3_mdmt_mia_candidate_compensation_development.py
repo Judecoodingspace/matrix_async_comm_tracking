@@ -20,8 +20,8 @@ def render(root: Path) -> dict[str, object]:
     references = development.reference_plan(root)
     commit = subprocess.check_output(('git', 'rev-parse', 'HEAD'), text=True).strip()
     plan = {'schema_version': 1, 'implementation_commit': commit, 'scientific_expected': 255,
-            'qualification_expected': 0, 'specs': [spec.as_dict() for spec in specs],
-            'reference_parity_specs': [spec.as_dict() for spec in references]}
+            'qualification_expected': 0, 'specs': development.rendered_specs(specs),
+            'reference_parity_specs': development.rendered_specs(references)}
     plan_path = root / 'DEVELOPMENT_EXECUTION_PLAN_MANIFEST.json'
     plan_path.write_bytes(canonical_json(plan))
     manifest = {'schema_version': 1, 'state': 'FROZEN_DEVELOPMENT_EXECUTION_PACKAGE',
