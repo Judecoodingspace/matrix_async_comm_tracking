@@ -1,6 +1,6 @@
 # Current Status
 
-Updated: 2026-09-04
+Updated: 2026-09-05
 
 ## Latest governance closure
 
@@ -1482,3 +1482,17 @@ Exact next command from the authenticated project terminal:
 ```bash
 bash scripts/manage_github_tracklet_transition.sh
 ```
+# 2026-09-05: manual train detector-cache preparation integration
+
+Pair53/66 cache seed adapter is ready for researcher-operated execution:
+`scripts/seed_mdmt_mia_onset_detector_cache.py` (`plan`, `seed`, `status`, `verify`).
+It reuses the unchanged E023 NPZ writer, isolates engineering attempts and only
+publishes a complete, provenance-bound shared cache. Real train inputs imply
+1000 entries for Pair53 and 600 for Pair66. Neither cache was seeded here.
+Reference remains live; all existing packetized scientific/qualification paths
+remain cache-read. Existing execution package and executor semantics are unchanged.
+
+Focused verification: 25 passed (new cache fixtures plus existing executor tests);
+py_compile and diff whitespace checks passed. No real scientific/qualification
+run or outcome read. Next manual commands and the API-only MVE invocation:
+`summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/DETECTOR_CACHE_SEED_INTEGRATION.md`.
