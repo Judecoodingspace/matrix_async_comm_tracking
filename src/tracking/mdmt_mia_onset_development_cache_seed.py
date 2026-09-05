@@ -99,6 +99,26 @@ def _write(path: Path, value: dict) -> None:
     temporary.replace(path)
 
 
+def mark_interrupted_attempt_failed(root: Path, *, reason: str) -> None:
+    """Fail-close an interrupted pre-publication seed attempt without reuse."""
+    root = root.resolve()
+    status_path = root / 'cache_seed' / 'status.json'
+    status = json.loads(status_path.read_text())
+    attempt_name = str(status.get('attempt') or 'attempt_001')
+    attempt = root / 'cache_seed' / attempt_name
+    manifest_path = attempt / 'seed_manifest.json'
+    if status.get('state') != 'RUNNING' or not manifest_path.is_file() or (root / 'detector_cache').exists():
+        raise MvePreflightError('interrupted seed attempt is not eligible for fail-close')
+    manifest = json.loads(manifest_path.read_text())
+    if manifest.get('state') != 'RUNNING':
+        raise MvePreflightError('seed attempt is already terminal')
+    manifest.update({'state': 'FAILED', 'failed_pair': status.get('current_pair'), 'failure': reason})
+    _write(manifest_path, manifest)
+    _write(status_path, {'state': 'STOPPED', 'attempt': attempt_name,
+                         'current_pair': status.get('current_pair'),
+                         'pair_index': status.get('pair_index')})
+
+
 def _files(path: Path) -> dict[str, Path]:
     return {item.name: item for item in path.glob('*.npz') if item.is_file()}
 
@@ -140,32 +160,50 @@ def seed(root: Path, *, runner=subprocess.run) -> None:
     if canonical.exists():
         raise MvePreflightError('existing development cache is incomplete; refusing overwrite')
     seed_root = root / 'cache_seed'; seed_root.mkdir(exist_ok=True)
-    attempt = seed_root / 'attempt_001'
+    ordinal = 1
+    while (seed_root / f'attempt_{ordinal:03d}').exists():
+        ordinal += 1
+    attempt = seed_root / f'attempt_{ordinal:03d}'
     attempt.mkdir(exist_ok=False); cache = attempt / 'detector_cache'; cache.mkdir()
     before = identity(root)
     expected: set[str] = set()
-    for ordinal, pair in enumerate(development.DEVELOPMENT_PAIRS, 1):
-        _write(seed_root / 'status.json', {'state': 'RUNNING', 'current_pair': pair, 'pair_index': ordinal})
-        _write(attempt / 'seed_manifest.json', {'state': 'RUNNING', 'identity': before})
-        spec = seed_spec(pair, root, attempt, cache); _write(attempt / f'command_{pair}.json', spec)
-        env = {key: value for key, value in os.environ.items() if not key.startswith(('MIA_', 'MDMT_', 'PYTHON')) and key != 'DEVICE'}
-        env.update(spec['environment'])
-        with (attempt / 'author.log').open('xb') as log:
-            result = runner(spec['argv'], cwd=REPO, env=env, stdout=log, stderr=subprocess.STDOUT, check=False)
-        expected.update(before['images'][pair])
-        if result.returncode or set(_files(cache)) != expected:
-            _write(attempt / 'seed_manifest.json', {'state': 'FAILED', 'identity': before})
-            _write(seed_root / 'status.json', {'state': 'STOPPED', 'current_pair': pair, 'pair_index': ordinal})
-            raise MvePreflightError('cache seed failed for pair ' + pair)
-    if identity(root) != before:
-        raise MvePreflightError('detector inputs changed during seeding')
-    for path in _files(cache).values():
-        if path.is_symlink(): raise MvePreflightError('cache symlink forbidden')
-        common.validate_npz(path)
-    record = {'state': 'COMPLETE', 'identity': before,
-              'cache_sha256': {name: _digest(path) for name, path in sorted(_files(cache).items())}}
-    _write(cache / 'cache_manifest.json', record)
-    for path in cache.iterdir(): path.chmod(0o444)
-    cache.rename(canonical); canonical.chmod(0o555)
-    _write(attempt / 'seed_manifest.json', record)
-    _write(seed_root / 'status.json', {'state': 'COMPLETE', 'current_pair': None, 'pair_index': None})
+    current_pair: str | None = None
+    pair_index: int | None = None
+    _write(attempt / 'seed_manifest.json', {'state': 'RUNNING', 'identity': before})
+    try:
+        for pair_index, current_pair in enumerate(development.DEVELOPMENT_PAIRS, 1):
+            _write(seed_root / 'status.json', {'state': 'RUNNING', 'attempt': attempt.name,
+                                               'current_pair': current_pair, 'pair_index': pair_index})
+            spec = seed_spec(current_pair, root, attempt, cache)
+            _write(attempt / f'command_{current_pair}.json', spec)
+            env = {key: value for key, value in os.environ.items()
+                   if not key.startswith(('MIA_', 'MDMT_', 'PYTHON')) and key != 'DEVICE'}
+            env.update(spec['environment'])
+            with (attempt / f'author_{current_pair}.log').open('xb') as log:
+                result = runner(spec['argv'], cwd=REPO, env=env, stdout=log,
+                                stderr=subprocess.STDOUT, check=False)
+            expected.update(before['images'][current_pair])
+            if result.returncode or set(_files(cache)) != expected:
+                raise MvePreflightError('cache seed failed for pair ' + current_pair)
+        if identity(root) != before:
+            raise MvePreflightError('detector inputs changed during seeding')
+        for path in _files(cache).values():
+            if path.is_symlink():
+                raise MvePreflightError('cache symlink forbidden')
+            common.validate_npz(path)
+        record = {'state': 'COMPLETE', 'identity': before,
+                  'cache_sha256': {name: _digest(path) for name, path in sorted(_files(cache).items())}}
+        _write(cache / 'cache_manifest.json', record)
+        for path in cache.iterdir():
+            path.chmod(0o444)
+        cache.rename(canonical); canonical.chmod(0o555)
+        _write(attempt / 'seed_manifest.json', record)
+        _write(seed_root / 'status.json', {'state': 'COMPLETE', 'attempt': attempt.name,
+                                           'current_pair': None, 'pair_index': None})
+    except BaseException as exc:
+        _write(attempt / 'seed_manifest.json', {'state': 'FAILED', 'identity': before,
+                                                'failed_pair': current_pair,
+                                                'failure': str(exc)})
+        _write(seed_root / 'status.json', {'state': 'STOPPED', 'attempt': attempt.name,
+                                           'current_pair': current_pair, 'pair_index': pair_index})
+        raise
