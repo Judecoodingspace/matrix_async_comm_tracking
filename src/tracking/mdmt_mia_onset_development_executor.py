@@ -104,7 +104,10 @@ def resolve(pair: str, logical: str, output_root: Path, *, role: str = 'PACKETIZ
             'MIA_CASCADE_EDGE_CUT': '1' if logical.startswith('Yec_') else '0',
             'MIA_CASCADE_SHADOW': '1' if logical.startswith(('Y10_', 'Yec_')) else '0',
             'MIA_CASCADE_LOGGING': '1',
-            'MIA_DETECTION_CACHE_ROOT': str((output_root / 'detector_cache' / str(pair)).resolve()),
+            # E023 and the accepted Pair53/66 package use one canonical cache
+            # root. Resolved absolute-image-path SHA-256 keys partition entries
+            # by pair without adding a second, unaccepted directory topology.
+            'MIA_DETECTION_CACHE_ROOT': str((output_root / 'detector_cache').resolve()),
             'MIA_DETECTION_CACHE_MODE': 'read',
         })
     return inherited.ExecutionSpec(str(pair), row[0], row[1], row[2], role, variant, root,

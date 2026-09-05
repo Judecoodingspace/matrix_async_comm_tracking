@@ -1,8 +1,9 @@
-"""Manual-only, pair-specific detector-cache preparation for development.
+"""Manual-only shared-canonical detector-cache preparation for development.
 
 There is no live-detector fallback in a packetized development condition.  A
-cache is published independently for each frozen development pair only after
-its full image population has been written and validated.
+The E023 cache hook namespaces entries by resolved absolute image-path SHA-256.
+One canonical immutable cache is therefore populated across all frozen pairs;
+the manifest still records per-pair expected populations.
 """
 from __future__ import annotations
 
@@ -62,21 +63,23 @@ def package_manifest(root: Path) -> dict:
     if frozen.get('specs') != [spec.as_dict() for spec in specs] or frozen.get('reference_parity_specs') != [spec.as_dict() for spec in references]:
         raise MvePreflightError('development execution mapping differs from frozen package')
     for spec in specs:
-        if spec.env.get('MIA_DETECTION_CACHE_MODE') != 'read' or spec.env.get('MIA_DETECTION_CACHE_ROOT') != str(root / 'detector_cache' / spec.pair):
-            raise MvePreflightError('pair-specific cache-read policy mismatch')
+        if (spec.env.get('MIA_DETECTION_CACHE_MODE') != 'read'
+                or spec.env.get('MIA_DETECTION_CACHE_ROOT') != str((root / 'detector_cache').resolve())):
+            raise MvePreflightError('shared canonical cache-read policy mismatch')
     if any('MIA_DETECTION_CACHE_ROOT' in spec.env for spec in references):
         raise MvePreflightError('reference must retain live detector role')
     return payload
 
 
-def pair_identity(root: Path, pair: str) -> dict:
+def identity(root: Path) -> dict:
     return {'execution_package_sha256': _digest(root / 'DEVELOPMENT_EXECUTION_PACKAGE_MANIFEST.json'),
-            'pair': pair, 'split': 'train', 'device': 'cuda:0', 'seed': 7,
+            'pairs': list(development.DEVELOPMENT_PAIRS), 'split': 'train', 'device': 'cuda:0', 'seed': 7,
             'detector_config': str(common.CONFIG), 'config_sha256': common.config_fingerprints(common.CONFIG),
             'checkpoint': str(common.CHECKPOINT), 'checkpoint_sha256': _digest(common.CHECKPOINT),
             'cache_hook_sha256': _digest(common.HOOK),
-            'images': {name: {'path': str(path), 'sha256': _digest(path)}
-                       for name, path in image_population(pair).items()}}
+            'images': {pair: {name: {'path': str(path), 'sha256': _digest(path)}
+                              for name, path in image_population(pair).items()}
+                       for pair in development.DEVELOPMENT_PAIRS}}
 
 
 def seed_spec(pair: str, root: Path, attempt: Path, cache: Path) -> dict:
@@ -101,30 +104,28 @@ def _files(path: Path) -> dict[str, Path]:
 
 def status(root: Path, *, verify: bool = False) -> dict:
     root = root.resolve()
+    cache = root / 'detector_cache'; files = _files(cache)
+    all_expected = {name for pair in development.DEVELOPMENT_PAIRS for name in image_population(pair)}
+    manifest_path = cache / 'cache_manifest.json'
+    complete = False
+    if verify and manifest_path.is_file():
+        manifest = json.loads(manifest_path.read_text())
+        complete = (manifest.get('state') == 'COMPLETE' and manifest.get('identity') == identity(root)
+                    and set(files) == all_expected and set(manifest.get('cache_sha256', {})) == all_expected)
+        if complete:
+            for name, path in files.items():
+                common.validate_npz(path)
+                if path.is_symlink() or _digest(path) != manifest['cache_sha256'][name]:
+                    complete = False; break
     rows = {}
-    missing = unexpected = 0
     for pair in development.DEVELOPMENT_PAIRS:
         expected = image_population(pair)
-        cache = root / 'detector_cache' / pair
-        files = _files(cache)
-        manifest_path = cache / 'cache_manifest.json'
-        complete = False
-        if verify and manifest_path.is_file():
-            manifest = json.loads(manifest_path.read_text())
-            complete = (manifest.get('state') == 'COMPLETE' and manifest.get('identity') == pair_identity(root, pair)
-                        and set(files) == set(expected) and set(manifest.get('cache_sha256', {})) == set(expected))
-            if complete:
-                for name, path in files.items():
-                    common.validate_npz(path)
-                    if path.is_symlink() or _digest(path) != manifest['cache_sha256'][name]:
-                        complete = False
-                        break
-        rows[pair] = {'expected': len(expected), 'actual': len(set(files) & set(expected)), 'complete': complete}
-        missing += len(set(expected) - set(files)); unexpected += len(set(files) - set(expected))
+        rows[pair] = {'expected': len(expected), 'actual': len(set(files) & set(expected)),
+                      'complete': complete and set(expected) <= set(files)}
     state_path = root / 'cache_seed/status.json'
     state = json.loads(state_path.read_text()) if state_path.is_file() else {'state': 'NOT_STARTED'}
     return {'state': state.get('state'), 'current_pair': state.get('current_pair'), 'pairs': rows,
-            'missing': missing, 'unexpected': unexpected,
+            'missing': len(all_expected - set(files)), 'unexpected': len(set(files) - all_expected),
             'verification': 'PASS' if all(row['complete'] for row in rows.values()) else 'CACHE_PROVENANCE_OR_CONTENT_MISMATCH'}
 
 
@@ -132,35 +133,38 @@ def seed(root: Path, *, runner=subprocess.run) -> None:
     root = root.resolve(); package_manifest(root)
     if subprocess.check_output(['git', 'status', '--porcelain'], cwd=REPO, text=True).strip():
         raise MvePreflightError('worktree must be clean before manual seeding')
-    existing = root / 'detector_cache'
-    if existing.exists() and all(row['complete'] for row in status(root, verify=True)['pairs'].values()):
+    canonical = root / 'detector_cache'
+    if canonical.exists() and all(row['complete'] for row in status(root, verify=True)['pairs'].values()):
         print('DEVELOPMENT_DETECTOR_CACHE_ALREADY_VERIFIED'); return
-    if existing.exists():
+    if canonical.exists():
         raise MvePreflightError('existing development cache is incomplete; refusing overwrite')
     seed_root = root / 'cache_seed'; seed_root.mkdir(exist_ok=True)
+    attempt = seed_root / 'attempt_001'
+    attempt.mkdir(exist_ok=False); cache = attempt / 'detector_cache'; cache.mkdir()
+    before = identity(root)
+    expected: set[str] = set()
     for ordinal, pair in enumerate(development.DEVELOPMENT_PAIRS, 1):
-        attempt = seed_root / f'{pair}_attempt_001'
-        attempt.mkdir(exist_ok=False); cache = attempt / 'detector_cache'; cache.mkdir()
-        identity = pair_identity(root, pair)
         _write(seed_root / 'status.json', {'state': 'RUNNING', 'current_pair': pair, 'pair_index': ordinal})
-        _write(attempt / 'seed_manifest.json', {'state': 'RUNNING', 'identity': identity})
-        spec = seed_spec(pair, root, attempt, cache); _write(attempt / 'command.json', spec)
+        _write(attempt / 'seed_manifest.json', {'state': 'RUNNING', 'identity': before})
+        spec = seed_spec(pair, root, attempt, cache); _write(attempt / f'command_{pair}.json', spec)
         env = {key: value for key, value in os.environ.items() if not key.startswith(('MIA_', 'MDMT_', 'PYTHON')) and key != 'DEVICE'}
         env.update(spec['environment'])
         with (attempt / 'author.log').open('xb') as log:
             result = runner(spec['argv'], cwd=REPO, env=env, stdout=log, stderr=subprocess.STDOUT, check=False)
-        if result.returncode or set(_files(cache)) != set(identity['images']):
-            _write(attempt / 'seed_manifest.json', {'state': 'FAILED', 'identity': identity})
+        expected.update(before['images'][pair])
+        if result.returncode or set(_files(cache)) != expected:
+            _write(attempt / 'seed_manifest.json', {'state': 'FAILED', 'identity': before})
             _write(seed_root / 'status.json', {'state': 'STOPPED', 'current_pair': pair, 'pair_index': ordinal})
             raise MvePreflightError('cache seed failed for pair ' + pair)
-        for path in _files(cache).values():
-            if path.is_symlink(): raise MvePreflightError('cache symlink forbidden')
-            common.validate_npz(path)
-        record = {'state': 'COMPLETE', 'identity': identity,
-                  'cache_sha256': {name: _digest(path) for name, path in sorted(_files(cache).items())}}
-        _write(cache / 'cache_manifest.json', record)
-        for path in cache.iterdir(): path.chmod(0o444)
-        target = root / 'detector_cache' / pair; target.parent.mkdir(exist_ok=True)
-        cache.rename(target); target.chmod(0o555)
-        _write(attempt / 'seed_manifest.json', record)
+    if identity(root) != before:
+        raise MvePreflightError('detector inputs changed during seeding')
+    for path in _files(cache).values():
+        if path.is_symlink(): raise MvePreflightError('cache symlink forbidden')
+        common.validate_npz(path)
+    record = {'state': 'COMPLETE', 'identity': before,
+              'cache_sha256': {name: _digest(path) for name, path in sorted(_files(cache).items())}}
+    _write(cache / 'cache_manifest.json', record)
+    for path in cache.iterdir(): path.chmod(0o444)
+    cache.rename(canonical); canonical.chmod(0o555)
+    _write(attempt / 'seed_manifest.json', record)
     _write(seed_root / 'status.json', {'state': 'COMPLETE', 'current_pair': None, 'pair_index': None})

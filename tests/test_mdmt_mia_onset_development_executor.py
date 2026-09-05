@@ -41,7 +41,7 @@ def test_roles_cache_paths_and_delays_are_frozen(monkeypatch, tmp_path):
     root = tmp_path / 'package'
     y11 = development.resolve('53', 'Y11_d2', root)
     assert json.loads(y11.env['MIA_ASYNC_CHANNEL_DELAYS']) == {'local': 0, 'homography': 0, 'id_state': 2, 'supplement': 2}
-    assert y11.env['MIA_DETECTION_CACHE_ROOT'] == str(root.resolve() / 'detector_cache' / '53')
+    assert y11.env['MIA_DETECTION_CACHE_ROOT'] == str(root.resolve() / 'detector_cache')
     reference = development.resolve('53', 'Y00', root, role='REFERENCE')
     assert reference.env['MIA_IMPORT_VARIANT_MMTRACK'] == '0'
     assert not any(key.startswith('MIA_DETECTION_CACHE') or key.startswith('MIA_ASYNC') for key in reference.env)
