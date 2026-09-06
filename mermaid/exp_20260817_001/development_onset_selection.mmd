@@ -1,0 +1,7 @@
+flowchart LR
+    D1[d1: A-F PASS] -->|first qualifying delay| LOCK[Lock onset d*=d1]
+    D2[d2: A-F PASS] --> DESC[Later delays: descriptive only]
+    D3[d3: A-F PASS] --> DESC
+    D4[d4: A-F PASS] --> DESC
+    D5[d5: Gate A FAIL] --> DESC
+    LOCK --> AUTH[Separate holdout authorization required]

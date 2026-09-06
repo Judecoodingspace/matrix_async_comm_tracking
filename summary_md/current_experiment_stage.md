@@ -22,10 +22,10 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
 - Pair53/66 Tracking MVE 已以新、独立 package 完整执行；22/22 scientific attempts accepted、
   8/8 instrumentation qualifications passed、Y00 双视角 exact parity 与 Source-MDA real path
   均通过。实现/测量有效性审计为 `PAIR53_PAIR66_MVE_PASS`，并已进入
-  `POST_MVE_IMPLEMENTATION_FREEZE_READY / FROZEN_15_PAIR_DEVELOPMENT_EXECUTOR_READY /
-  READY_FOR_MANUAL_15_PAIR_DEVELOPMENT_LAUNCH`。15-pair/d1--d5 的 255-row package 已静态验证；
-  outcome embargo 保持 active，尚未启动 development。
-  Pair53/66 的 scientific outcome embargo 保持 active：不得读取或解释其中的科学数值。
+  `FROZEN_15_PAIR_DEVELOPMENT_EXECUTION_COMPLETE / DEVELOPMENT_MEASUREMENT_VALIDITY_PASS /
+  DEVELOPMENT_FULL_REPLICATION / EARLIEST_ONSET_D1`。15-pair/d1--d5 的 255-row package 已完整
+  执行并完成一次性 scientific unblinding。ID-delay harm 在五档均复现；d1--d4 通过 A--F，d5
+  仅 Gate A 失败。按冻结升序规则锁定 `d*=d1`，但 holdout confirmation 尚未获授权或执行。
   `Y01_d1` 是已关闭的 canonical singleton。不得运行旧 `RUN_PLAN.md` 的 Pair22/72 命令。
 - 后续 MVE 只能使用冻结 development manifest 的前两个 pairs `53, 66`；10 train holdout 和全部
   val pairs 必须保持未消费直至 locked confirmation。
@@ -33,6 +33,8 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
   出现在 `10/15` development pairs，不能只在 pooled 数据中非零。
 - 执行顺序冻结为：Research Decisions resolved -> GT protocol gate -> infrastructure -> two-pair MVE ->
   development sweep -> locked holdout confirmation -> scientific decision。
+- 当前下一步为 `LOCK d1 AND PREPARE HOLDOUT CONFIRMATION`；不得自动运行 10 train holdout 或
+  5 val pairs。
 - Contract：
   `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/EXPERIMENT_CONTRACT.md`
 - Gate report:
