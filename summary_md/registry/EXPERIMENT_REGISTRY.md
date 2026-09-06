@@ -10,17 +10,23 @@ authority for each experiment's evidence and decision.
 ## Main research map
 
 ```text
-Mechanism line (MATRIX, observation/tracklet experiments)
-  mainline: delay harm -> uncertainty/authority -> fixed-lag/identity evidence
-  diagnostic/negative: Backfill and geometry-only limits; local-tracklet blocks
+Mechanism line (MDMT / MIA)
+  mainline: packet equivalence -> async state-channel audit
+            -> E023 candidate/Supplement mechanism -> Source-MDA
+            -> non-test onset validation -> locked d1 holdout
 
-Communication line (MDMT / MIA)
-  mainline: local-tracklet readiness -> packet equivalence -> channel cascade
-            -> E023 candidate/Supplement mechanism -> non-test onset validation
-  current: 15-pair development completed; locked d1 needs holdout confirmation
+Communication service line
+  diagnostic/mainline infrastructure: PacketRuntime
+  -> Packet Census -> workload/service semantics
+  -> future constrained-service / semantic-freshness experiments
 
-Route-A diagnostic line (packet census / Homography repair)
-  diagnostic: valid successor Z0 workload census; predecessor is historical invalid
+Route-A geometry diagnostic line
+  diagnostic: same SIFT+FLANN correspondences
+  -> Homography vs Fundamental Matrix -> geometry-model diagnosis
+
+The accepted Homography fallback is an engineering/runtime-validity prerequisite
+for the Packet Census successor, not a communication-method result.  Packet
+Census is therefore not Route-A scientific evidence.
 ```
 
 `mainline` marks evidence that informed the active lineage.  `diagnostic` marks
@@ -93,9 +99,9 @@ output, result, and decision.
 | `exp_20260804_003_mdmt_mia_carafe_paper_alignment_reproduction` / 2026-08-04 | Align author CARAFE/ByteTrack MIA reproduction. MDMT official test. | complete | `outputs/20260804_mdmt_mia_carafe_paper_alignment*/`; experiment card | synchronous authority predecessor | `DEVELOPMENT_ONLY` |
 | `exp_20260805_002_mdmt_mia_active_packet_runtime_equivalence` / 2026-08-05 | Does active packet runtime reproduce synchronous MIA exactly? MDMT official test. | complete | `outputs/20260805_mdmt_mia_active_packet_runtime_equivalence*/`; experiment card | packetized baseline authority | `DEVELOPMENT_ONLY` |
 | `exp_20260805_003_mdmt_mia_async_state_channel_audit` / 2026-08-05 | Which asynchronous state channels matter? MDMT official test. | complete | `outputs/20260805_mdmt_mia_async_state_channel_audit_formal_v2/`; analysis card | channel-cascade authority | `DEVELOPMENT_ONLY` |
-| `exp_20260808_001_mdmt_mia_id_supplement_cascade` / 2026-08-08 | Does delayed ID create a candidate/Supplement compensation path? MDMT official test. | complete | `outputs/20260813_mdmt_mia_id_supplement_cascade_formal_v8/`; `FORMAL_ANALYSIS_REPORT.md` | E023 mechanism authority | `DEVELOPMENT_ONLY` |
+| `exp_20260808_001_mdmt_mia_id_supplement_cascade` / 2026-08-08 | Does delayed ID create a candidate/Supplement compensation path? MDMT official test. | complete | `outputs/20260813_mdmt_mia_id_supplement_cascade_formal_v8/`; `FORMAL_ANALYSIS_REPORT.md` | formal official-test mechanism evidence; scope-limited and not non-test replication | `READY` |
 | `exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation` / 2026-08-17 | Is the E023 compensation path reproduced on frozen non-test cohorts, and at which onset? MDMT train development/holdout/val protocol with Source-MDA-v1. | development complete | `FROZEN_15_PAIR_DEVELOPMENT_SCIENTIFIC_ANALYSIS.md`; `outputs/20260906_mdmt_mia_frozen_15_pair_development_analysis_v1/` | **current mainline**; development onset is d1 | `NEEDS_HOLDOUT` |
-| `packet_census_z0_train_all_hfallback_v1` / 2026-09-03 | What is the logical Z0 packet workload after accepted H-fallback repair? 25 preaudited MDMT train pairs. | complete | `summary_md/PACKET_CENSUS_RUN_REPORT.md`; ignored successor output root | Route-A descriptive successor census | `DIAGNOSTIC_ONLY` |
+| `packet_census_z0_train_all_hfallback_v1` / 2026-09-03 | What is the logical Z0 packet workload after accepted H-fallback repair? 25 preaudited MDMT train pairs. | complete | `summary_md/PACKET_CENSUS_RUN_REPORT.md`; ignored successor output root | communication workload / service-semantics diagnostic | `DIAGNOSTIC_ONLY` |
 
 ## Current active experiment pointer
 

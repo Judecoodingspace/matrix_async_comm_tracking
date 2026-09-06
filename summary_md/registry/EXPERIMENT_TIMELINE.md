@@ -22,7 +22,7 @@ referenced contract, manifest, report, or commit.
 | 2026-09-05 | same EID | Pair53/66 MVE execution/measurement validity and frozen 15-pair development package are completed; cache-seed repair is retained as failed historical evidence. | commits `afb167b`, `657372a`, `69496bd`, `7e18f76`; post-MVE/development validity reports |
 | 2026-09-06 | same EID | Single-batch frozen 15-pair development analysis completes: d1--d4 pass A--F; frozen ascending rule selects earliest onset `d1`; d5 fails Gate A only. | commit `6c57e15`; `FROZEN_15_PAIR_DEVELOPMENT_SCIENTIFIC_ANALYSIS.md` |
 | 2026-09-06 | same EID | Non-authoritative GPT Web discussion prompt recorded; it does not change scientific execution provenance. | commit `3fb7edd`; `GPT_WEB_DISCUSSION_PROMPT.md` |
-| 2026-09-03 onward | `packet_census_z0_train_all_hfallback_v1` | Accepted Homography-fallback successor packet census completes; earlier predecessor census remains historical invalid. | [`PACKET_CENSUS_RUN_REPORT.md`](../PACKET_CENSUS_RUN_REPORT.md) |
+| 2026-09-03 onward | `packet_census_z0_train_all_hfallback_v1` | Communication workload/service-semantics diagnostic completes on the accepted Homography-fallback successor; earlier predecessor census remains historical invalid. | [`PACKET_CENSUS_RUN_REPORT.md`](../PACKET_CENSUS_RUN_REPORT.md) |
 
 ## Current onset experiment state
 
