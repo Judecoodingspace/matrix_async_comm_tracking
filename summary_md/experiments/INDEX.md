@@ -3,6 +3,10 @@
 This is the short tracked index for experiment cards. Keep each experiment to
 one row so future sessions do not need to re-read full logs.
 
+Logical navigation across immutable historical paths is available in the
+[experiment registry](../registry/EXPERIMENT_REGISTRY.md) and
+[activity timeline](../registry/EXPERIMENT_TIMELINE.md).
+
 Experiment cards are grouped by experiment date under:
 
 ```text
