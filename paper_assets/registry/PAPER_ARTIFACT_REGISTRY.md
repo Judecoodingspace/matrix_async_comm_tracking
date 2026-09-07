@@ -21,7 +21,8 @@ inferred here.
 | `SOURCE_EXPERIMENT_ID` | Authoritative experiment identifier |
 | `SOURCE_PROTOCOL` | Measurement/protocol boundary |
 | `SOURCE_BRANCH` | Source branch, or `UNKNOWN` |
-| `SOURCE_COMMIT` | Frozen execution/analysis commit, or `UNKNOWN` |
+| `SOURCE_EXECUTION_COMMIT` | Scientific execution/frozen-package code-state authority, or `UNKNOWN` |
+| `SOURCE_ANALYSIS_COMMIT` | Scientific analysis-report/manifest state authority, or `UNKNOWN` |
 | `SOURCE_PACKAGE` | Authoritative output package/root, or `UNKNOWN` |
 | `SOURCE_PACKAGE_DIGEST` | Package digest, or `UNKNOWN` |
 | `SOURCE_ANALYSIS_REPORT` | Tracked report authority |
@@ -43,22 +44,23 @@ ARTIFACT_ID = F-E023-01
 TYPE = FIGURE
 PAPER_SECTION = UNPLANNED
 SCIENTIFIC_QUESTION = Does delayed ID state create a candidate/Supplement compensation path?
-CLAIM = ID-state delay harm and candidate/Supplement compensation under E023 official-test formal evaluation.
+CLAIM = Under E023 official-test formal evaluation, delayed ID state caused MDA harm at d1 and d5; at d5, registered contrasts support a candidate-set-mediated compensation pathway with diagnostic process evidence reported separately from the pair-level inference.
 CLAIM_STATUS = READY
 SOURCE_EXPERIMENT_ID = exp_20260808_001_mdmt_mia_id_supplement_cascade
 SOURCE_PROTOCOL = E023 formal official-test MDA evaluation; Y00/Y10/Y01/Y11/Yec; paired bootstrap.
 SOURCE_BRANCH = UNKNOWN
-SOURCE_COMMIT = 7fcea6808bff2e17e435b39e3f44c00d73d92488
+SOURCE_EXECUTION_COMMIT = 7fcea6808bff2e17e435b39e3f44c00d73d92488
+SOURCE_ANALYSIS_COMMIT = e8d49b80c5bff4742ab050b0667f9b039a926513
 SOURCE_PACKAGE = outputs/20260813_mdmt_mia_id_supplement_cascade_formal_v8/
 SOURCE_PACKAGE_DIGEST = UNKNOWN
 SOURCE_ANALYSIS_REPORT = summary_md/experiments/2026-8-8/exp_20260808_001_mdmt_mia_id_supplement_joint_transaction/FORMAL_ANALYSIS_REPORT.md
 SOURCE_ANALYSIS_MANIFEST = UNKNOWN
-SOURCE_DATA = UNPLANNED; no data extracted in Phase 4A
+SOURCE_DATA = paper_assets/source_data/e023/F-E023-01_metrics.csv; paper_assets/source_data/e023/F-E023-01_PROVENANCE.md
 GENERATION_SCRIPT = UNPLANNED
 OUTPUT_FILE = UNPLANNED
 CAPTION_STATUS = UNWRITTEN
-REPRODUCIBLE = NOT_YET
-REVIEW_STATUS = UNREVIEWED
+REPRODUCIBLE = PARTIAL
+REVIEW_STATUS = SOURCE_DATA_CLOSED_PENDING_FIGURE_DESIGN
 PROTOCOL_BOUNDARY = Formal official-test mechanism evidence; scope-limited; not non-test replication; not deployable-policy evidence.
 ```
 
@@ -74,7 +76,8 @@ CLAIM_STATUS = NEEDS_HOLDOUT
 SOURCE_EXPERIMENT_ID = exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation
 SOURCE_PROTOCOL = MDMT_SOURCE_ANNOTATION_MDA_V1; frozen 15-pair train development cohort; pair bootstrap with 10,000 resamples and default_rng(7).
 SOURCE_BRANCH = exp/20260903-001-mdmt-mia-p39-homography-fallback-successor-census
-SOURCE_COMMIT = 47ce0fd35f1d9e7c10465297f5dcaf6b69117fab
+SOURCE_EXECUTION_COMMIT = 47ce0fd35f1d9e7c10465297f5dcaf6b69117fab
+SOURCE_ANALYSIS_COMMIT = 6c57e15fcf00f2a4c939ad98bcb203e1f958a5a3
 SOURCE_PACKAGE = outputs/20260905_mdmt_mia_frozen_15_pair_development_v5/
 SOURCE_PACKAGE_DIGEST = 649a73d36d8b0f1a49627d7b69585e91280e3232260ee401a390b44c373ef05d
 SOURCE_ANALYSIS_REPORT = summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/FROZEN_15_PAIR_DEVELOPMENT_SCIENTIFIC_ANALYSIS.md
@@ -100,7 +103,8 @@ CLAIM_STATUS = NEEDS_HOLDOUT
 SOURCE_EXPERIMENT_ID = exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation
 SOURCE_PROTOCOL = MDMT_SOURCE_ANNOTATION_MDA_V1; frozen 15-pair train development cohort; pair bootstrap with 10,000 resamples and default_rng(7).
 SOURCE_BRANCH = exp/20260903-001-mdmt-mia-p39-homography-fallback-successor-census
-SOURCE_COMMIT = 47ce0fd35f1d9e7c10465297f5dcaf6b69117fab
+SOURCE_EXECUTION_COMMIT = 47ce0fd35f1d9e7c10465297f5dcaf6b69117fab
+SOURCE_ANALYSIS_COMMIT = 6c57e15fcf00f2a4c939ad98bcb203e1f958a5a3
 SOURCE_PACKAGE = outputs/20260905_mdmt_mia_frozen_15_pair_development_v5/
 SOURCE_PACKAGE_DIGEST = 649a73d36d8b0f1a49627d7b69585e91280e3232260ee401a390b44c373ef05d
 SOURCE_ANALYSIS_REPORT = summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/FROZEN_15_PAIR_DEVELOPMENT_SCIENTIFIC_ANALYSIS.md

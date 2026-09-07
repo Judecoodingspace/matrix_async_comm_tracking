@@ -1,0 +1,7 @@
+metric_family,metric_name,delay,estimate,ci_lower,ci_upper,registered_direction_pairs,total_pairs,source_authority
+delay_harm,D_ID,d1,0.013350,0.003154,0.023453,13,14,FORMAL_ANALYSIS_REPORT.md_Q1
+delay_harm,D_ID,d5,0.025750,0.012466,0.039962,13,14,FORMAL_ANALYSIS_REPORT.md_Q1
+compensation,R_edge,d1,0.000355,-0.002629,0.003467,7,14,FORMAL_ANALYSIS_REPORT.md_Q3
+compensation,R_edge,d5,-0.018329,-0.036894,-0.004305,10,14,FORMAL_ANALYSIS_REPORT.md_Q3
+compensation,C_comp,d1,0.021017,-0.004635,0.052553,8,14,FORMAL_ANALYSIS_REPORT.md_Q2
+compensation,C_comp,d5,0.049913,0.014343,0.096598,10,14,FORMAL_ANALYSIS_REPORT.md_Q2
