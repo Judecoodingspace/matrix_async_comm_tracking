@@ -56,13 +56,46 @@ SOURCE_PACKAGE_DIGEST = UNKNOWN
 SOURCE_ANALYSIS_REPORT = summary_md/experiments/2026-8-8/exp_20260808_001_mdmt_mia_id_supplement_joint_transaction/FORMAL_ANALYSIS_REPORT.md
 SOURCE_ANALYSIS_MANIFEST = UNKNOWN
 SOURCE_DATA = paper_assets/source_data/e023/F-E023-01_metrics.csv; paper_assets/source_data/e023/F-E023-01_PROVENANCE.md
-GENERATION_SCRIPT = UNPLANNED
-OUTPUT_FILE = UNPLANNED; pending table-artifact reclassification review
-CAPTION_STATUS = TABLE_DESIGN_ONLY
+GENERATION_SCRIPT = NOT_PLANNED_AFTER_TABLE_PREFERENCE
+OUTPUT_FILE = NOT_PLANNED_AFTER_TABLE_PREFERENCE
+CAPTION_STATUS = PRESENTATION_SUPERSEDED
 REPRODUCIBLE = PARTIAL
-REVIEW_STATUS = TABLE_RECOMMENDED_PENDING_ARTIFACT_RECLASSIFICATION
+REVIEW_STATUS = SUPERSEDED_AS_PRESENTATION_BY_T-E023-01
 PROTOCOL_BOUNDARY = Formal official-test mechanism evidence; scope-limited; not non-test replication; not deployable-policy evidence.
 ```
+
+`F-E023-01` remains a valid scientific evidence candidate.  Only its
+presentation candidate is superseded by `T-E023-01`.
+
+### T-E023-01
+
+```text
+ARTIFACT_ID = T-E023-01
+TYPE = TABLE
+PAPER_SECTION = UNPLANNED
+SCIENTIFIC_QUESTION = Does delayed ID state create measurable harm and registered compensation evidence under E023 official-test formal evaluation?
+CLAIM = Under E023 official-test formal evaluation, delayed ID state caused measurable MDA harm at d1 and d5; at d5, the registered compensation contrasts were consistent with the candidate-set compensation mechanism, while diagnostic process evidence was evaluated separately from the pair-level inference.
+CLAIM_STATUS = READY
+SOURCE_EXPERIMENT_ID = exp_20260808_001_mdmt_mia_id_supplement_cascade
+SOURCE_PROTOCOL = E023 formal official-test MDA evaluation; Y00/Y10/Y01/Y11/Yec; paired bootstrap.
+SOURCE_BRANCH = UNKNOWN
+SOURCE_EXECUTION_COMMIT = 7fcea6808bff2e17e435b39e3f44c00d73d92488
+SOURCE_ANALYSIS_COMMIT = e8d49b80c5bff4742ab050b0667f9b039a926513
+SOURCE_PACKAGE = outputs/20260813_mdmt_mia_id_supplement_cascade_formal_v8/
+SOURCE_PACKAGE_DIGEST = UNKNOWN
+SOURCE_ANALYSIS_REPORT = summary_md/experiments/2026-8-8/exp_20260808_001_mdmt_mia_id_supplement_joint_transaction/FORMAL_ANALYSIS_REPORT.md
+SOURCE_ANALYSIS_MANIFEST = UNKNOWN
+SOURCE_DATA = paper_assets/source_data/e023/F-E023-01_metrics.csv; paper_assets/source_data/e023/F-E023-01_PROVENANCE.md
+GENERATION_SCRIPT = paper_assets/scripts/generate_T_E023_01.py (planned)
+OUTPUT_FILE = paper_assets/tables/T-E023-01.tex (planned)
+CAPTION_STATUS = TABLE_CONTRACT_FROZEN
+REPRODUCIBLE = PARTIAL
+REVIEW_STATUS = TABLE_CONTRACT_FROZEN_PENDING_GENERATION; DERIVED_FROM_PRESENTATION_REVIEW = F-E023-01_PRESENTATION_DESIGN.md; PREDECESSOR_PRESENTATION_CANDIDATE = F-E023-01; PRESENTATION_DECISION = TABLE_PREFERRED
+PROTOCOL_BOUNDARY = Formal official-test mechanism evidence; scope-limited; not non-test replication; not deployable-policy evidence; not monotonic delay-response; not final causal-mediation proof.
+```
+
+No table is rendered by this registration.  The frozen contract is recorded in
+[`T-E023-01_TABLE_CONTRACT.md`](T-E023-01_TABLE_CONTRACT.md).
 
 ### F-DEV-01
 
@@ -118,5 +151,4 @@ REVIEW_STATUS = UNREVIEWED
 PROTOCOL_BOUNDARY = Development evidence only; Source-MDA-v1; not official train GT; R_edge/C_comp remain registered development analysis until locked holdout confirmation.
 ```
 
-No optional candidates are registered in Phase 4A.  No source-data, script,
-figure, table, numeric extract, or caption is created by this registry.
+No scientific source-data or numeric extract is changed by this registry.
