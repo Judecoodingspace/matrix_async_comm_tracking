@@ -216,6 +216,100 @@ mechanism rules, interpretation, failure semantics, and outcome embargo must
 be frozen.  Whether validation executes does not depend on Train PASS/FAIL;
 Train outcomes cannot redesign validation.
 
+### R9 Clarification — Val External Confirmation Predicate
+
+**FROZEN DECISION.** The five frozen Val pairs use the following external
+confirmation rules. These rules are frozen before Train unblinding and may not
+be changed in response to any Train or Val outcome.
+
+#### V1 — Val pair-direction consistency
+
+The registered Val pair-direction threshold is exactly `4/5`, which is an
+external consistency requirement above a simple majority and below absolute
+unanimity:
+
+```text
+D_ID   > 0: positive Val pairs >= 4/5
+R_edge < 0: negative Val pairs >= 4/5
+C_comp > 0: positive Val pairs >= 4/5
+```
+
+#### V2 — Val contrast gates and statistics
+
+Each registered Val contrast uses the same conjunctive CI-sign and
+pair-direction structure as Train, with the fixed five-pair threshold:
+
+```text
+D_ID_EXTERNAL_PASS :=
+  D_ID 95% CI lower > 0 AND positive Val pairs >= 4/5
+
+R_EDGE_EXTERNAL_PASS :=
+  R_edge 95% CI upper < 0 AND negative Val pairs >= 4/5
+
+C_COMP_EXTERNAL_PASS :=
+  C_comp 95% CI lower > 0 AND positive Val pairs >= 4/5
+```
+
+The statistical unit is pair. First compute each per-pair contrast, then take
+the arithmetic mean across the five frozen Val pairs. For each contrast, use
+10,000 pair-level bootstrap resamples with replacement,
+`numpy.random.default_rng(7)`, and the percentile 2.5%/97.5% interval. An
+exact-zero contrast is a tie: it is neither positive nor negative and does not
+count toward a registered direction. The CI method, bootstrap count, seed,
+pair aggregation, and tie semantics do not change because Val has five pairs.
+
+#### V3 — Val mechanism confirmation
+
+Val confirms the same causal-mechanism evidence package. The mechanism gates
+are:
+
+```text
+VAL_GATE_E_PASS := overall complete_path_events > 0
+VAL_GATE_F_PASS := complete_path Val pairs >= 4/5
+```
+
+Every Val pair remains in exactly one mutually exclusive state:
+
+```text
+no_opportunity
+opportunity_no_completion
+complete_path
+```
+
+A mechanism-positive Val pair is exactly
+`classification == complete_path`. The primary external denominator is always
+the five frozen Val pairs. Neither `no_opportunity` nor
+`opportunity_no_completion` may be removed. An opportunity-conditioned
+completion rate, if reported, is `SECONDARY DIAGNOSTIC ONLY` and is not an
+external confirmation gate.
+
+#### V4 — Overall Val external verdict
+
+The Val overall verdict is strictly conjunctive:
+
+```text
+EXTERNAL_CONFIRMATION_SUPPORTED :=
+  D_ID_EXTERNAL_PASS AND
+  R_EDGE_EXTERNAL_PASS AND
+  C_COMP_EXTERNAL_PASS AND
+  VAL_GATE_E_PASS AND
+  VAL_GATE_F_PASS
+
+EXTERNAL_CONFIRMATION_NOT_SUPPORTED :=
+  NOT EXTERNAL_CONFIRMATION_SUPPORTED
+```
+
+The permitted Val verdict labels are `EXTERNAL CONFIRMATION SUPPORTED` and
+`EXTERNAL CONFIRMATION NOT SUPPORTED`. Component-level external verdicts for
+`D_ID`, `R_edge`, `C_comp`, and the mechanism path must still be reported. A
+supported component cannot rescue an overall external failure, and an overall
+external failure does not erase supported component evidence.
+
+**PROHIBITION.** Val must not use the Train label `FULL PRIMARY
+CONFIRMATION`. Val is an independent external/cross-split confirmation
+population. It cannot rescue a failed Train primary verdict, overturn a frozen
+Train primary verdict, or be pooled with Train.
+
 ## Explicit Prohibitions
 
 Primary Train holdout prohibits delay reselection; `d1 -> d2/d3/d4/d5`
