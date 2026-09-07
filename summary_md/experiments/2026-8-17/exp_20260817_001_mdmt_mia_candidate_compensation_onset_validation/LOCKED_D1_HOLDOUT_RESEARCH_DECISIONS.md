@@ -172,10 +172,13 @@ All repairs and reruns occur outcome-blind; the scientific-outcome embargo
 continues throughout.
 
 **TYPE I — non-scientific execution failure.** A documented infrastructure or
-execution interruption that does not violate frozen scientific semantics,
-measurement authority, or required parity/integrity may receive a fresh,
-immutable retry using the same pair, d1, conditions, code/variant/evaluator/
-Source-MDA authority, detector cache, and seed.  The failed attempt is retained
+execution interruption may cause artifact incompleteness, missing output, or
+file-integrity failure, but provides no evidence that frozen scientific
+semantics, the logical condition, code/variant authority, evaluator authority,
+Source-MDA authority, detector-cache/seed authority, or scientific parity
+semantics were violated.  Such a failure may receive a fresh, immutable retry
+using the same pair, d1, conditions, code/variant/evaluator/Source-MDA
+authority, detector cache, and seed.  The failed attempt is retained
 unchanged; retries have new immutable identities and pre-defined
 non-scientific failure reasons.  Retry selection is outcome-independent and
 cannot select a favorable scientific result.  No numeric retry cap is frozen
