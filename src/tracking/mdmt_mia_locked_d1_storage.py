@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Iterable, Mapping
 
-from tracking.mdmt_mia_locked_d1_package import LockedD1Error
+from tracking.mdmt_mia_locked_d1_package import LockedD1Error, atomic_json
 
 REQUIRED_FREE_BYTES = {"train": 200_000_000_000, "val": 150_000_000_000}
 PEAK_ENVELOPE_BYTES = {"train": 120_000_000_000, "val": 65_000_000_000}
@@ -44,3 +44,10 @@ def artifact_record(path: Path, *, artifact_class: str, retention_class: str, sh
               "dependency_flags": sorted(set(dependency_flags)), "attempt": attempt, "condition": condition}
     ensure_storage_fields(record)
     return record
+
+
+def write_storage_manifest(path: Path, records: Iterable[Mapping[str, object]]) -> str:
+    rows = [dict(record) for record in records]
+    for row in rows:
+        ensure_storage_fields(row)
+    return atomic_json(path, {"records": rows, "outcome_embargo": True})
