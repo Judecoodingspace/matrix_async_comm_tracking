@@ -20,7 +20,7 @@ on scientific inputs, MDA computation, or outcome inspection was run.
 | Surface | New implementation | Guard / evidence |
 | --- | --- | --- |
 | P1 package authority | `mdmt_mia_locked_d1_package.py` | U-I3 non-cyclic condition-core → cache → authority-bundle → final-condition → package digest graph; immutable writes. |
-| P2 orchestration | `run_mdmt_mia_locked_d1_holdout.py` | Explicitly refuses formal launch pending P11/P12 authorization. |
+| P2 orchestration | `mdmt_mia_locked_d1_executor.py`, `run_mdmt_mia_locked_d1_holdout.py` | Immutable attempt renderer/launcher supports only an explicit later `launch=True`, refuses evaluator invocation, and records process failure as immutable Type I; CLI refuses launch pending P11/P12 authorization. |
 | P3 detector cache | `mdmt_mia_locked_d1_cache.py`, cache CLI | Resolved physical-image SHA-256 key; packetized read-only cache; reference live-inference guard; seed launch refused. |
 | P4 trace/debug | `mdmt_mia_locked_d1_validity.py`, `mdmt_mia_locked_d1_formal.py` | Minimal required trace projection and deterministic three-state classifier; formal environment removes debug-only persistence flags while retaining required minimal cascade logging. |
 | P5 validity audit | `mdmt_mia_locked_d1_validity.py`, audit CLI | No evaluator import; forbidden scientific-field traversal; byte-identical Y00 parity only. |

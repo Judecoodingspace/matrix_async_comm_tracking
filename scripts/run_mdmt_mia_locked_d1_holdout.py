@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Future holdout-only orchestration placeholder. This stage cannot launch it."""
+"""Holdout-only orchestration entrypoint; this stage cannot launch it."""
 from __future__ import annotations
 import argparse
 
