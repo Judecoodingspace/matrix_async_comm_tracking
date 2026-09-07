@@ -1,5 +1,5 @@
 import pytest
-from tracking.mdmt_mia_locked_d1_failures import classify_failure
+from tracking.mdmt_mia_locked_d1_failures import classify_failure, retry_eligible
 from tracking.mdmt_mia_locked_d1_package import LockedD1Error
 from tracking.mdmt_mia_locked_d1_qualification import dry_list, run_checks
 
@@ -11,3 +11,8 @@ def test_failure_classification_is_conservative_with_type_ii_precedence():
 def test_qualification_harness_is_dispatchable_but_not_authorized_by_default():
     assert len(dry_list()) == 20
     with pytest.raises(LockedD1Error): run_checks({},authorized=False)
+
+def test_retry_requires_complete_same_authority_type_i_evidence():
+    authority={"a":"1"}
+    assert retry_eligible({"classification":"TYPE_I","authority":authority,"evidence_complete":True}, authority)
+    assert not retry_eligible({"classification":"TYPE_I","authority":authority,"evidence_complete":False}, authority)

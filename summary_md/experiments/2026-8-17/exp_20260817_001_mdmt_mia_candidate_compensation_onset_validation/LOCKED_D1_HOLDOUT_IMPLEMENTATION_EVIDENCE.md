@@ -47,7 +47,7 @@ ea9805ad770e6278a2271b5c1d9d5c981eb44a3fe21f53472b82c4bd672bdfdb  src/evaluation
 
 ```text
 PYTHONPATH=src pytest -q tests/test_mdmt_mia_locked_d1_*.py
-18 passed
+19 passed
 
 TESTED = non-cyclic manifest digest graph; exact 10×5 Train matrix;
 immutable-attempt collision rejection; resolved-path cache key and cache-role
