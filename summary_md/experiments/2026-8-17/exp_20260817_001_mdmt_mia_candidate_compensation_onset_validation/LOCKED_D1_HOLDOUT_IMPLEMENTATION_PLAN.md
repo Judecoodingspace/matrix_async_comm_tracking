@@ -246,10 +246,10 @@ manifest or a separately named terminal state record.
 
 | Manifest | Producer and timing | Required content/source authority | Seal timing and consumer | Fail-closed behavior |
 | --- | --- | --- | --- | --- |
-| `AUTHORITY_MANIFEST.json` | package renderer, before any cache or attempt | all Contract §6.1 fields; exact decision/Contract/base/runtime/variant/evaluator/Source-MDA/detector identities | seal after every hash recomputes; consumed by every later tool | missing/extra drift or bundle mismatch: no launch |
-| `EXECUTION_PACKAGE_MANIFEST.json` | renderer after authority and plan render | schema, population, batch, expected counts, plan/condition/authority hashes, embargo state, implementation identity | seal before qualification binding | any referenced digest mismatch: package ineligible |
+| `AUTHORITY_MANIFEST.json` | authority sealer after cache and pre-binding plan/condition cores exist | all Contract §6.1 fields; exact decision/Contract/base/runtime/variant/evaluator/Source-MDA/detector identities | seal after the non-cyclic digest graph below recomputes; consumed by every later tool | missing/extra drift or bundle mismatch: no launch |
+| `EXECUTION_PACKAGE_MANIFEST.json` | package sealer after every other package authority is final | schema, population, batch, expected counts, plan/condition/authority/cache hashes, embargo state, implementation identity | seal last before qualification binding | any referenced digest mismatch: package ineligible |
 | `EXECUTION_PLAN_MANIFEST.json` | renderer | exact reference and packetized specs, argv/env, expected artifact paths, runtime gates, attempt templates | seal before cache seed | rerender inequality: no launch |
-| `condition_manifest.json` | renderer | exactly Contract §6.2 records plus separately classified reference records | seal before cache binding | duplicate/foreign/missing row: Type II before launch |
+| `condition_manifest.json` | renderer constructs a pre-binding core, then the authority sealer writes the final records | exactly Contract §6.2 records plus separately classified reference records | seal after `authority_bundle_sha256` is known | duplicate/foreign/missing row or digest-graph drift: Type II before launch |
 | `detector_cache/cache_manifest.json` | cache seeder after full staging verification | population, ordered physical images, resolved paths, source hashes, cache keys/hashes, config/checkpoint/hook, seed, state | atomically promoted with read-only cache; consumed by authority rebinder, preflight, auditor | partial/foreign/symlink cache file or key mismatch: no promotion |
 | `attempt_manifest.json` | executor at exclusive attempt allocation; terminal copy sealed at completion | all Contract §7 fields and condition/authority record hashes | running state references append-only state snapshots; final manifest seals once terminal | pre-existing root or inconsistent transition: stop and classify |
 | `attempt_state.json` | executor, each allowed transition | attempt ID, state, timestamps, last completed state, parity flags where applicable | atomic replacement; terminal state made read-only | illegal regression/skip: Type II semantic acceptance failure |
@@ -261,6 +261,44 @@ manifest or a separately named terminal state record.
 
 Actual SHA-256 values for future files/manifests remain `UNKNOWN_UNTIL_BUILT`;
 the plan does not invent them.
+
+### 7.1 Non-cyclic manifest digest graph
+
+Contract §6.1 places `condition_manifest_sha256` inside the authority bundle,
+while §6.2 places `authority_bundle_sha256` inside every condition record. A
+naive full-file hash in both directions is a cryptographic cycle and is not an
+implementable seal order. The implementation must not hide this with a mutable
+placeholder or an unverifiable self-reference.
+
+The proposed engineering serialization is:
+
+```text
+1. condition_core_sha256 = SHA-256 of canonical condition/reference records
+   excluding only the back-reference field authority_bundle_sha256.
+2. cache_manifest_sha256 = SHA-256 of the sealed population cache manifest,
+   which binds batch_id, condition_core_sha256, and static detector authority,
+   but does not claim an authority-bundle back-reference.
+3. authority_bundle_sha256 = Contract §6.1 canonical digest, with its
+   condition_manifest_sha256 slot defined as condition_core_sha256.
+4. final condition_manifest.json = the identical core records plus the now-
+   known authority_bundle_sha256 in every record.
+5. condition_manifest_file_sha256 = SHA-256 of that final physical file and is
+   recorded by EXECUTION_PLAN_MANIFEST.json and EXECUTION_PACKAGE_MANIFEST.json.
+6. EXECUTION_PACKAGE_MANIFEST.json is sealed last and references every final
+   physical-file digest; no earlier manifest references its own final digest.
+```
+
+This changes no cohort, condition, authority value, outcome, or scientific
+rule. Because the Contract uses the name `condition_manifest_sha256` without
+spelling out a back-reference projection, independent implementation-plan
+review must explicitly accept or replace this serialization before P1 code is
+written. Until then:
+
+```text
+MANIFEST_DIGEST_GRAPH_STATUS = PROPOSED_NON_CYCLIC_CLOSURE_PENDING_PLAN_REVIEW
+SILENT_HASH_CONVENTION = PROHIBITED
+BLOCKS_P1_IMPLEMENTATION = YES_UNTIL_PLAN_REVIEW
+```
 
 ## 8. U-I4 outcome-blind validity auditor
 
@@ -993,7 +1031,7 @@ NO_ORPHAN_CONTRACT_REQUIREMENT = PLANNED_AND_AUDITABLE
 | --- | --- | --- | --- | --- | --- |
 | `U-I1` | `PLAN_DEFINED; SHA_UNKNOWN` | add exact holdout-only executor paths in §6, audit and hash built files | P2, P10 | no after plan approval | yes until audited identity exists |
 | `U-I2` | `ENGINEERING_NAMING_CLOSED_IN_PLAN` | use §5 population/batch/root patterns and exclusive allocator | P1 | no | no after implementation test |
-| `U-I3` | `SCHEMAS_AND_PRODUCERS_PLANNED; HASHES_UNKNOWN` | implement §7 producers, dry render, independently verify hashes | P1, P3, P5, P7 | no after plan approval | yes until sealed manifests exist |
+| `U-I3` | `SCHEMAS_AND_PRODUCERS_PLANNED; NON_CYCLIC_DIGEST_CLOSURE_PENDING_PLAN_REVIEW; HASHES_UNKNOWN` | approve §7.1 serialization, implement producers, dry render, independently verify hashes | P1, P3, P5, P7 | yes until plan review accepts/replaces §7.1; no afterward | yes until sealed manifests exist |
 | `U-I4` | `MODULE_BOUNDARIES_PLANNED; HASHES_UNKNOWN` | implement separate auditor/analyzer, prove isolation and guards | P5, P6, P10 | no after plan approval | yes until audited/qualified |
 | `U-I5` | `LIFECYCLE_PLANNED; COUNTS/HASHES_UNKNOWN` | separately seed and seal Train, later Val, only after authorization | P3, P11, formal preflight | no | yes |
 | `U-I6` | `QUALIFICATION_PLAN_DEFINED; IDENTITY_UNKNOWN` | build harness, independent audit, separately authorized Pair53/66 qualification | P9--P11 | no after plan approval | yes |
