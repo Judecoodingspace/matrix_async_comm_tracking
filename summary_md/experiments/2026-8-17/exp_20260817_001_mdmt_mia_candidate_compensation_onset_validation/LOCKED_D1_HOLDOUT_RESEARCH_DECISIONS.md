@@ -112,6 +112,26 @@ contradict the mechanism when a pair has no eligible opportunity.
 Opportunity-normalized rates remain diagnostic records only and do not become
 new primary gates.
 
+For mechanism reporting, every frozen d1 Train pair has exactly one mutually
+exclusive interpretation state:
+
+```text
+no_opportunity
+  = no eligible delay-only/disagreement candidate opportunity occurred.
+
+opportunity_no_completion
+  = at least one eligible opportunity occurred, but no complete path formed.
+
+complete_path
+  = at least one pre-defined complete path formed.
+```
+
+`mechanism-positive pair` remains exactly `classification == complete_path`.
+Neither `no_opportunity` nor `opportunity_no_completion` is removed from the
+fixed ten-pair denominator.  Gate F remains `complete_path pairs >= 7/10`, not
+an opportunity-conditioned rate.  Exact trace-field predicates are deferred to
+the future Contract; they may not change these state meanings or Gate F.
+
 ## R7 — Failure Semantics
 
 **FROZEN DECISION.** Use two levels of verdict: a strict overall primary
@@ -123,6 +143,18 @@ critical primary gate failing is `FULL PRIMARY CONFIRMATION NOT SUPPORTED`.
 Component-level support is reported without rescuing an overall failure, and
 an overall failure does not erase supported component evidence.
 
+**CLARIFIED MEANING.** `FULL PRIMARY CONFIRMATION` confirms the preregistered
+causal-mechanism evidence package under frozen d1: ID-state-delay harm,
+conditional compensation, oracle-diagnostic `R_edge`, and complete
+mechanism-path evidence.  “Full” modifies that registered evidence package,
+not deployability.  `R_edge` is an oracle-diagnostic performance edge
+associated with delay-induced candidate-set/candidate-availability change.
+
+**PROHIBITION.** This verdict does not make Yec deployable, establish oracle
+performance as achievable deployed-system performance, validate a deployable
+Supplement-recovery method, or mean delay is beneficial.  Yec remains oracle,
+diagnostic-only, non-deployable, and not a method condition.
+
 ## R8 — Outcome Embargo
 
 **FROZEN DECISION.** No scientific outcome may be read until all ten Train
@@ -133,6 +165,37 @@ passed.
 The first scientific inspection is a single one-batch unblinding of all ten
 Train pairs and registered outcomes.  Per-pair peeking, incremental
 unblinding, outcome-driven repair, and outcome-driven reruns are prohibited.
+
+### Pre-Unblinding Failure and Retry Governance
+
+All repairs and reruns occur outcome-blind; the scientific-outcome embargo
+continues throughout.
+
+**TYPE I — non-scientific execution failure.** A documented infrastructure or
+execution interruption that does not violate frozen scientific semantics,
+measurement authority, or required parity/integrity may receive a fresh,
+immutable retry using the same pair, d1, conditions, code/variant/evaluator/
+Source-MDA authority, detector cache, and seed.  The failed attempt is retained
+unchanged; retries have new immutable identities and pre-defined
+non-scientific failure reasons.  Retry selection is outcome-independent and
+cannot select a favorable scientific result.  No numeric retry cap is frozen
+here.
+
+**TYPE II — scientific or measurement-validity failure.** A parity mismatch,
+wrong condition/digest/code/evaluator/Source-MDA authority, semantic acceptance
+failure, or other invalidation of the frozen condition invalidates the current
+ten-pair Train batch.  Maintain the embargo; do not repair a pair locally or
+combine old-authority and repaired-authority pairs.  Return to implementation
+and qualification, establish a new audited authority, and begin a new complete
+ten-pair Train batch only after qualification passes.
+
+Future Contract access policy must distinguish forbidden scientific outcomes
+(`D_ID`, `R_edge`, `C_comp`, pair direction, bootstrap CI,
+mechanism-positive count, and gate verdict) from permitted outcome-blind
+validity access to raw predictions, manifests, hashes, and traces for parity,
+schema, integrity, completeness, provenance, and acceptance checks.  That
+access may not compute contrasts, expose effect direction, infer a verdict, or
+trigger outcome-driven repair.  Exact fields and files remain deferred.
 
 ## R9 — External Validation Sequencing
 
@@ -167,8 +230,9 @@ preregistered primary hypothesis.
 Exact branch and worktree paths, executor and holdout analysis implementation,
 output/package/manifest layout, commands, cache seeding, external composed
 author-variant digest verification, retry/recovery mechanics, filesystem
-permissions, and compute-device assignment remain deferred.  None may alter
-R1--R9 scientific semantics.
+permissions, compute-device assignment, and exact outcome-blind artifact
+access policy remain deferred.  None may alter R1--R9 scientific semantics or
+the clarification closures above.
 
 ## Authorization Boundary
 
