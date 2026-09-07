@@ -29,10 +29,10 @@ The following labels are used throughout:
 ```text
 REPOSITORY = https://github.com/Judecoodingspace/matrix_async_comm_tracking
 RESEARCH_DECISION_BRANCH = exp/20260903-001-mdmt-mia-p39-homography-fallback-successor-census
-RESEARCH_DECISION_COMMIT = 6ce51adb80da7d6136c1bda4674fec3c1644fd43
+RESEARCH_DECISION_COMMIT = 42c1306ea4f454db5e01503b3ea58052046abfa8
 RESEARCH_DECISION_FILE = summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/LOCKED_D1_HOLDOUT_RESEARCH_DECISIONS.md
-RESEARCH_DECISION_FILE_GIT_BLOB = ff73bf97ea5bd663b752fb704054417f299f6e5a
-RESEARCH_DECISION_FILE_SHA256 = b2ef2817286b2add9ce5abbe48d5c8b8c6aa233974b39e9762742196e6b2dafa
+RESEARCH_DECISION_FILE_GIT_BLOB = 4a5b16edea10dff9497c7ebe8f72ff1212fc262f
+RESEARCH_DECISION_FILE_SHA256 = 2fcac26b5f86eb94c491ac4df8a49f042f69a33f1fa4fd7f4f6d0c0923738f9e
 
 DEVELOPMENT_EXECUTION_AUTHORITY = 47ce0fd35f1d9e7c10465297f5dcaf6b69117fab
 DEVELOPMENT_ANALYSIS_AUTHORITY = 6c57e15fcf00f2a4c939ad98bcb203e1f958a5a3
@@ -40,8 +40,8 @@ RECOMMENDED_HOLDOUT_BASE = 47ce0fd35f1d9e7c10465297f5dcaf6b69117fab
 ```
 
 **FACT.** The decision file above was read from GitHub at the exact 40-character
-commit before this draft was written. The GitHub blob ID and local SHA-256 are
-recorded to prevent a branch-tip substitution from being treated as the
+commit before this revision was written. The GitHub blob ID and local SHA-256
+are recorded to prevent a branch-tip substitution from being treated as the
 decision authority.
 
 **PROHIBITION.** A later documentation commit, including the commit containing
@@ -599,6 +599,12 @@ scientific_outcome_accessed = false
 Only an exact all-pass manifest permits creation of
 `UNBLINDING_AUTHORIZATION.json`.
 
+Before Val unblinding, the independent Val audit applies the same
+outcome-blind predicates to exactly `25/25` Val logical attempts and `5/5`
+same-pair references/Y00 dual-view parity comparisons. Its manifest binds only
+the five frozen Val pairs and their authority bundle; it must not pool, reuse,
+or repair Train evidence.
+
 ## 12. Mechanism trace schema and deterministic pair states
 
 ### 12.1 Required files and fields
@@ -728,10 +734,43 @@ MECHANISM_COMPONENT_PASS := GATE_E_PASS AND GATE_F_PASS
 
 All direction denominators are exactly 10.
 
-### 13.4 Analysis outputs
+### 13.4 Frozen Val external component gates
 
-The first analysis invocation must produce all of the following in one
-transaction or leave the analysis root terminally incomplete and ineligible:
+Val uses the same registered contrasts, condition architecture, pair-level
+statistical unit, bootstrap implementation, percentile CI, and exact-zero tie
+semantics as Train. For each contrast independently, form the ordered
+length-five Val vector, compute its arithmetic mean, initialize a fresh
+`numpy.random.default_rng(7)`, draw `(10000, 5)` replacement indices, and
+report the 2.5%/97.5% percentile interval.
+
+```text
+VAL_REGISTERED_DIRECTION_THRESHOLD = 4/5
+
+D_ID_EXTERNAL_PASS :=
+  D_ID 95% CI lower > 0 AND positive Val pairs >= 4/5
+
+R_EDGE_EXTERNAL_PASS :=
+  R_edge 95% CI upper < 0 AND negative Val pairs >= 4/5
+
+C_COMP_EXTERNAL_PASS :=
+  C_comp 95% CI lower > 0 AND positive Val pairs >= 4/5
+
+VAL_GATE_E_PASS := sum(complete_count over all 5 Val pairs) > 0
+VAL_GATE_F_PASS := number of complete_path Val pairs >= 4/5
+```
+
+All external direction and mechanism denominators are exactly five. Every Val
+pair is assigned exactly one of `no_opportunity`,
+`opportunity_no_completion`, or `complete_path`; a mechanism-positive pair is
+exactly `complete_path`. No opportunity state may be removed from the fixed
+five-pair denominator. Opportunity-conditioned completion is
+`SECONDARY_DIAGNOSTIC` only and never an external gate.
+
+### 13.5 Analysis outputs
+
+The first analysis invocation for each population must produce all of the
+following in one transaction or leave that population's analysis root
+terminally incomplete and ineligible:
 
 ```text
 condition_mda_by_pair.csv
@@ -739,13 +778,15 @@ contrasts_by_pair.csv
 contrast_summary.csv
 mechanism_by_pair.csv
 component_verdicts.json
-primary_verdict.json
+primary_verdict.json                         # Train only
+external_verdict.json                        # Val only
 ANALYSIS_MANIFEST.json
 ```
 
-The analysis manifest binds all ten pairs, all five conditions, all selected
-attempts, all authority hashes, the analysis implementation commit, bootstrap
-parameters, output hashes, and the unblinding authorization identity.
+The analysis manifest binds the population's frozen pairs (ten Train or five
+Val), all five conditions, all selected attempts, all authority hashes, the
+analysis implementation commit, bootstrap parameters, output hashes, and the
+unblinding authorization identity.
 
 ## 14. One-batch unblinding and verdict semantics
 
@@ -801,6 +842,37 @@ deployable, oracle performance is achievable in deployment, a Supplement
 recovery method is deployment-validated, or delay is beneficial. `R_edge` is
 an oracle-diagnostic performance edge associated with delay-induced
 candidate-set/candidate-availability change.
+
+### 14.4 Val one-batch unblinding and external verdict
+
+Val has a separate `UNBLINDING_AUTHORIZATION.json`, created only after its
+independent measurement-validity manifest passes. It must bind
+`population_name = VAL_EXTERNAL`, `all_5_pairs_complete = true`,
+`all_25_conditions_accepted_validity = true`, the exact authority bundle, and
+the exact validity-manifest SHA-256. The first Val scientific inspection is
+one batch containing all five pairs, all five conditions, all three contrasts,
+all direction counts, all bootstrap CIs, all three-state mechanism
+classifications, Val Gates E/F, component-level external verdicts, and the
+overall external verdict.
+
+```text
+EXTERNAL_CONFIRMATION_SUPPORTED :=
+  D_ID_EXTERNAL_PASS AND
+  R_EDGE_EXTERNAL_PASS AND
+  C_COMP_EXTERNAL_PASS AND
+  VAL_GATE_E_PASS AND
+  VAL_GATE_F_PASS
+
+EXTERNAL_CONFIRMATION_NOT_SUPPORTED :=
+  NOT EXTERNAL_CONFIRMATION_SUPPORTED
+```
+
+`EXTERNAL CONFIRMATION SUPPORTED` and `EXTERNAL CONFIRMATION NOT SUPPORTED`
+are the only overall Val labels. Val does not use `FULL PRIMARY
+CONFIRMATION`. Component-level external support must be reported but cannot
+rescue an overall external failure; an overall external failure does not erase
+supported component evidence. Val cannot rescue or overturn the separately
+frozen Train verdict.
 
 ## 15. Type I and Type II failure contract
 
@@ -922,7 +994,224 @@ author runtime semantics. This Contract authorizes no deletion. Any cleanup,
 deduplication, migration, compression, or cache regeneration requires separate
 storage-retention authorization and hash/readback verification.
 
-## 17. Train and Val sequencing and separation
+## 17. Formal Artifact Minimization & Storage Budget
+
+This is an **ENGINEERING / AUDITABILITY CONTRACT**. It does not create a new
+scientific hypothesis, contrast, statistical gate, mechanism definition, or
+evidence-deletion authority.
+
+### 17.1 Formal artifact admission rule
+
+Every persistent formal Train or Val artifact must have at least one recorded
+purpose:
+
+```text
+REGISTERED_SCIENTIFIC_ANALYSIS
+MEASUREMENT_VALIDITY_AUDIT
+EXACT_REPRODUCIBILITY
+AUTHORITY_OR_PROVENANCE_VERIFICATION
+TYPE_I_OR_TYPE_II_FAILURE_AUDIT
+```
+
+If all five are `NO`, the artifact must not automatically enter the formal
+immutable evidence package merely because it could help future interactive
+debugging. A future package or storage manifest must record the affirmative
+purpose(s) for every persistent root.
+
+### 17.2 Formal artifact classes
+
+| Class | Permitted examples | Persistent role | Retention rule |
+| --- | --- | --- | --- |
+| `ACTIVE_AUTHORITY` | authority/condition/package manifests, Source-MDA authority, sealed cache manifest, variant digest | binds execution to frozen inputs | immutable once bound |
+| `IMMUTABLE_SCIENTIFIC_EVIDENCE` | accepted predictions, minimal mechanism evidence, Y00 parity evidence, accepted manifests, unblinded analysis | supports analysis and reproducibility | immutable |
+| `IMMUTABLE_AUDIT_EVIDENCE` | Type I manifests, Type II invalidation records, failure evidence/classification logs | proves retry eligibility or fail-close action | immutable |
+| `TEMPORARY_STAGING` | copied runtime inputs, author-runtime directories, transient conversions, assembly scratch | execution support, not evidence by itself | retained during active batch; cleanup separately governed |
+| `DEBUG_ONLY` | object dumps, tracker snapshots, visualizations, exploratory logs, redundant matrices/payloads, profiling, tensors | optional qualification troubleshooting | not persistent formal evidence by default |
+
+```text
+FORMAL_DEBUG_ONLY_PERSISTENCE = DISABLED_BY_DEFAULT
+FORMAL_VERBOSE_DEBUG_TRACE = DISABLED
+```
+
+Qualification may enable extra debug artifacts, but qualification-debug output
+must not automatically become Train or Val immutable evidence. A future
+exception needs `ARTIFACT_ROLE`, `WHY_REQUIRED`, `VALIDITY_DEPENDENCY`,
+`REPRODUCIBILITY_DEPENDENCY`, and `SCIENTIFIC_ANALYSIS_DEPENDENCY`, followed
+by Contract review.
+
+### 17.3 Minimal formal mechanism trace schema
+
+Formal traces must implement `MINIMAL_FORMAL_MECHANISM_TRACE_SCHEMA`: enough
+immutable evidence to deterministically verify the frozen path
+
+```text
+ID-state delay
+-> candidate availability change
+-> delay-only/disagreement candidate
+-> timely Supplement
+-> trigger opportunity
+-> successful write-in
+```
+
+and assign exactly one state per pair: `no_opportunity`,
+`opportunity_no_completion`, or `complete_path`. This does not change the
+Section 12 predicates or add a mechanism semantic.
+
+| Minimal requirement | Inherited field or immutable reference | Formal purpose |
+| --- | --- | --- |
+| pair, logical condition, authority identity | condition-manifest record and `authority_bundle_sha256` | provenance and binding |
+| time and direction/view identity | candidate `capture_frame`, `view_id`; packet `capture_frame` | candidate-to-Supplement linkage |
+| stable candidate reference | `pre_branch_row_index` with pair/view/frame/condition | deterministic identity within attempt |
+| candidate availability / delay-only state | `delay_membership`, `cf_membership` | `delay_only(c)` |
+| timely Supplement availability | packet `kind`, `packet_action`, `capture_frame` | `timely_supplement_frame(f)` |
+| trigger and write-in | `high_score_triggered`, `high_score_bbox_written` | consistency audit and `complete_event(c)` |
+| integrity and provenance | attempt/condition manifest references and file hashes | validity and reproducibility |
+
+The inherited `cascade_edge_trace` is retained only to the extent its
+field-level schema, frame domain, and hard-guard checks are required by Section
+11. It is not a default full-state dump. A development trace field is mandatory
+formal persistence only when one or more of these is true:
+
+```text
+IS_REQUIRED_FOR_GATE_E_OR_F
+IS_REQUIRED_FOR_THREE_STATE_CLASSIFICATION
+IS_REQUIRED_FOR_VALIDITY
+IS_REQUIRED_FOR_REPRODUCIBILITY
+IS_REQUIRED_FOR_PROVENANCE
+```
+
+If all are `NO`, it is `DEBUG_ONLY` unless an independently reviewed exception
+is recorded. No field required by Section 12, runtime hard guards, or accepted
+attempt reproducibility may be removed.
+
+### 17.4 Detector and static-input deduplication
+
+```text
+ONE_CANONICAL_DETECTOR_RESULT_PER_PHYSICAL_IMAGE_OR_CACHE_KEY = REQUIRED
+```
+
+Where frozen semantics permit, `Y00`, `Y01`, `Y10_d1`, `Y11_d1`, and `Yec_d1`
+must reference one canonical detector result per physical image/cache key via
+cache key, detector-artifact hash, and cache-manifest row. They must not copy
+identical detector payloads merely for packaging convenience. Packetized cache
+misses remain fail-closed; legacy `REFERENCE` live-inference and Y00 parity
+semantics do not change.
+
+Identical Source-MDA files, checkpoints, detector/config files, static run
+configuration, frozen variants, detector-cache entries, and common image data
+must be referenced by immutable path, SHA-256, and manifest row where this
+preserves frozen author-runtime semantics. Per-condition predictions may remain
+unique immutable scientific evidence.
+
+One complete physical image tree per logical condition is prohibited unless a
+future qualified implementation proves that the frozen author runtime requires
+it, no non-copying shared-source/reference staging preserves identical
+semantics, and the copies are `TEMPORARY_STAGING`, not scientific evidence.
+The exact staging mechanism remains deferred and qualification-tested.
+
+### 17.5 Temporary-staging lifecycle
+
+`TEMPORARY_STAGING` is not scientific evidence, but the executor must not
+delete it automatically merely to recover disk space during scientific
+execution. A staging root is `TEMPORARY_STAGING_CLEANUP_ELIGIBLE` only when:
+
+```text
+attempt is terminal
+required immutable evidence is sealed
+all manifests are complete
+all required hashes verify
+no unique scientific information exists only in staging
+authoritative source remains available
+all references remain valid
+separate storage-retention authorization exists
+```
+
+This Contract does not authorize `rm`, `mv`, compression, archive migration,
+automatic purge, cleanup, or deletion of staging or evidence artifacts.
+
+### 17.6 Outcome-blind storage manifest and planning envelope
+
+Every formal Train and Val package must contain an outcome-blind
+`STORAGE_MANIFEST` containing at least:
+
+```text
+relative_path_or_root
+artifact_class
+byte_size
+file_count
+retention_class
+attempt_identity
+condition_identity_when_applicable
+shared_or_unique_status
+scientific_analysis_dependency
+validity_dependency
+reproducibility_dependency
+authority_dependency
+formal_admission_purposes
+```
+
+It must not contain, derive, or expose `D_ID`, `R_edge`, `C_comp`, pair
+direction, bootstrap CI, mechanism-positive count, any gate verdict, or an
+overall scientific verdict.
+
+The audited planning storage envelope is engineering evidence, not a
+scientific gate:
+
+| Population | Low | Central | High | Peak |
+| --- | ---: | ---: | ---: | ---: |
+| Train | 20--25 GB | 40--45 GB | 75--85 GB | 100--120 GB |
+| Val | 10--15 GB | 20--25 GB | 40--45 GB | 55--65 GB |
+
+Before launch, future implementation must record projected package bytes, the
+applicable envelope, and `PROJECTED_AVAILABLE_SPACE_AFTER_TRAIN_PEAK` or
+`PROJECTED_AVAILABLE_SPACE_AFTER_VAL_PEAK`. If projected footprint exceeds the
+applicable audited peak envelope (Train 120 GB; Val 65 GB), set
+`STORAGE_BUDGET_REVIEW_REQUIRED = YES` and do not launch until separate
+storage-budget review closes it. This is an audited-envelope review trigger,
+not an arbitrary trace/pair/attempt size cap, and never authorizes a change to
+scientific conditions.
+
+### 17.7 Launch-time preflight and free-space monitoring
+
+Section 16 storage reserves remain unchanged:
+
+```text
+TRAIN_MINIMUM_AVAILABLE_BYTES = 200000000000
+VAL_MINIMUM_AVAILABLE_BYTES = 150000000000
+```
+
+The historical `/dev/md127` audit (approximately 5.50 TB total, approximately
+502 GB available, approximately 91% used) is planning context only; live
+available bytes are required at launch. Future implementation must perform
+outcome-blind free-space monitoring using only filesystem total/used/available
+bytes, current artifact bytes, projected remaining artifact volume, and file
+counts. It must not use MDA, contrast values, pair direction, mechanism status,
+or a gate verdict.
+
+If free space would no longer preserve the applicable reserve, do not launch
+the next new scientific attempt. Preserve all immutable evidence. A disk
+exhaustion interruption follows the existing Type I/II classification rules;
+it never authorizes deletion or selective retry.
+
+### 17.8 Storage-specific auditable predicates
+
+| Key | PASS predicate |
+| --- | --- |
+| `FORMAL_DEBUG_TRACE_DISABLED` | no `DEBUG_ONLY` root is persistent formal evidence unless an approved exception has all five Section 17.2 dependency fields |
+| `MINIMAL_MECHANISM_TRACE_SCHEMA_DEFINED` | Section 17.3 fields/references exist and can recompute Section 12 predicates and three-state classification |
+| `NO_UNJUSTIFIED_INPUT_DUPLICATION` | no persistent full per-condition input tree exists, or each has the qualified necessity record in Section 17.4 and is `TEMPORARY_STAGING` |
+| `CANONICAL_DETECTOR_OUTPUT_REFERENCED` | every packetized condition references cache key, detector hash, and cache-manifest row; no convenience payload copy exists |
+| `STORAGE_MANIFEST_READY` | complete outcome-blind manifest has every Section 17.6 required field and no forbidden field |
+| `TEMPORARY_STAGING_IDENTIFIED` | every staging root is labeled non-evidence and linked to its producing attempt/package |
+| `NO_RUNTIME_EVIDENCE_DELETION` | active-batch record contains no deletion of sealed scientific or audit evidence |
+| `TRAIN_STORAGE_PREFLIGHT_PASS` | current Train filesystem record satisfies unchanged Section 16 reserve |
+| `VAL_STORAGE_PREFLIGHT_PASS` | current Val filesystem record satisfies unchanged Section 16 reserve |
+
+The exact monitor, storage-manifest generator, and staging implementation
+identities remain deferred implementation details. These predicates constrain
+their future acceptance criteria; they do not authorize implementation now.
+
+## 18. Train and Val sequencing and separation
 
 The only allowed sequence is:
 
@@ -950,16 +1239,17 @@ Train and Val outcomes must not be pooled, jointly bootstrapped, substituted,
 or used to rescue one another. Reports may show the two verdicts side by side
 only after both are independently frozen.
 
-**CONTRACT REVIEW ITEM.** Decision authority `6ce51adb...` defines the exact
-Train `7/10` thresholds and declares a separate Val PASS/FAIL verdict, but does
-not define a five-pair Val direction-count threshold or an exact external
-PASS/FAIL predicate. This draft therefore does not infer `4/5`, reuse the
-impossible `7/10`, or create another threshold. The exact Val external-verdict
-predicate must be frozen by research authority before Train unblinding and
-before Val implementation. This gap does not authorize changing any frozen
-Train rule.
+**FACT.** Research Decision authority `42c1306...` freezes the Val `4/5`
+direction thresholds, CI-plus-direction gates, mechanism Gates E/F, and strict
+external verdict in Sections 13.4 and 14.4. The prior
+`VAL_EXTERNAL_VERDICT_PREDICATE` authority gap is resolved.
 
-## 18. Audit flow
+```text
+VAL_EXTERNAL_VERDICT_GAP = RESOLVED
+STATISTICAL_RULES_EXACT = YES
+```
+
+## 19. Audit flow
 
 ```mermaid
 flowchart TD
@@ -978,13 +1268,17 @@ flowchart TD
     K --> L[Report Train and Val separately; never pool or rescue]
 ```
 
-## 19. Machine-checkable preflight and authorization checklist
+## 20. Machine-checkable preflight and authorization checklist
 
 | Key | PASS predicate |
 | --- | --- |
 | `COHORT_FROZEN` | ordered Train list equals `[70,50,28,64,27,25,69,51,29,45]`; Val list equals `[22,36,46,49,72]`; no extra pair |
 | `D1_ONLY` | every scientific record is one of the five conditions in Section 3 and every positive delay is exactly 1 |
 | `CONDITIONS_FROZEN` | Train Cartesian set is exactly 10 x 5; reference plan is exactly 10 x Y00 |
+| `VAL_CONDITIONS_FROZEN` | Val Cartesian set is exactly 5 x 5; reference plan is exactly 5 x Y00 |
+| `VAL_STATISTICAL_RULES_FROZEN` | each contrast uses a five-pair arithmetic mean, 10,000 replacement resamples with fresh `default_rng(7)`, percentile CI, exact-zero ties, CI sign gate, and its `4/5` direction gate from Section 13.4 |
+| `VAL_MECHANISM_RULES_FROZEN` | all five pairs have one Section 12 state; Gate E is events > 0 and Gate F is `complete_path` pairs >= 4/5 with fixed denominator five |
+| `VAL_EXTERNAL_VERDICT_RULE_FROZEN` | external verdict is exactly the Section 14.4 conjunction; its only labels are EXTERNAL CONFIRMATION SUPPORTED / NOT SUPPORTED |
 | `AUTHORITIES_MATCH` | every Section 0 and 4 authority equals the authority manifest and recomputed file/tree hashes |
 | `SOURCE_MDA_MATCH` | protocol, artifact/cohort manifest hashes, split paths, and every selected GT-file hash match Section 2 |
 | `VARIANT_DIGEST_MATCH` | recomputed packetized and reference tree digests equal Section 4.1 |
@@ -998,13 +1292,15 @@ flowchart TD
 | `TYPE_II_FAIL_CLOSE_ACTIVE` | any Type II marks whole batch INVALID and no current-batch attempt is eligible for analysis |
 | `STORAGE_PREFLIGHT_PASS` | launch-time available bytes meet Section 16 and filesystem facts are recorded |
 | `ALL_10_TRAIN_ATTEMPTS_COMPLETE` | all ten pair bundles have 5/5 `ACCEPTED_VALIDITY` conditions and one valid reference; total 50/50 |
+| `ALL_5_VAL_ATTEMPTS_COMPLETE` | all five Val pair bundles have 5/5 `ACCEPTED_VALIDITY` conditions and one valid reference; total 25/25 |
 | `MEASUREMENT_VALIDITY_PASS` | every Section 11 population predicate is true and validity manifest state is exact PASS |
-| `UNBLINDING_AUTHORIZED` | authorization file matches current batch, authority, exact validity hash, 10/10 pairs, 50/50 conditions, and no breach |
+| `TRAIN_UNBLINDING_AUTHORIZED` | Train authorization matches current batch, authority, exact validity hash, 10/10 pairs, 50/50 conditions, and no breach |
+| `VAL_UNBLINDING_AUTHORIZED` | Val authorization matches current batch, authority, exact validity hash, 5/5 pairs, 25/25 conditions, and no breach |
 
 All checklist keys must be materialized as booleans in the future preflight or
 validity manifest. Missing is failure, not unknown-pass.
 
-## 20. Contract unresolved implementation items
+## 21. Contract unresolved implementation items
 
 These are not scientific decisions and cannot be filled by guesswork.
 
@@ -1018,16 +1314,15 @@ These are not scientific decisions and cannot be filled by guesswork.
 | `U-I6` | exact qualification package/manifest identity for holdout-only orchestration | independent implementation audit and qualification plan | blocks execution |
 | `U-I7` | hard numeric Type I retry cap, if engineering governance requires one | independent storage/operations governance; no cap is scientifically frozen | no |
 
-Separately, the Val external-verdict predicate in Section 17 is a research
-authority review item, not an implementation detail. It blocks Val design and
-execution and must be closed before Train unblinding; this Contract does not
-silently resolve it.
+The former `VAL_EXTERNAL_VERDICT_PREDICATE` research-authority gap is resolved
+by Research Decision authority `42c1306...`; it is not an unresolved Contract
+item.
 
 ```text
 UNRESOLVED_IMPLEMENTATION_ITEMS_COUNT = 7
 ```
 
-## 21. Explicit prohibitions and authorization boundary
+## 22. Explicit prohibitions and authorization boundary
 
 This Contract prohibits:
 
