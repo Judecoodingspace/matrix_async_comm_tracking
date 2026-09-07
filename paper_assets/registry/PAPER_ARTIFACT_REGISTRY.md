@@ -57,10 +57,10 @@ SOURCE_ANALYSIS_REPORT = summary_md/experiments/2026-8-8/exp_20260808_001_mdmt_m
 SOURCE_ANALYSIS_MANIFEST = UNKNOWN
 SOURCE_DATA = paper_assets/source_data/e023/F-E023-01_metrics.csv; paper_assets/source_data/e023/F-E023-01_PROVENANCE.md
 GENERATION_SCRIPT = UNPLANNED
-OUTPUT_FILE = UNPLANNED
-CAPTION_STATUS = UNWRITTEN
+OUTPUT_FILE = UNPLANNED; pending table-artifact reclassification review
+CAPTION_STATUS = TABLE_DESIGN_ONLY
 REPRODUCIBLE = PARTIAL
-REVIEW_STATUS = SOURCE_DATA_CLOSED_PENDING_FIGURE_DESIGN
+REVIEW_STATUS = TABLE_RECOMMENDED_PENDING_ARTIFACT_RECLASSIFICATION
 PROTOCOL_BOUNDARY = Formal official-test mechanism evidence; scope-limited; not non-test replication; not deployable-policy evidence.
 ```
 
