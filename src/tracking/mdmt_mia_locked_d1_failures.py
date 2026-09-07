@@ -18,6 +18,17 @@ def record_type_i_failure(attempt_root: Path, reason: str, authority: Mapping[st
                                                                  "authority": dict(authority), "retry_outcome_independent": True,
                                                                  "state": "FAILED_IMMUTABLE"})
 
+def classify_failure(*, reason: str | None, evidence: Mapping[str, object], expected_authority: Mapping[str, object]) -> str:
+    """Type II has precedence; ambiguous process exits are never retries."""
+    if evidence.get("authority") != dict(expected_authority) or evidence.get("type_ii_reason") in TYPE_II_REASONS:
+        return "TYPE_II"
+    if reason in TYPE_I_REASONS and evidence.get("infrastructure_interruption") is True and evidence.get("returncode") not in (None, 0):
+        return "TYPE_I"
+    return "UNCLASSIFIED_FAILURE_REQUIRES_REVIEW"
+
+def retry_eligible(previous: Mapping[str, object], authority: Mapping[str, object]) -> bool:
+    return previous.get("classification") == "TYPE_I" and previous.get("authority") == dict(authority) and previous.get("evidence_complete") is True
+
 
 def invalidate_batch(batch_root: Path, reason: str, authority: Mapping[str, object]) -> str:
     if reason not in TYPE_II_REASONS:

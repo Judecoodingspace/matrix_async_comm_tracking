@@ -54,15 +54,6 @@ def project_minimal_trace(candidate_rows: Sequence[Mapping[str, Any]]) -> list[d
     return projected
 
 
-def classify_three_state(projected_rows: Sequence[Mapping[str, Any]]) -> str:
-    """Frozen state semantics: opportunity is a delay-only/disagreement candidate."""
-    opportunity = [r for r in projected_rows if bool(r["delay_membership"]) and not bool(r["cf_membership"])]
-    if not opportunity:
-        return "no_opportunity"
-    complete = any(bool(r["high_score_triggered"]) and bool(r["high_score_bbox_written"]) for r in opportunity)
-    return "complete_path" if complete else "opportunity_no_completion"
-
-
 def validate_attempt(attempt: Mapping[str, Any], expected_authority: Mapping[str, Any]) -> dict[str, object]:
     assert_outcome_blind(attempt)
     require_same_authority(expected_authority, attempt.get("authority", {}))

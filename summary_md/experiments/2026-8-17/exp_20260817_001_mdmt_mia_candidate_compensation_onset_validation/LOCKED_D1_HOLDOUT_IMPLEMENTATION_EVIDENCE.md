@@ -47,14 +47,16 @@ ea9805ad770e6278a2271b5c1d9d5c981eb44a3fe21f53472b82c4bd672bdfdb  src/evaluation
 
 ```text
 PYTHONPATH=src pytest -q tests/test_mdmt_mia_locked_d1_*.py
-12 passed
+18 passed
 
 TESTED = non-cyclic manifest digest graph; exact 10×5 Train matrix;
 immutable-attempt collision rejection; resolved-path cache key and cache-role
 guards; trace three-state projection; forbidden-field rejection; byte-identical
 Y00 parity; no evaluator import in validity module; analyzer preauthorization
 import block; canonical verdict filenames; storage preflight/field prohibition;
-immutable Type I and fail-closed Type II batch invalidation.
+immutable Type I and fail-closed Type II batch invalidation; authorization-gated
+whole-population atomic analysis; validity/analysis mechanism boundary;
+conservative failure classification; executable dry-list qualification dispatch.
 ```
 
 `git diff --check` passed. The implementation adds only wrapper modules, CLIs,

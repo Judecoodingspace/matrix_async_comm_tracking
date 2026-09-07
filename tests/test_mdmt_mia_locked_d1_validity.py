@@ -3,7 +3,7 @@ import ast
 import pytest
 
 from tracking.mdmt_mia_locked_d1_package import LockedD1Error
-from tracking.mdmt_mia_locked_d1_validity import (assert_outcome_blind, classify_three_state, project_minimal_trace,
+from tracking.mdmt_mia_locked_d1_validity import (assert_outcome_blind, project_minimal_trace,
                                                   verify_y00_byte_parity)
 
 
@@ -13,10 +13,9 @@ def _row(**updates):
     row.update(updates); return row
 
 
-def test_three_state_trace_schema_is_deterministic():
-    assert classify_three_state(project_minimal_trace([])) == "no_opportunity"
-    assert classify_three_state(project_minimal_trace([_row()])) == "opportunity_no_completion"
-    assert classify_three_state(project_minimal_trace([_row(high_score_triggered=True, high_score_bbox_written=True)])) == "complete_path"
+def test_validity_has_no_scientific_three_state_api():
+    import tracking.mdmt_mia_locked_d1_validity as module
+    assert not hasattr(module, "classify_three_state")
 
 
 def test_validity_rejects_scientific_fields_and_y00_requires_bytes(tmp_path: Path):

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""P9 harness descriptor only. It cannot launch qualification or formal runs."""
+"""P9 mechanical qualification harness; --dry-list is the only current safe mode."""
 from __future__ import annotations
-import json
+import json, argparse
+from tracking.mdmt_mia_locked_d1_qualification import dry_list
 
 
 def main() -> None:
-    print(json.dumps({"classification": "QUALIFICATION_HARNESS_ONLY", "launch": "PROHIBITED",
-                      "checks": ["authority", "cache", "parity", "validity_blindness", "analyzer_guard",
-                                 "attempt_immutability", "storage", "trace", "type_i", "type_ii"]}, sort_keys=True))
+    parser=argparse.ArgumentParser(); parser.add_argument("--dry-list", action="store_true"); args=parser.parse_args()
+    if not args.dry_list: raise SystemExit("FORMAL_QUALIFICATION_REQUIRES_SEPARATE_AUTHORIZATION")
+    print(json.dumps({"classification":"QUALIFICATION_HARNESS", "checks":dry_list()}, sort_keys=True))
 
 
 if __name__ == "__main__":
