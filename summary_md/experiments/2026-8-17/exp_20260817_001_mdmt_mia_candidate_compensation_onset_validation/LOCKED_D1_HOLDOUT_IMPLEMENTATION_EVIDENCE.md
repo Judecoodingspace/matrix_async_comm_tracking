@@ -126,3 +126,33 @@ CORRECTIVE_REVISION_6_SCIENTIFIC_OUTCOME_READ = NO
 CORRECTIVE_REVISION_6_FORMAL_TRAIN_CACHE_SEEDED = NO
 CORRECTIVE_REVISION_6_FORMAL_VAL_CACHE_SEEDED = NO
 ```
+
+## P12 execution-binding corrective implementation (candidate only)
+
+```text
+P12_EXECUTION_BINDING_IMPLEMENTED = CANDIDATE_PENDING_INDEPENDENT_AUDIT
+FORMAL_TRAIN_AUTHORIZATION_GRANTED = NO
+FORMAL_TRAIN_EXECUTION = NO
+FORMAL_TRAIN_CACHE_SEED = NO
+VAL_EXECUTION = NO
+SCIENTIFIC_OUTCOME_ACCESS = NO
+```
+
+This corrective implementation adds only outcome-blind orchestration controls:
+
+- a formal Train authorization verifier bound to the implementation SHA,
+  Research Decision, Contract, Plan, P11 manifest, Train-only scope, active
+  embargo, and resolved inputs;
+- exactly 50 packetized Train condition records plus a separate 10-record Y00
+  reference plan, rather than conflating packetized `Y00` with its reference;
+- cache-seed binding to an authorized exact image/hash set, a sealed cache
+  manifest, and a cache-binding artifact consumed by package rendering;
+- sealed, per-cell argv/environment records with no runtime CLI override;
+- clean-worktree, authorization/package/cache/storage preflight before launch;
+- captured child stdout/stderr whose values are neither displayed nor persisted;
+  only byte lengths and SHA-256 digests enter operational terminal state.
+
+The implementation does not create a real authorization, cache, package, or
+attempt. It does not invoke the evaluator. Synthetic tests cover authorization
+binding, separate references, sealed command/environment dispatch, suppressed
+scientific-bearing child output, cache exact-key sealing, and preflight refusal.
