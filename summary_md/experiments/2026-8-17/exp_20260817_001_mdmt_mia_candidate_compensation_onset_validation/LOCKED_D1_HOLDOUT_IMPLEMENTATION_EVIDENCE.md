@@ -14,6 +14,9 @@ INDEPENDENT_ACTUAL_CODE_AUDIT = FAIL
 CORRECTIVE_REVISION_3 = BLOCKED
 CORRECTIVE_REVISION_3_ROOT_CAUSE = missing outcome-blind acceptance/sealing producer
 CORRECTIVE_REVISION_4 = implementation-scope completion only
+P11_PREFLIGHT_AT_53FBED = BLOCKED
+P11_BLOCK_REASON = acceptance gate booleans were caller-controlled rather than producer evidence
+CORRECTIVE_REVISION_5 = acceptance gate producer closure only
 ```
 
 This evidence covers implementation phases P0–P10 only. No qualification,
@@ -27,7 +30,7 @@ on scientific inputs, MDA computation, or outcome inspection was run.
 | P1 package authority | `mdmt_mia_locked_d1_package.py` | U-I3 non-cyclic condition-core → cache → authority-bundle → final-condition → package digest graph; sealed package loading recomputes the graph and exact condition-record digests. |
 | P2 orchestration | `mdmt_mia_locked_d1_executor.py`, `run_mdmt_mia_locked_d1_holdout.py` | Immutable attempt renderer binds package-derived authority and condition-record SHA; launcher supports only an explicit later `launch=True` and refuses evaluator invocation. |
 | P3 detector cache | `mdmt_mia_locked_d1_cache.py`, cache CLI | Resolved physical-image SHA-256 key; packetized read-only cache; reference live-inference guard; seed launch refused. |
-| P4 trace/debug | `mdmt_mia_locked_d1_validity.py`, `mdmt_mia_locked_d1_formal.py` | Validity validates schema/provenance and atomically seals condition record, inventory, per-artifact hashes, runtime manifests, and `ACCEPTED_VALIDITY`; scientific classification remains analysis-only. |
+| P4 trace/debug | `mdmt_mia_locked_d1_validity.py`, `mdmt_mia_locked_d1_formal.py` | Outcome-blind artifact, frozen-runtime-gate, and Y00 raw-byte-parity producers emit immutable evidence. Acceptance binds their SHA-256 values before atomically sealing condition record, inventory, and `ACCEPTED_VALIDITY`; caller booleans are not an acceptance authority. |
 | P5 validity audit | `mdmt_mia_locked_d1_validity.py`, audit CLI | Outcome-blind population sealing deterministically selects the lowest-index accepted attempt for every cell and binds selection, manifest, acceptance, inventory, condition, and authority digests. No evaluator import exists. |
 | P6 analyzer | `mdmt_mia_locked_d1_analysis.py`, analyzer CLI | Authorization precedes sealed provenance loading; public discovery/evaluator injection is absent; evaluator SHA is verified before import; only Y10_d1 supplies primary mechanism evidence; analysis manifest binds every selected input and output digest. |
 | P7 storage | `mdmt_mia_locked_d1_storage.py` | Train/Val reserves 200/150 GB, envelopes 120/65 GB, outcome fields prohibited. |
@@ -51,8 +54,9 @@ ea9805ad770e6278a2271b5c1d9d5c981eb44a3fe21f53472b82c4bd672bdfdb  src/evaluation
 ## P10 static and synthetic checks
 
 ```text
-PYTHONPATH=src pytest -q tests/test_mdmt_mia_locked_d1_*.py
-31 passed
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider \
+tests/test_mdmt_mia_locked_d1_*.py
+33 passed
 
 TESTED = non-cyclic manifest digest graph; exact 10×5 Train matrix;
 immutable-attempt collision rejection; resolved-path cache key and cache-role
@@ -73,6 +77,12 @@ exact-zero ties, and failure atomicity.
 `git diff --check` passed. The implementation adds only wrapper modules, CLIs,
 synthetic tests, and this evidence record. It has no automatic cleanup path.
 
+Corrective #5 adds synthetic-only producer closure tests for immutable artifact
+validation evidence, frozen hard-gate counters and conservation checks, raw
+two-view Y00 byte parity, evidence tamper rejection, and evidence-bound
+acceptance. No qualification, Train, Val, cache seeding, or scientific outcome
+access occurred.
+
 ## Deferred facts and authorization boundary
 
 ```text
@@ -92,4 +102,10 @@ VAL_RUN = NO
 SCIENTIFIC_OUTCOME_READ = NO
 FORMAL_CACHE_SEED = NO
 IMPLEMENTATION_SELF_TEST = PASS_CANDIDATE_ONLY_NOT_INDEPENDENT_PASS
+CORRECTIVE_REVISION_5_QUALIFICATION_EXECUTED = NO
+CORRECTIVE_REVISION_5_TRAIN_EXECUTED = NO
+CORRECTIVE_REVISION_5_VAL_EXECUTED = NO
+CORRECTIVE_REVISION_5_SCIENTIFIC_OUTCOME_READ = NO
+CORRECTIVE_REVISION_5_FORMAL_TRAIN_CACHE_SEEDED = NO
+CORRECTIVE_REVISION_5_FORMAL_VAL_CACHE_SEEDED = NO
 ```

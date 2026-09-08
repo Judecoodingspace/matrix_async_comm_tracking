@@ -9,8 +9,9 @@ from evaluation.mdmt_mia_locked_d1_analysis import (_analyze_package, analyze_pa
     bootstrap_mean, classify_three_state, verdict_filename)
 from tracking.mdmt_mia_locked_d1_package import (LOGICAL_CONDITIONS, VAL_PAIRS,
     LockedD1Error, condition_record_sha256, render_manifests, sha256_file)
-from tracking.mdmt_mia_locked_d1_validity import (seal_attempt_acceptance,
-    seal_measurement_validity)
+from tracking.mdmt_mia_locked_d1_validity import (produce_artifact_validation,
+    produce_runtime_gates_checked, produce_y00_reference_parity,
+    seal_attempt_acceptance, seal_measurement_validity)
 
 EVALUATOR_AUTHORITY = {"module": "evaluation.mdmt_mia_paper",
     "path": "src/evaluation/mdmt_mia_paper.py",
@@ -53,7 +54,15 @@ def _make_attempt(batch, authority_sha, records, gt, pair, condition, index=1, *
         path = attempt / ("prediction_v%d.json" % view); path.write_text("{}")
         predictions.append(path)
     runtime_manifest = attempt / "runtime_manifest.json"
-    runtime_manifest.write_text(json.dumps({"state": "RUNTIME_GATES_CHECKED", "outcome_embargo": True}))
+    runtime_manifest.write_text(json.dumps({**{key: 0 for key in (
+        "future_read_violations", "source_bypass_read_count", "wire_roundtrip_digest_mismatches",
+        "feedback_chain_mismatches", "published_history_rewrites", "numpy_alias_violations",
+        "prebranch_missing_count", "prebranch_double_capture_count", "prebranch_stale_count",
+        "prebranch_wrong_frame_count", "snapshot_alias_violations", "actual_input_mutation_violations",
+        "shadow_quarantine_violations", "runtime_gt_read_count")}, "logger_read_only": 1,
+        "shadow_export_fields": ["membership"], "prebranch_capture_count": 1,
+        "prebranch_consume_count": 1, "packet_emission_count": 1,
+        "packet_consumption_count": 1, "pending_at_end_count": 0}))
     candidate = packet = None
     if condition == "Y10_d1":
         candidate = attempt / "candidate.jsonl"
@@ -65,13 +74,25 @@ def _make_attempt(batch, authority_sha, records, gt, pair, condition, index=1, *
         packet.write_text(json.dumps({"capture_frame": 1, "kind": "supplement",
             "packet_action": "timely"}) + "\n")
     if seal:
-        seal_attempt_acceptance(batch_root=batch, population="val", batch_id=batch.name,
-            pair=pair, logical_condition=condition, attempt_root=attempt,
-            prediction_artifacts=predictions, source_mda_gt=gt,
-            minimal_mechanism_trace=candidate, packet_trace=packet,
-            runtime_manifests=[runtime_manifest],
-            artifact_validated=True, runtime_gates_checked=True,
-            y00_reference_parity_checked=True if condition == "Y00" else None)
+        artifact = produce_artifact_validation(batch_root=batch, population="val", batch_id=batch.name,
+            pair=pair, logical_condition=condition, attempt_root=attempt, prediction_artifacts=predictions,
+            source_mda_gt=gt, minimal_mechanism_trace=candidate, packet_trace=packet,
+            runtime_manifests=[runtime_manifest])
+        gates = produce_runtime_gates_checked(batch_root=batch, population="val", batch_id=batch.name,
+            pair=pair, logical_condition=condition, attempt_root=attempt, runtime_manifests=[runtime_manifest])
+        parity = None
+        if condition == "Y00":
+            reference = batch / "attempts" / pair / "Y00" / "reference_attempt"
+            reference.mkdir(parents=True, exist_ok=True)
+            reference_paths = []
+            for view, prediction in enumerate(predictions, 1):
+                path = reference / ("reference_v%d.json" % view); path.write_bytes(prediction.read_bytes()); reference_paths.append(path)
+            parity = produce_y00_reference_parity(batch_root=batch, population="val", batch_id=batch.name,
+                pair=pair, attempt_root=attempt, reference_attempt_root=reference,
+                reference_artifacts=reference_paths, packetized_artifacts=predictions)
+        seal_attempt_acceptance(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+            logical_condition=condition, attempt_root=attempt, artifact_validation_evidence=artifact,
+            runtime_gate_evidence=gates, y00_parity_evidence=parity)
     return attempt
 
 
@@ -109,6 +130,67 @@ def test_acceptance_seal_and_population_selection_bind_provenance(tmp_path):
     assert validity["scientific_outcome_accessed"] is False and len(validity["selected_attempts"]) == 25
     assert all(row["selected_attempt_manifest_sha256"] and row["acceptance_seal_sha256"]
                and row["artifact_inventory_sha256"] for row in validity["selected_attempts"])
+    cell = batch / "attempts" / VAL_PAIRS[0] / "Y00" / "attempt_001"
+    assert (cell / "ARTIFACT_VALIDATION.json").is_file()
+    assert (cell / "RUNTIME_GATES_CHECKED.json").is_file()
+    assert (cell / "Y00_REFERENCE_PARITY_CHECKED.json").is_file()
+    assert "artifact_validation_evidence_sha256" in seal
+    assert "runtime_gate_evidence_sha256" in seal and "y00_parity_evidence_sha256" in seal
+
+
+def test_producers_fail_closed_and_seal_requires_evidence(tmp_path):
+    batch, _, gt, records, digests = setup_case(tmp_path, seal_population=False)
+    pair, condition = VAL_PAIRS[0], "Y01"
+    attempt = _make_attempt(batch, digests["authority_bundle_sha256"], records, gt, pair, condition, index=2, seal=False)
+    predictions = [attempt / "prediction_v1.json", attempt / "prediction_v2.json"]
+    runtime = attempt / "runtime_manifest.json"
+    with pytest.raises(LockedD1Error, match="provenance missing"):
+        seal_attempt_acceptance(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+            logical_condition=condition, attempt_root=attempt,
+            artifact_validation_evidence=attempt / "ARTIFACT_VALIDATION.json",
+            runtime_gate_evidence=attempt / "RUNTIME_GATES_CHECKED.json")
+    runtime_payload = json.loads(runtime.read_text()); runtime_payload["future_read_violations"] = 1
+    runtime.write_text(json.dumps(runtime_payload))
+    with pytest.raises(LockedD1Error, match="future_read"):
+        produce_runtime_gates_checked(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+            logical_condition=condition, attempt_root=attempt, runtime_manifests=[runtime])
+    assert not (attempt / "RUNTIME_GATES_CHECKED.json").exists()
+    runtime_payload["future_read_violations"] = 0; runtime_payload["packet_emission_count"] = 2
+    runtime.write_text(json.dumps(runtime_payload))
+    with pytest.raises(LockedD1Error, match="packet conservation"):
+        produce_runtime_gates_checked(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+            logical_condition=condition, attempt_root=attempt, runtime_manifests=[runtime])
+    runtime_payload["packet_emission_count"] = 1; runtime.write_text(json.dumps(runtime_payload))
+    artifact = produce_artifact_validation(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+        logical_condition=condition, attempt_root=attempt, prediction_artifacts=predictions, source_mda_gt=gt,
+        runtime_manifests=[runtime])
+    gates = produce_runtime_gates_checked(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+        logical_condition=condition, attempt_root=attempt, runtime_manifests=[runtime])
+    artifact.write_text('{"state":"ARTIFACT_VALIDATED"}')
+    with pytest.raises(LockedD1Error, match="authority"):
+        seal_attempt_acceptance(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+            logical_condition=condition, attempt_root=attempt, artifact_validation_evidence=artifact,
+            runtime_gate_evidence=gates)
+
+
+def test_y00_parity_producer_uses_raw_bytes_and_reference_identity(tmp_path):
+    batch, _, gt, records, digests = setup_case(tmp_path, seal_population=False)
+    pair = VAL_PAIRS[0]; attempt = _make_attempt(batch, digests["authority_bundle_sha256"], records, gt, pair, "Y00", index=2, seal=False)
+    reference = batch / "attempts" / pair / "Y00" / "reference_bytes"; reference.mkdir()
+    refs = []
+    for view in (1, 2):
+        source = attempt / ("prediction_v%d.json" % view); target = reference / ("v%d.json" % view)
+        target.write_bytes(source.read_bytes()); refs.append(target)
+    parity = produce_y00_reference_parity(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+        attempt_root=attempt, reference_attempt_root=reference, reference_artifacts=refs,
+        packetized_artifacts=[attempt / "prediction_v1.json", attempt / "prediction_v2.json"])
+    assert json.loads(parity.read_text())["y00_reference_parity_pass"] is True
+    other = batch / "attempts" / VAL_PAIRS[1] / "Y00" / "reference_bytes"
+    other.mkdir(parents=True)
+    with pytest.raises(LockedD1Error, match="identity mismatch"):
+        produce_y00_reference_parity(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+            attempt_root=attempt, reference_attempt_root=other, reference_artifacts=refs,
+            packetized_artifacts=[attempt / "prediction_v1.json", attempt / "prediction_v2.json"])
 
 
 def test_condition_inventory_prediction_and_trace_tamper_fail_closed(tmp_path):
@@ -151,16 +233,14 @@ def test_external_and_cross_attempt_artifact_substitution_rejected(tmp_path):
     (attempt / "attempt_terminal_state.json").write_text('{"state":"PROCESS_COMPLETE_PENDING_VALIDITY"}')
     external = tmp_path / "external.json"; external.write_text("{}")
     with pytest.raises(LockedD1Error, match="escapes"):
-        seal_attempt_acceptance(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+        produce_artifact_validation(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
             logical_condition=condition, attempt_root=attempt, prediction_artifacts=[external, external],
-            source_mda_gt=gt, runtime_manifests=[attempt / "runtime_manifest.json"],
-            artifact_validated=True, runtime_gates_checked=True)
+            source_mda_gt=gt, runtime_manifests=[attempt / "runtime_manifest.json"])
     foreign = batch / "attempts" / pair / "Y00" / "attempt_001" / "prediction_v1.json"
     with pytest.raises(LockedD1Error, match="escapes"):
-        seal_attempt_acceptance(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+        produce_artifact_validation(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
             logical_condition=condition, attempt_root=attempt, prediction_artifacts=[foreign, foreign],
-            source_mda_gt=gt, runtime_manifests=[attempt / "runtime_manifest.json"],
-            artifact_validated=True, runtime_gates_checked=True)
+            source_mda_gt=gt, runtime_manifests=[attempt / "runtime_manifest.json"])
 
 
 def test_first_accepted_attempt_wins_and_failed_attempt_is_retained(tmp_path):
@@ -182,10 +262,9 @@ def test_no_acceptance_before_process_and_validity_completion(tmp_path):
     (attempt / "attempt_terminal_state.json").write_text('{"state":"RUNNING"}')
     predictions = [attempt / "prediction_v1.json", attempt / "prediction_v2.json"]
     with pytest.raises(LockedD1Error, match="not complete"):
-        seal_attempt_acceptance(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+        produce_artifact_validation(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
             logical_condition=condition, attempt_root=attempt, prediction_artifacts=predictions,
-            source_mda_gt=gt, runtime_manifests=[attempt / "runtime_manifest.json"],
-            artifact_validated=True, runtime_gates_checked=True)
+            source_mda_gt=gt, runtime_manifests=[attempt / "runtime_manifest.json"])
     assert not (attempt / "acceptance" / "ACCEPTANCE_SEAL.json").exists()
 
 
