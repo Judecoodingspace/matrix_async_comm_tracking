@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
 from tracking.mdmt_mia_locked_d1_failures import record_type_i_failure, classify_failure, invalidate_batch
-from tracking.mdmt_mia_locked_d1_package import LockedD1Error, atomic_json, new_attempt_root
+from tracking.mdmt_mia_locked_d1_package import (LockedD1Error, atomic_json,
+    condition_record_sha256, load_sealed_package, new_attempt_root)
 
 
 def execute_attempt(batch_root: Path, pair: str, condition: str, ordinal: int, *, argv: Sequence[str],
@@ -23,10 +24,18 @@ def execute_attempt(batch_root: Path, pair: str, condition: str, ordinal: int, *
         raise LockedD1Error("FORMAL_EXECUTION_REQUIRES_SEPARATE_AUTHORIZATION")
     if not argv or any("evaluation" in item.lower() for item in argv):
         raise LockedD1Error("executor may not invoke evaluator")
+    population = str(authority.get("population", "")); batch_id = str(authority.get("batch_id", ""))
+    _, package_authority, conditions = load_sealed_package(batch_root, population, batch_id)
+    condition_record = conditions["records"].get((pair, condition))
+    if condition_record is None or authority.get("authority_bundle_sha256") != package_authority.get("authority_bundle_sha256"):
+        raise LockedD1Error("executor authority binding mismatch")
+    bound_authority = {"population": population, "batch_id": batch_id,
+        "authority_bundle_sha256": package_authority["authority_bundle_sha256"],
+        "condition_record_sha256": condition_record_sha256(condition_record)}
     attempt = new_attempt_root(batch_root, pair, condition, ordinal)
     attempt.mkdir(parents=True, exist_ok=False)
     atomic_json(attempt / "attempt_manifest.json", {"attempt_id": attempt.name, "pair": pair, "condition": condition,
-                                                       "authority": dict(authority), "argv": list(argv),
+                                                       "authority": bound_authority, "argv": list(argv),
                                                        "environment": dict(environment), "state": "PLANNED",
                                                        "outcome_embargo": True})
     atomic_json(attempt / "attempt_state.json", {"state": "RUNNING", "outcome_embargo": True})

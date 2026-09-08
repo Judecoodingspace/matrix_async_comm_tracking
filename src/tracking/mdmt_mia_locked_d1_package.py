@@ -36,6 +36,58 @@ def sha256_file(path: Path) -> str:
     return sha256_bytes(path.read_bytes())
 
 
+def condition_record_sha256(record: Mapping[str, Any]) -> str:
+    """Digest one exact, final condition record from condition_manifest.json."""
+    return sha256_bytes(canonical_json(dict(record)))
+
+
+def load_sealed_package(batch: Path, population: str, batch_id: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Verify the final package digest graph and return package/authority/conditions."""
+    package_path = batch / "EXECUTION_PACKAGE_MANIFEST.json"
+    authority_path = batch / "AUTHORITY_MANIFEST.json"
+    condition_path = batch / "condition_manifest.json"
+    if not all(path.is_file() for path in (package_path, authority_path, condition_path)):
+        raise LockedD1Error("sealed package authority file missing")
+    package = json.loads(package_path.read_text())
+    authority = json.loads(authority_path.read_text())
+    conditions = json.loads(condition_path.read_text())
+    if package.get("sealed") is not True or package.get("batch_id") != batch_id:
+        raise LockedD1Error("execution package identity mismatch")
+    if package.get("condition_manifest_sha256") != sha256_file(condition_path):
+        raise LockedD1Error("condition manifest digest mismatch")
+    if package.get("authority_manifest_sha256") != sha256_file(authority_path):
+        raise LockedD1Error("authority manifest digest mismatch")
+    plan_path = batch / "EXECUTION_PLAN_MANIFEST.json"
+    if not plan_path.is_file() or package.get("execution_plan_sha256") != sha256_file(plan_path):
+        raise LockedD1Error("execution plan digest mismatch")
+    if authority.get("condition_manifest_file_sha256") != sha256_file(condition_path):
+        raise LockedD1Error("authority condition-manifest binding mismatch")
+    if authority.get("authority_bundle_sha256") != conditions.get("authority_bundle_sha256"):
+        raise LockedD1Error("authority bundle mismatch")
+    records = conditions.get("records")
+    if not isinstance(records, list):
+        raise LockedD1Error("condition records missing")
+    expected = {(pair, condition) for pair in population_pairs(population) for condition in LOGICAL_CONDITIONS}
+    indexed: dict[tuple[str, str], dict[str, Any]] = {}
+    for record in records:
+        key = (str(record.get("pair")), str(record.get("logical_condition")))
+        if record.get("population") != population or record.get("batch_id") != batch_id or key in indexed:
+            raise LockedD1Error("condition record identity mismatch")
+        indexed[key] = record
+    if set(indexed) != expected:
+        raise LockedD1Error("condition manifest population incomplete")
+    core = [{key: value for key, value in record.items() if key != "authority_bundle_sha256"}
+            for record in records]
+    if (conditions.get("condition_core_sha256") != sha256_bytes(canonical_json(core))
+            or authority.get("condition_core_sha256") != conditions.get("condition_core_sha256")):
+        raise LockedD1Error("condition core digest mismatch")
+    authority_core = {key: value for key, value in authority.items()
+                      if key not in ("authority_bundle_sha256", "condition_manifest_file_sha256")}
+    if authority.get("authority_bundle_sha256") != sha256_bytes(canonical_json(authority_core)):
+        raise LockedD1Error("authority bundle digest mismatch")
+    return package, authority, {"records": indexed, "path": condition_path}
+
+
 def atomic_json(path: Path, value: Mapping[str, Any]) -> str:
     """Write once; a pre-existing final artifact is an immutable collision."""
     if path.exists():

@@ -9,6 +9,11 @@ RESEARCH_DECISION_AUTHORITY = 42c1306ea4f454db5e01503b3ea58052046abfa8
 CONTRACT_AUTHORITY = aa2e081f506e2da8b493e8bc876b8437a23dcd03
 IMPLEMENTATION_PLAN_AUTHORITY = 557a220be21780989a0084abb9c14d56c5a030b7
 TEAM_B_MINOR_F1_RESOLUTION = CLOSED
+PREVIOUS_CANDIDATE = 6acd34cbcf7f18617217471b7c6d3c50018abb11
+INDEPENDENT_ACTUAL_CODE_AUDIT = FAIL
+CORRECTIVE_REVISION_3 = BLOCKED
+CORRECTIVE_REVISION_3_ROOT_CAUSE = missing outcome-blind acceptance/sealing producer
+CORRECTIVE_REVISION_4 = implementation-scope completion only
 ```
 
 This evidence covers implementation phases P0–P10 only. No qualification,
@@ -19,15 +24,15 @@ on scientific inputs, MDA computation, or outcome inspection was run.
 
 | Surface | New implementation | Guard / evidence |
 | --- | --- | --- |
-| P1 package authority | `mdmt_mia_locked_d1_package.py` | U-I3 non-cyclic condition-core → cache → authority-bundle → final-condition → package digest graph; immutable writes. |
-| P2 orchestration | `mdmt_mia_locked_d1_executor.py`, `run_mdmt_mia_locked_d1_holdout.py` | Immutable attempt renderer/launcher supports only an explicit later `launch=True`, refuses evaluator invocation, and records process failure as immutable Type I; CLI refuses launch pending P11/P12 authorization. |
+| P1 package authority | `mdmt_mia_locked_d1_package.py` | U-I3 non-cyclic condition-core → cache → authority-bundle → final-condition → package digest graph; sealed package loading recomputes the graph and exact condition-record digests. |
+| P2 orchestration | `mdmt_mia_locked_d1_executor.py`, `run_mdmt_mia_locked_d1_holdout.py` | Immutable attempt renderer binds package-derived authority and condition-record SHA; launcher supports only an explicit later `launch=True` and refuses evaluator invocation. |
 | P3 detector cache | `mdmt_mia_locked_d1_cache.py`, cache CLI | Resolved physical-image SHA-256 key; packetized read-only cache; reference live-inference guard; seed launch refused. |
-| P4 trace/debug | `mdmt_mia_locked_d1_validity.py`, `mdmt_mia_locked_d1_formal.py` | Validity projects and structurally checks required trace fields only; scientific three-state classification is confined to the post-authorization analysis layer. Formal mode removes debug-only persistence flags while retaining required minimal cascade logging. |
-| P5 validity audit | `mdmt_mia_locked_d1_validity.py`, audit CLI | No evaluator import; forbidden scientific-field traversal; byte-identical Y00 parity only. |
-| P6 analyzer | `mdmt_mia_locked_d1_analysis.py`, analyzer CLI | Authorization and batch/package bindings precede artifact discovery; analyzer loads the complete accepted matrix, calls frozen `cross_view_mda`, computes only registered contrasts/gates, and atomically publishes the required seven-file package. |
+| P4 trace/debug | `mdmt_mia_locked_d1_validity.py`, `mdmt_mia_locked_d1_formal.py` | Validity validates schema/provenance and atomically seals condition record, inventory, per-artifact hashes, runtime manifests, and `ACCEPTED_VALIDITY`; scientific classification remains analysis-only. |
+| P5 validity audit | `mdmt_mia_locked_d1_validity.py`, audit CLI | Outcome-blind population sealing deterministically selects the lowest-index accepted attempt for every cell and binds selection, manifest, acceptance, inventory, condition, and authority digests. No evaluator import exists. |
+| P6 analyzer | `mdmt_mia_locked_d1_analysis.py`, analyzer CLI | Authorization precedes sealed provenance loading; public discovery/evaluator injection is absent; evaluator SHA is verified before import; only Y10_d1 supplies primary mechanism evidence; analysis manifest binds every selected input and output digest. |
 | P7 storage | `mdmt_mia_locked_d1_storage.py` | Train/Val reserves 200/150 GB, envelopes 120/65 GB, outcome fields prohibited. |
 | P8 failures | `mdmt_mia_locked_d1_failures.py` | Immutable Type I record; Type II creates batch `INVALID.json` and blocks analysis. |
-| P9 harness | qualification core and CLI | Core retains 20 `CHECK_IDS` and `run_checks()`; CLI requires a scoped authority artifact, binds all callables, and atomically seals machine-readable PASS/FAIL results. Qualification was not executed and no real result exists. |
+| P9 harness | qualification core and CLI | All 20 `CHECK_IDS` bind real mechanical assertions over engineering inputs. Caller-supplied status verdicts are rejected; authorization binds the actual Git HEAD and context digest; result sealing records both. Qualification was not executed and no real result exists. |
 
 ## Frozen runtime integrity
 
@@ -47,7 +52,7 @@ ea9805ad770e6278a2271b5c1d9d5c981eb44a3fe21f53472b82c4bd672bdfdb  src/evaluation
 
 ```text
 PYTHONPATH=src pytest -q tests/test_mdmt_mia_locked_d1_*.py
-26 passed
+31 passed
 
 TESTED = non-cyclic manifest digest graph; exact 10×5 Train matrix;
 immutable-attempt collision rejection; resolved-path cache key and cache-role
@@ -57,8 +62,12 @@ import block; canonical verdict filenames; storage preflight/field prohibition;
 immutable Type I and fail-closed Type II batch invalidation; authorization-gated
 whole-population atomic analysis; validity/analysis mechanism boundary;
 conservative failure classification; authorized qualification dispatch and atomic
-result sealing; analyzer production artifact loading, frozen evaluator invocation,
-whole-population enforcement, exact-zero ties, and failure atomicity.
+result sealing; acceptance/inventory atomic sealing; condition/attempt/artifact
+digest closure; path containment and tamper rejection; first-accepted selection;
+measurement-validity provenance; frozen evaluator fingerprint and public-API
+closure; Y10-only timely-Supplement mechanism classification; real qualification
+callables; qualification candidate/context binding; whole-population enforcement,
+exact-zero ties, and failure atomicity.
 ```
 
 `git diff --check` passed. The implementation adds only wrapper modules, CLIs,
@@ -77,4 +86,10 @@ U_I7 = numeric retry cap: non-blocking and intentionally unset.
 
 NEXT_AUTHORIZED_STAGE = INDEPENDENT_IMPLEMENTATION_AUDIT
 STILL_NOT_AUTHORIZED = QUALIFICATION_EXECUTION, TRAIN_HOLDOUT_EXECUTION, VAL_EXECUTION, SCIENTIFIC_UNBLINDING
+QUALIFICATION_RUN = NO
+TRAIN_RUN = NO
+VAL_RUN = NO
+SCIENTIFIC_OUTCOME_READ = NO
+FORMAL_CACHE_SEED = NO
+IMPLEMENTATION_SELF_TEST = PASS_CANDIDATE_ONLY_NOT_INDEPENDENT_PASS
 ```
