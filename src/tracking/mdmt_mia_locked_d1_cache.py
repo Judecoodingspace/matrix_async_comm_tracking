@@ -3,13 +3,16 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Iterable, Mapping
 
+import numpy as np
+
 from tracking.mdmt_mia_locked_d1_package import (LockedD1Error, TRAIN_PAIRS, _materialize, _profile,
     atomic_json, canonical_json, condition_core_records, load_formal_train_authorization,
-    reference_core_records, sha256_bytes, sha256_file)
+    reference_core_records, sha256_bytes, sha256_file, validate_source_mda_registry)
 
 
 TRAIN_CACHE_PROFILE = "locked-d1-train-10-pair-cache-write-v1"
@@ -49,17 +52,35 @@ def validate_reference_environment(env: Mapping[str, str]) -> None:
         raise LockedD1Error("reference must retain live detector semantics")
 
 
+def validate_cache_npz(path: Path) -> None:
+    try:
+        with np.load(str(path), allow_pickle=False) as archive:
+            if set(archive.files) != {"class_count", "class_0", "class_1", "class_2"}:
+                raise LockedD1Error("detector cache NPZ schema mismatch")
+            count = archive["class_count"]
+            if count.shape != (1,) or count.dtype != np.dtype("int32") or int(count[0]) != 3:
+                raise LockedD1Error("detector cache class_count mismatch")
+            for index in range(3):
+                boxes = archive["class_" + str(index)]
+                if boxes.ndim != 2 or boxes.shape[1] != 5 or not np.isfinite(boxes).all():
+                    raise LockedD1Error("detector cache bbox array invalid")
+    except (OSError, ValueError, KeyError) as exc:
+        raise LockedD1Error("detector cache NPZ unreadable") from exc
+
+
 def seal_cache(cache_root: Path, expected: Mapping[str, Path], *, identity: Mapping[str, object]) -> str:
     actual = {entry.name: entry for entry in cache_root.glob("*.npz") if entry.is_file()}
     if set(actual) != set(expected):
         raise LockedD1Error("detector cache completeness mismatch")
+    if any(item.is_symlink() for item in actual.values()):
+        raise LockedD1Error("cache symlink forbidden")
+    for item in actual.values():
+        validate_cache_npz(item)
     manifest = {"state": "COMPLETE", "identity": dict(identity),
                 "entries": {key: {"image": str(expected[key]), "sha256": sha256_file(actual[key])}
                             for key in sorted(expected)}}
     digest = atomic_json(cache_root / "cache_manifest.json", manifest)
     for item in actual.values():
-        if item.is_symlink():
-            raise LockedD1Error("cache symlink forbidden")
         item.chmod(0o444)
     cache_root.chmod(0o555)
     return digest
@@ -92,6 +113,7 @@ def verify_sealed_train_cache(batch_root: Path, authority: Mapping[str, object])
         item = cache_root / key
         if item.is_symlink() or not item.is_file() or entry.get("sha256") != sha256_file(item):
             raise LockedD1Error("formal Train cache entry mismatch")
+        validate_cache_npz(item)
     digest = sha256_file(path)
     static = authority.get("authority_static")
     if not isinstance(static, Mapping) or static.get("cache_manifest_sha256") != digest:
@@ -148,6 +170,7 @@ def seed_authorized_train_cache(batch_root: Path, authorization_path: Path, *, i
     images = bound.get("cache_images")
     if not isinstance(source, Mapping) or not isinstance(static, Mapping) or not isinstance(images, list):
         raise LockedD1Error("formal cache inputs missing")
+    validate_source_mda_registry(source, "train")
     core = {"records": condition_core_records("train", batch_root.name, source_mda=source, authority_static=static),
             "reference_records": reference_core_records("train", batch_root.name, source_mda=source, authority_static=static)}
     core_sha = sha256_bytes(canonical_json(core))
@@ -173,8 +196,16 @@ def seed_authorized_train_cache(batch_root: Path, authorization_path: Path, *, i
         if (env.get("MIA_DETECTION_CACHE_ROOT") != str(cache_root.resolve())
                 or env.get("MIA_DETECTION_CACHE_MODE") != "write" or env.get("PYTHONHASHSEED") != "7"):
             raise LockedD1Error("formal cache seed must write only to its sealed root")
-        result = runner(list(row["argv"]), cwd=Path.cwd(), env=dict(env), check=False,
-                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        transient = Path(str(env["MIA_OUTPUT_ROOT"]))
+        allowed_root = (batch_root / "cache_seed" / "attempt_001").resolve()
+        if transient.parent != allowed_root or transient.is_symlink():
+            raise LockedD1Error("formal cache seed transient output root mismatch")
+        try:
+            result = runner(list(row["argv"]), cwd=Path.cwd(), env=dict(env), check=False,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        finally:
+            if transient.exists():
+                shutil.rmtree(transient)
         if getattr(result, "returncode", 1):
             raise LockedD1Error("formal cache seed author failed for Train pair " + str(row["pair"]))
     manifest_sha = seal_cache(cache_root, expected, identity={"population": "train", "condition_core_sha256": core_sha,

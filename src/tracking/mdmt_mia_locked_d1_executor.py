@@ -8,7 +8,7 @@ from typing import Callable
 
 from tracking.mdmt_mia_locked_d1_cache import verify_sealed_train_cache
 from tracking.mdmt_mia_locked_d1_package import (LockedD1Error, atomic_json, condition_record_sha256,
-    load_formal_train_authorization, load_launch_spec)
+    IMPLEMENTATION_BRANCH, load_formal_train_authorization, load_launch_spec)
 from tracking.mdmt_mia_locked_d1_storage import filesystem_available, preflight
 
 
@@ -22,16 +22,42 @@ def _git_head(repo_root: Path) -> str:
     return result.stdout.strip()
 
 
+def _git_remote_head(repo_root: Path) -> str:
+    result = subprocess.run(["git", "ls-remote", "--exit-code", "github",
+        "refs/heads/" + IMPLEMENTATION_BRANCH], cwd=repo_root, capture_output=True, text=True, check=False)
+    fields = result.stdout.strip().split()
+    if result.returncode != 0 or len(fields) != 2:
+        raise LockedD1Error("cannot resolve GitHub implementation authority")
+    return fields[0]
+
+
 def _bytes(value: object) -> bytes:
     if isinstance(value, bytes): return value
     if isinstance(value, str): return value.encode("utf-8", errors="replace")
     return b""
 
 
+def _discard_raw_author_log(attempt_root: Path, pair: str) -> None:
+    """Remove the frozen wrapper's raw tee log without reading it."""
+    path = attempt_root / "mia" / ("train_" + pair) / "author.log"
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise LockedD1Error("raw author log path type invalid")
+    if path.is_file():
+        try:
+            path.resolve(strict=True).relative_to(attempt_root.resolve(strict=True))
+        except ValueError as exc:
+            raise LockedD1Error("raw author log escapes immutable attempt") from exc
+        path.unlink()
+
+
 def preflight_formal_train_launch(batch_root: Path, authorization_path: Path, *, repo_root: Path | None = None) -> dict[str, object]:
     """Check authority, cache, package, and storage facts without opening predictions or evaluator inputs."""
     repo = repo_root or Path(__file__).resolve().parents[2]
-    authorization, authorization_sha = load_formal_train_authorization(authorization_path, implementation_sha=_git_head(repo))
+    local_head = _git_head(repo)
+    authorization, authorization_sha = load_formal_train_authorization(authorization_path, implementation_sha=local_head)
+    remote_head = _git_remote_head(repo)
+    if remote_head != local_head or remote_head != authorization.get("candidate_commit_sha"):
+        raise LockedD1Error("remote/local Formal Train authority mismatch")
     batch_id = batch_root.name
     if authorization.get("batch_id") != batch_id or authorization.get("package_root") != str(batch_root.resolve()):
         raise LockedD1Error("formal authorization package identity mismatch")
@@ -46,7 +72,8 @@ def preflight_formal_train_launch(batch_root: Path, authorization_path: Path, *,
         raise LockedD1Error("STORAGE_BUDGET_REVIEW_REQUIRED")
     if (batch_root / "analysis").exists():
         raise LockedD1Error("analysis root exists before unblinding")
-    return {"authorization_sha256": authorization_sha, "authority_bundle_sha256": authority["authority_bundle_sha256"],
+    return {"authorization_sha256": authorization_sha, "remote_candidate_sha": remote_head,
+            "authority_bundle_sha256": authority["authority_bundle_sha256"],
             "cache_manifest_sha256": cache["cache_manifest_sha256"], "storage": storage,
             "scientific_outcome_accessed": False}
 
@@ -77,10 +104,12 @@ def execute_attempt(batch_root: Path, pair: str, condition: str, ordinal: int, *
     atomic_json(attempt / "attempt_state.json", {"state": "RUNNING", "outcome_embargo": True})
     result = runner(list(spec["argv"]), cwd=Path.cwd(), env=dict(spec["environment"]), check=False,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    _discard_raw_author_log(attempt, pair)
     stdout, stderr = _bytes(getattr(result, "stdout", b"")), _bytes(getattr(result, "stderr", b""))
     process = {"returncode": int(getattr(result, "returncode", 1)), "stdout_bytes": len(stdout),
         "stdout_sha256": hashlib.sha256(stdout).hexdigest(), "stderr_bytes": len(stderr),
-        "stderr_sha256": hashlib.sha256(stderr).hexdigest(), "scientific_outcome_accessed": False}
+        "stderr_sha256": hashlib.sha256(stderr).hexdigest(), "raw_author_log_retained": False,
+        "scientific_outcome_accessed": False}
     state = "PROCESS_COMPLETE_PENDING_VALIDITY" if process["returncode"] == 0 else "FAILURE_PENDING_CLASSIFICATION"
     atomic_json(attempt / "attempt_terminal_state.json", {"state": state, **process})
     if process["returncode"]:

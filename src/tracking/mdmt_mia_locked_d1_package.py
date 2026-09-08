@@ -223,7 +223,7 @@ def condition_core_records(population: str, batch_id: str, *, source_mda: Mappin
                 "supplement_delay": supplement, "edge_cut": edge_cut, "shadow": shadow,
                 "execution_role": "PACKETIZED", "reference_required": condition == "Y00",
                 "oracle_diagnostic_only": condition == "Yec_d1",
-                "source_mda": dict(source_mda), "authority_static": condition_static,
+                "source_mda": _source_mda_for_pair(source_mda, pair), "authority_static": condition_static,
             })
     return rows
 
@@ -235,8 +235,41 @@ def reference_core_records(population: str, batch_id: str, *, source_mda: Mappin
              "logical_condition": "Y00", "physical_condition": "REFERENCE_Y00", "delay_frames": 0,
              "local_delay": 0, "homography_delay": 0, "id_state_delay": 0, "supplement_delay": 0,
              "edge_cut": 0, "shadow": 0, "execution_role": "REFERENCE", "reference_required": False,
-             "oracle_diagnostic_only": False, "source_mda": dict(source_mda),
+             "oracle_diagnostic_only": False, "source_mda": _source_mda_for_pair(source_mda, pair),
              "authority_static": condition_static} for pair in population_pairs(population)]
+
+
+def validate_source_mda_registry(source_mda: Mapping[str, Any], population: str) -> None:
+    """Require an exact pair-specific GT registry for a formal population."""
+    pairs = source_mda.get("pairs")
+    if not isinstance(pairs, Mapping) or set(pairs) != set(population_pairs(population)):
+        raise LockedD1Error("Source-MDA pair registry mismatch")
+    for pair in population_pairs(population):
+        row = pairs.get(pair)
+        artifacts = row.get("artifacts") if isinstance(row, Mapping) else None
+        if not isinstance(artifacts, list) or len(artifacts) != 2:
+            raise LockedD1Error("Source-MDA pair artifact cardinality mismatch: " + pair)
+        indexed = {item.get("artifact_role"): item for item in artifacts if isinstance(item, Mapping)}
+        if set(indexed) != {"source_mda_gt_v1", "source_mda_gt_v2"}:
+            raise LockedD1Error("Source-MDA pair artifact roles mismatch: " + pair)
+        for view, role in enumerate(("source_mda_gt_v1", "source_mda_gt_v2"), 1):
+            item = indexed[role]
+            path = Path(str(item.get("path", "")))
+            expected_name = "%s-%d.txt" % (pair, view)
+            if (not path.is_absolute() or path.name != expected_name or path.is_symlink()
+                    or not path.is_file() or item.get("sha256") != sha256_file(path.resolve())):
+                raise LockedD1Error("Source-MDA pair artifact binding mismatch: " + pair)
+
+
+def _source_mda_for_pair(source_mda: Mapping[str, Any], pair: str) -> dict[str, Any]:
+    pairs = source_mda.get("pairs")
+    if not isinstance(pairs, Mapping):
+        return dict(source_mda)
+    row = pairs.get(pair)
+    if not isinstance(row, Mapping):
+        raise LockedD1Error("Source-MDA pair binding missing: " + pair)
+    common = {key: value for key, value in source_mda.items() if key != "pairs"}
+    return {**common, "pair": pair, **dict(row)}
 
 
 def _profile(value: Mapping[str, Any], role: str, logical_condition: str | None = None) -> tuple[list[str], dict[str, str]]:
@@ -269,6 +302,9 @@ def _materialize(values: Sequence[str], environment: Mapping[str, str], *, pair:
         env = {key: item.format(**substitutions) for key, item in environment.items()}
     except (KeyError, ValueError) as exc:
         raise LockedD1Error("execution profile uses unapproved placeholder") from exc
+    if (env.get("MIA_OUTPUT_ROOT") != attempt_template
+            or env.get("MIA_RUN_INPUT_ROOT") != attempt_template + "/run_inputs"):
+        raise LockedD1Error("execution output/input root is not bound to the immutable attempt")
     from tracking.mdmt_mia_locked_d1_formal import assert_formal_debug_suppressed, formal_environment
     if role == "PACKETIZED":
         local, homography, identity, supplement, edge_cut, shadow = _CONDITION_PARAMETERS[condition]
@@ -304,6 +340,7 @@ def render_manifests(root: Path, population: str, batch_id: str, *, source_mda: 
                                                or not _resolved(cache_static) or not _resolved(execution_static)):
         raise LockedD1Error("formal package inputs must be fully bound")
     if formal_authorization is not None:
+        validate_source_mda_registry(source_mda, population)
         cache_path = Path(str(cache_static.get("cache_manifest_path", "")))
         cache_sha = cache_static.get("cache_manifest_sha256")
         if (not cache_path.is_file() or not isinstance(cache_sha, str) or sha256_file(cache_path) != cache_sha
