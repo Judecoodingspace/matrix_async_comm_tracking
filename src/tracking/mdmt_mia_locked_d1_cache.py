@@ -7,8 +7,12 @@ import subprocess
 from pathlib import Path
 from typing import Iterable, Mapping
 
-from tracking.mdmt_mia_locked_d1_package import (LockedD1Error, atomic_json, canonical_json,
-    condition_core_records, load_formal_train_authorization, reference_core_records, sha256_bytes, sha256_file)
+from tracking.mdmt_mia_locked_d1_package import (LockedD1Error, TRAIN_PAIRS, _materialize, _profile,
+    atomic_json, canonical_json, condition_core_records, load_formal_train_authorization,
+    reference_core_records, sha256_bytes, sha256_file)
+
+
+TRAIN_CACHE_PROFILE = "locked-d1-train-10-pair-cache-write-v1"
 
 
 def cache_key(image: Path) -> str:
@@ -95,6 +99,40 @@ def verify_sealed_train_cache(batch_root: Path, authority: Mapping[str, object])
     return {"cache_manifest_sha256": digest, "entry_count": len(entries)}
 
 
+def derive_train_cache_seed_profiles(batch_root: Path, execution_static: Mapping[str, object]) -> list[dict[str, object]]:
+    """Derive the only permitted cache-write calls from the sealed packetized profile.
+
+    There is deliberately no caller-selected pair, split, condition, shell, or loop.  A
+    cache write is the Y00 materialization for every registered Train pair, with a unique
+    cache-seed attempt root and the cache mode changed from canonical read to write.
+    """
+    argv, environment = _profile(execution_static, "packetized")
+    profiles: list[dict[str, object]] = []
+    for index, pair in enumerate(TRAIN_PAIRS, 1):
+        attempt_root = str((batch_root / "cache_seed" / "attempt_001" / ("pair_%02d_%s" % (index, pair))).resolve())
+        materialized_argv, materialized_env = _materialize(argv, environment, pair=pair, condition="Y00",
+            attempt_template=attempt_root, cache_root="{cache_root}", role="PACKETIZED")
+        if materialized_env.get("MIA_DETECTION_CACHE_MODE") != "read":
+            raise LockedD1Error("canonical packetized cache profile must start read-only")
+        materialized_env["MIA_DETECTION_CACHE_MODE"] = "write"
+        profiles.append({"pair": pair, "argv": materialized_argv, "environment": materialized_env})
+    return profiles
+
+
+def _validated_train_cache_profiles(batch_root: Path, bound: Mapping[str, object]) -> list[dict[str, object]]:
+    execution = bound.get("execution_static")
+    seed = bound.get("cache_seed")
+    if not isinstance(execution, Mapping) or not isinstance(seed, Mapping):
+        raise LockedD1Error("formal cache inputs missing")
+    if seed.get("profile") != TRAIN_CACHE_PROFILE or set(seed) != {"profile", "commands"}:
+        raise LockedD1Error("formal cache seed profile is not canonical")
+    commands = seed.get("commands")
+    expected = derive_train_cache_seed_profiles(batch_root, execution)
+    if commands != expected:
+        raise LockedD1Error("formal cache seed commands are not the fixed Train profile")
+    return expected
+
+
 def seed_authorized_train_cache(batch_root: Path, authorization_path: Path, *, implementation_sha: str,
                                 runner=subprocess.run) -> dict[str, object]:
     """Run only the cache command fixed in an authorization, then seal its exact key set.
@@ -107,8 +145,8 @@ def seed_authorized_train_cache(batch_root: Path, authorization_path: Path, *, i
     if authorization.get("package_root") != str(batch_root.resolve()):
         raise LockedD1Error("formal cache package identity mismatch")
     source, static = bound.get("source_mda"), bound.get("authority_static")
-    images, seed = bound.get("cache_images"), bound.get("cache_seed")
-    if not isinstance(source, Mapping) or not isinstance(static, Mapping) or not isinstance(images, list) or not isinstance(seed, Mapping):
+    images = bound.get("cache_images")
+    if not isinstance(source, Mapping) or not isinstance(static, Mapping) or not isinstance(images, list):
         raise LockedD1Error("formal cache inputs missing")
     core = {"records": condition_core_records("train", batch_root.name, source_mda=source, authority_static=static),
             "reference_records": reference_core_records("train", batch_root.name, source_mda=source, authority_static=static)}
@@ -122,24 +160,26 @@ def seed_authorized_train_cache(batch_root: Path, authorization_path: Path, *, i
         key = cache_key(image)
         if key in expected: raise LockedD1Error("formal cache duplicate image key")
         expected[key] = image
-    argv, environment = seed.get("argv"), seed.get("environment")
-    if not isinstance(argv, list) or not argv or not all(isinstance(item, str) for item in argv):
-        raise LockedD1Error("formal cache seed argv invalid")
-    if not isinstance(environment, Mapping) or environment.get("PYTHONHASHSEED") != "7":
-        raise LockedD1Error("formal cache seed environment invalid")
+    profiles = _validated_train_cache_profiles(batch_root, bound)
     cache_root = batch_root / "detector_cache"
     if cache_root.exists(): raise LockedD1Error("formal cache root collision")
     cache_root.mkdir(parents=True, exist_ok=False)
     values = {"cache_root": str(cache_root.resolve())}
     try:
-        command = [item.format(**values) for item in argv]
-        env = {str(key): str(value).format(**values) for key, value in environment.items()}
-    except (KeyError, ValueError) as exc:
+        rendered = [{"pair": row["pair"], "argv": [item.format(**values) for item in row["argv"]],
+                     "environment": {str(key): str(value).format(**values)
+                                     for key, value in row["environment"].items()}} for row in profiles]
+    except (KeyError, ValueError, AttributeError) as exc:
         raise LockedD1Error("formal cache seed uses unapproved placeholder") from exc
-    if env.get("MIA_DETECTION_CACHE_ROOT") != str(cache_root.resolve()) or env.get("MIA_DETECTION_CACHE_MODE") != "write":
-        raise LockedD1Error("formal cache seed must write only to its sealed root")
-    result = runner(command, cwd=Path.cwd(), env=env, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if getattr(result, "returncode", 1): raise LockedD1Error("formal cache seed process failed")
+    for row in rendered:
+        env = row["environment"]
+        if (env.get("MIA_DETECTION_CACHE_ROOT") != str(cache_root.resolve())
+                or env.get("MIA_DETECTION_CACHE_MODE") != "write" or env.get("PYTHONHASHSEED") != "7"):
+            raise LockedD1Error("formal cache seed must write only to its sealed root")
+        result = runner(list(row["argv"]), cwd=Path.cwd(), env=dict(env), check=False,
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if getattr(result, "returncode", 1):
+            raise LockedD1Error("formal cache seed author failed for Train pair " + str(row["pair"]))
     manifest_sha = seal_cache(cache_root, expected, identity={"population": "train", "condition_core_sha256": core_sha,
         "formal_authorization_sha256": authorization_sha})
     binding = {"source_mda": dict(source), "authority_static": {**dict(static), "cache_manifest_sha256": manifest_sha},

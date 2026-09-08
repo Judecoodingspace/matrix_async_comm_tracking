@@ -3,11 +3,12 @@ import json
 import subprocess
 import pytest
 
-from tracking.mdmt_mia_locked_d1_cache import (cache_key, seed_authorized_train_cache,
+from tracking.mdmt_mia_locked_d1_cache import (TRAIN_CACHE_PROFILE, cache_key,
+    derive_train_cache_seed_profiles, seed_authorized_train_cache,
     validate_packetized_cache_environment, validate_reference_environment)
 from tracking.mdmt_mia_locked_d1_package import (EXPERIMENT_CONTRACT_COMMIT, FORMAL_TRAIN_AUTHORIZATION_SCHEMA,
     FROZEN_BASE_COMMIT, IMPLEMENTATION_BRANCH, IMPLEMENTATION_PLAN_COMMIT, P11_MANIFEST_SHA256,
-    RESEARCH_DECISION_COMMIT, LockedD1Error)
+    RESEARCH_DECISION_COMMIT, TRAIN_PAIRS, LockedD1Error)
 
 
 def test_cache_key_follows_resolved_physical_image_identity(tmp_path: Path):
@@ -29,6 +30,11 @@ def test_authorized_train_cache_seed_seals_exact_image_set_and_binding(tmp_path:
     batch = tmp_path / "locked_d1_train_batch_001"; batch.mkdir(); image = tmp_path / "image.jpg"; image.write_bytes(b"x")
     head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
     authorization = tmp_path / "authorization.json"
+    execution = {"packetized": {"argv": ["fake-cache", "{pair}"],
+        "environment": {"PYTHONHASHSEED": "7", "MIA_DETECTION_CACHE_ROOT": "{cache_root}",
+                        "MIA_DETECTION_CACHE_MODE": "read"}},
+        "reference": {"argv": ["fake-reference", "{pair}"], "environment": {"PYTHONHASHSEED": "7"}}}
+    seed = {"profile": TRAIN_CACHE_PROFILE, "commands": derive_train_cache_seed_profiles(batch, execution)}
     authorization.write_text(json.dumps({"schema_version": FORMAL_TRAIN_AUTHORIZATION_SCHEMA, "state": "AUTHORIZED",
         "scope": "FORMAL_TRAIN_EXECUTION", "authorization_id": "cache-test", "candidate_commit_sha": head,
         "branch": IMPLEMENTATION_BRANCH, "research_decision_sha": RESEARCH_DECISION_COMMIT,
@@ -38,14 +44,31 @@ def test_authorized_train_cache_seed_seals_exact_image_set_and_binding(tmp_path:
         "train_execution_authorized": True, "formal_train_cache_seed_authorized": True,
         "val_execution_authorized": False, "scientific_outcome_access_authorized": False,
         "bound_inputs": {"source_mda": {"digest": "synthetic"}, "authority_static": {"variant": "synthetic"},
-            "execution_static": {"fixed": "synthetic"}, "projected_storage_bytes": 1,
+            "execution_static": execution, "projected_storage_bytes": 1,
             "cache_images": [{"path": str(image.resolve()), "sha256": __import__("hashlib").sha256(b"x").hexdigest()}],
-            "cache_seed": {"argv": ["fake-cache", "{cache_root}"],
-                "environment": {"PYTHONHASHSEED": "7", "MIA_DETECTION_CACHE_ROOT": "{cache_root}", "MIA_DETECTION_CACHE_MODE": "write"}}}}))
+            "cache_seed": seed}}))
+    calls = []
     def runner(argv, **kwargs):
+        calls.append((argv, kwargs["env"]))
         Path(kwargs["env"]["MIA_DETECTION_CACHE_ROOT"]).mkdir(parents=True, exist_ok=True)
         (Path(kwargs["env"]["MIA_DETECTION_CACHE_ROOT"]) / cache_key(image)).write_bytes(b"cache")
         return type("Result", (), {"returncode": 0, "stdout": b"", "stderr": b""})()
     result = seed_authorized_train_cache(batch, authorization, implementation_sha=head, runner=runner)
     assert len(result["cache_manifest_sha256"]) == 64
     assert (batch / "CACHE_BINDING.json").is_file()
+    assert [argv[1] for argv, _ in calls] == list(TRAIN_PAIRS)
+    assert all(env["MIA_DETECTION_CACHE_MODE"] == "write" for _, env in calls)
+
+
+def test_train_cache_profile_rejects_pair_or_command_substitution(tmp_path: Path):
+    batch = tmp_path / "locked_d1_train_batch_001"; batch.mkdir()
+    execution = {"packetized": {"argv": ["frozen", "{pair}"],
+        "environment": {"PYTHONHASHSEED": "7", "MIA_DETECTION_CACHE_ROOT": "{cache_root}", "MIA_DETECTION_CACHE_MODE": "read"}}}
+    profiles = derive_train_cache_seed_profiles(batch, execution)
+    assert [row["pair"] for row in profiles] == list(TRAIN_PAIRS)
+    assert all(row["environment"]["MIA_DETECTION_CACHE_MODE"] == "write" for row in profiles)
+    profiles[-1] = {**profiles[-1], "pair": "22"}
+    from tracking.mdmt_mia_locked_d1_cache import _validated_train_cache_profiles
+    with pytest.raises(LockedD1Error, match="fixed Train profile"):
+        _validated_train_cache_profiles(batch, {"execution_static": execution,
+            "cache_seed": {"profile": TRAIN_CACHE_PROFILE, "commands": profiles}})
