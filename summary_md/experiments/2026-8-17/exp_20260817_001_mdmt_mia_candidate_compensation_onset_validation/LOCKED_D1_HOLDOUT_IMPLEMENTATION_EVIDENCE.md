@@ -17,6 +17,9 @@ CORRECTIVE_REVISION_4 = implementation-scope completion only
 P11_PREFLIGHT_AT_53FBED = BLOCKED
 P11_BLOCK_REASON = acceptance gate booleans were caller-controlled rather than producer evidence
 CORRECTIVE_REVISION_5 = acceptance gate producer closure only
+TEAM_B_DELTA_AUDIT_AT_F7007F1 = FAIL
+TEAM_B_DELTA_AUDIT_ROOT_CAUSE = runtime evidence was not cross-bound to current runtime manifests; forged runtime evidence was accepted
+CORRECTIVE_REVISION_6 = runtime evidence rebinding and re-derivation closure only
 ```
 
 This evidence covers implementation phases P0–P10 only. No qualification,
@@ -56,7 +59,7 @@ ea9805ad770e6278a2271b5c1d9d5c981eb44a3fe21f53472b82c4bd672bdfdb  src/evaluation
 ```text
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider \
 tests/test_mdmt_mia_locked_d1_*.py
-33 passed
+35 passed
 
 TESTED = non-cyclic manifest digest graph; exact 10×5 Train matrix;
 immutable-attempt collision rejection; resolved-path cache key and cache-role
@@ -83,6 +86,14 @@ two-view Y00 byte parity, evidence tamper rejection, and evidence-bound
 acceptance. No qualification, Train, Val, cache seeding, or scientific outcome
 access occurred.
 
+Corrective #6 re-derives frozen runtime gate results from the current inventory
+runtime manifests during both acceptance and post-seal verification. It requires
+an exact non-empty identifier-to-current-SHA manifest map and exact equality
+between re-derived counters and runtime evidence. Synthetic adversarial tests
+reject forged PASS counters, stale hashes, altered gate results, and missing or
+extra runtime manifest declarations. No qualification, Train, Val, cache
+seeding, or scientific outcome access occurred.
+
 ## Deferred facts and authorization boundary
 
 ```text
@@ -108,4 +119,10 @@ CORRECTIVE_REVISION_5_VAL_EXECUTED = NO
 CORRECTIVE_REVISION_5_SCIENTIFIC_OUTCOME_READ = NO
 CORRECTIVE_REVISION_5_FORMAL_TRAIN_CACHE_SEEDED = NO
 CORRECTIVE_REVISION_5_FORMAL_VAL_CACHE_SEEDED = NO
+CORRECTIVE_REVISION_6_QUALIFICATION_EXECUTED = NO
+CORRECTIVE_REVISION_6_TRAIN_EXECUTED = NO
+CORRECTIVE_REVISION_6_VAL_EXECUTED = NO
+CORRECTIVE_REVISION_6_SCIENTIFIC_OUTCOME_READ = NO
+CORRECTIVE_REVISION_6_FORMAL_TRAIN_CACHE_SEEDED = NO
+CORRECTIVE_REVISION_6_FORMAL_VAL_CACHE_SEEDED = NO
 ```

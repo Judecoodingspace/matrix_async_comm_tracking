@@ -11,7 +11,7 @@ from tracking.mdmt_mia_locked_d1_package import (LOGICAL_CONDITIONS, VAL_PAIRS,
     LockedD1Error, condition_record_sha256, render_manifests, sha256_file)
 from tracking.mdmt_mia_locked_d1_validity import (produce_artifact_validation,
     produce_runtime_gates_checked, produce_y00_reference_parity,
-    seal_attempt_acceptance, seal_measurement_validity)
+    seal_attempt_acceptance, seal_measurement_validity, verify_acceptance_seal)
 
 EVALUATOR_AUTHORITY = {"module": "evaluation.mdmt_mia_paper",
     "path": "src/evaluation/mdmt_mia_paper.py",
@@ -141,6 +141,7 @@ def test_acceptance_seal_and_population_selection_bind_provenance(tmp_path):
 def test_producers_fail_closed_and_seal_requires_evidence(tmp_path):
     batch, _, gt, records, digests = setup_case(tmp_path, seal_population=False)
     pair, condition = VAL_PAIRS[0], "Y01"
+
     attempt = _make_attempt(batch, digests["authority_bundle_sha256"], records, gt, pair, condition, index=2, seal=False)
     predictions = [attempt / "prediction_v1.json", attempt / "prediction_v2.json"]
     runtime = attempt / "runtime_manifest.json"
@@ -171,6 +172,97 @@ def test_producers_fail_closed_and_seal_requires_evidence(tmp_path):
         seal_attempt_acceptance(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
             logical_condition=condition, attempt_root=attempt, artifact_validation_evidence=artifact,
             runtime_gate_evidence=gates)
+
+
+def test_runtime_evidence_is_rebound_to_current_manifests_and_rederived(tmp_path):
+    batch, _, gt, records, digests = setup_case(tmp_path, seal_population=False)
+    pair, condition = VAL_PAIRS[0], "Y01"
+
+    def rebind_artifact(attempt, paths):
+        artifact = json.loads((attempt / "ARTIFACT_VALIDATION.json").read_text())
+        current = {path.name: path for path in paths}
+        for row in artifact["validated_artifact_entries"]:
+            if row["identifier"] in current:
+                path = current[row["identifier"]]; row["sha256"] = sha256_file(path); row["bytes"] = path.stat().st_size
+        artifact["validated_artifact_sha256s"] = {row["artifact_role"]: row["sha256"] for row in artifact["validated_artifact_entries"]}
+        from tracking.mdmt_mia_locked_d1_package import canonical_json, sha256_bytes
+        artifact["artifact_inventory_candidate_sha256"] = sha256_bytes(canonical_json({"artifacts": artifact["validated_artifact_entries"]}))
+        (attempt / "ARTIFACT_VALIDATION.json").write_text(json.dumps(artifact))
+
+    def attempt_with_artifact(index, *, second_manifest=False):
+        attempt = _make_attempt(batch, digests["authority_bundle_sha256"], records, gt, pair, condition,
+            index=index, seal=False)
+        runtime_paths = [attempt / "runtime_manifest.json"]
+        if second_manifest:
+            second = attempt / "runtime_manifest_2.json"
+            second.write_text((attempt / "runtime_manifest.json").read_text()); runtime_paths.append(second)
+        artifact = produce_artifact_validation(batch_root=batch, population="val", batch_id=batch.name,
+            pair=pair, logical_condition=condition, attempt_root=attempt,
+            prediction_artifacts=[attempt / "prediction_v1.json", attempt / "prediction_v2.json"],
+            source_mda_gt=gt, runtime_manifests=runtime_paths)
+        base = json.loads(artifact.read_text())
+        runtime = {key: base[key] for key in ("attempt_id", "pair", "logical_condition", "batch_id",
+            "population", "authority_bundle_sha256", "condition_record_sha256")}
+        runtime.update({"state": "RUNTIME_GATES_CHECKED", "checked_runtime_manifest_sha256s": {
+            path.name: sha256_file(path) for path in runtime_paths}, "gate_results": json.loads(runtime_paths[0].read_text()),
+            "all_mandatory_gates_pass": True, "scientific_outcome_accessed": False})
+        return attempt, runtime_paths, runtime
+
+    # Team B attack: current bytes derive future_read_violations=1 while evidence claims zero.
+    attempt, paths, forged = attempt_with_artifact(2)
+    current = json.loads(paths[0].read_text()); current["future_read_violations"] = 1; paths[0].write_text(json.dumps(current))
+    rebind_artifact(attempt, paths)
+    forged["checked_runtime_manifest_sha256s"] = {paths[0].name: sha256_file(paths[0])}
+    forged["gate_results"]["future_read_violations"] = 0
+    evidence = attempt / "RUNTIME_GATES_CHECKED.json"; evidence.write_text(json.dumps(forged))
+    with pytest.raises(LockedD1Error, match="RUNTIME_GATE_RESULT_MISMATCH"):
+        seal_attempt_acceptance(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+            logical_condition=condition, attempt_root=attempt, artifact_validation_evidence=attempt / "ARTIFACT_VALIDATION.json",
+            runtime_gate_evidence=evidence)
+
+    # The same current bytes with an old evidence SHA are rejected before sealing.
+    attempt, paths, forged = attempt_with_artifact(3)
+    paths[0].write_text(json.dumps({**json.loads(paths[0].read_text()), "future_read_violations": 1}))
+    forged["gate_results"]["future_read_violations"] = 1
+    (attempt / "RUNTIME_GATES_CHECKED.json").write_text(json.dumps(forged))
+    rebind_artifact(attempt, paths)
+    with pytest.raises(LockedD1Error, match="RUNTIME_MANIFEST_SHA_MISMATCH"):
+        seal_attempt_acceptance(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+            logical_condition=condition, attempt_root=attempt, artifact_validation_evidence=attempt / "ARTIFACT_VALIDATION.json",
+            runtime_gate_evidence=attempt / "RUNTIME_GATES_CHECKED.json")
+
+    # Legal current manifests still reject forged counter values and a missing manifest declaration.
+    attempt, paths, forged = attempt_with_artifact(4, second_manifest=True)
+    forged["gate_results"]["logger_read_only"] = 0
+    (attempt / "RUNTIME_GATES_CHECKED.json").write_text(json.dumps(forged))
+    with pytest.raises(LockedD1Error, match="RUNTIME_GATE_RESULT_MISMATCH"):
+        seal_attempt_acceptance(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+            logical_condition=condition, attempt_root=attempt, artifact_validation_evidence=attempt / "ARTIFACT_VALIDATION.json",
+            runtime_gate_evidence=attempt / "RUNTIME_GATES_CHECKED.json")
+    forged["gate_results"]["logger_read_only"] = 1
+    forged["checked_runtime_manifest_sha256s"].pop(paths[1].name)
+    (attempt / "RUNTIME_GATES_CHECKED.json").write_text(json.dumps(forged))
+    with pytest.raises(LockedD1Error, match="RUNTIME_MANIFEST_SET_MISMATCH"):
+        seal_attempt_acceptance(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+            logical_condition=condition, attempt_root=attempt, artifact_validation_evidence=attempt / "ARTIFACT_VALIDATION.json",
+            runtime_gate_evidence=attempt / "RUNTIME_GATES_CHECKED.json")
+    forged["checked_runtime_manifest_sha256s"][paths[1].name] = sha256_file(paths[1])
+    forged["checked_runtime_manifest_sha256s"]["unexpected.json"] = "0" * 64
+    (attempt / "RUNTIME_GATES_CHECKED.json").write_text(json.dumps(forged))
+    with pytest.raises(LockedD1Error, match="RUNTIME_MANIFEST_SET_MISMATCH"):
+        seal_attempt_acceptance(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+            logical_condition=condition, attempt_root=attempt, artifact_validation_evidence=attempt / "ARTIFACT_VALIDATION.json",
+            runtime_gate_evidence=attempt / "RUNTIME_GATES_CHECKED.json")
+
+
+def test_verify_acceptance_seal_rereads_runtime_manifests(tmp_path):
+    batch, _, _, records, digests = setup_case(tmp_path)
+    pair, condition = VAL_PAIRS[0], "Y01"; attempt = batch / "attempts" / pair / condition / "attempt_001"
+    runtime = attempt / "runtime_manifest.json"; payload = json.loads(runtime.read_text()); payload["runtime_gt_read_count"] = 1; runtime.write_text(json.dumps(payload))
+    with pytest.raises(LockedD1Error, match="digest"):
+        verify_acceptance_seal(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+            logical_condition=condition, attempt_root=attempt, condition_record=records[(pair, condition)],
+            authority_bundle_sha256=digests["authority_bundle_sha256"])
 
 
 def test_y00_parity_producer_uses_raw_bytes_and_reference_identity(tmp_path):
