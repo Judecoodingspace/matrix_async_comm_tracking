@@ -239,8 +239,14 @@ def reference_core_records(population: str, batch_id: str, *, source_mda: Mappin
              "authority_static": condition_static} for pair in population_pairs(population)]
 
 
-def _profile(value: Mapping[str, Any], role: str) -> tuple[list[str], dict[str, str]]:
+def _profile(value: Mapping[str, Any], role: str, logical_condition: str | None = None) -> tuple[list[str], dict[str, str]]:
     profile = value.get(role)
+    if role == "packetized":
+        if logical_condition not in LOGICAL_CONDITIONS or not isinstance(profile, Mapping):
+            raise LockedD1Error("packetized condition profile missing")
+        if set(profile) != set(LOGICAL_CONDITIONS):
+            raise LockedD1Error("packetized condition profile set mismatch")
+        profile = profile.get(logical_condition)
     if not isinstance(profile, Mapping):
         raise LockedD1Error("execution profile missing: " + role)
     argv, environment = profile.get("argv"), profile.get("environment")
@@ -264,6 +270,15 @@ def _materialize(values: Sequence[str], environment: Mapping[str, str], *, pair:
     except (KeyError, ValueError) as exc:
         raise LockedD1Error("execution profile uses unapproved placeholder") from exc
     from tracking.mdmt_mia_locked_d1_formal import assert_formal_debug_suppressed, formal_environment
+    if role == "PACKETIZED":
+        local, homography, identity, supplement, edge_cut, shadow = _CONDITION_PARAMETERS[condition]
+        expected_delay = json.dumps({"local": local, "homography": homography,
+                                     "id_state": identity, "supplement": supplement}, sort_keys=True)
+        required = {"MIA_ACTIVE_PACKET_STAGES": "all", "MIA_IMPORT_VARIANT_MMTRACK": "1",
+                    "MIA_ASYNC_CHANNEL_DELAYS": expected_delay, "MIA_CASCADE_EDGE_CUT": str(edge_cut),
+                    "MIA_CASCADE_SHADOW": str(shadow), "MIA_CASCADE_LOGGING": "1"}
+        if any(env.get(key) != expected for key, expected in required.items()):
+            raise LockedD1Error("packetized condition environment mismatch: " + condition)
     env = formal_environment(env, condition)
     assert_formal_debug_suppressed(env)
     if role == "PACKETIZED":
@@ -323,7 +338,8 @@ def render_manifests(root: Path, population: str, batch_id: str, *, source_mda: 
         cache_root = str((root / "detector_cache").resolve())
         for record in final_conditions + final_references:
             role = str(record["execution_role"])
-            argv, env = _profile(execution_static, "packetized" if role == "PACKETIZED" else "reference")
+            argv, env = _profile(execution_static, "packetized" if role == "PACKETIZED" else "reference",
+                                str(record["logical_condition"]) if role == "PACKETIZED" else None)
             attempts_root = "attempts" if role == "PACKETIZED" else "references"
             template = str(root / attempts_root / str(record["pair"]) / str(record["logical_condition"]) / "attempt_{ordinal:03d}")
             argv, env = _materialize(argv, env, pair=str(record["pair"]), condition=str(record["logical_condition"]),

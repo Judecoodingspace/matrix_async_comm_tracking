@@ -13,6 +13,19 @@ from tracking.mdmt_mia_locked_d1_package import (EXPERIMENT_CONTRACT_COMMIT, FOR
     render_manifests, sha256_bytes, sha256_file)
 
 
+def _packetized(argv):
+    values = {"Y00": (0, 0, 0), "Y01": (0, 1, 0), "Y10_d1": (1, 0, 0),
+              "Y11_d1": (1, 1, 0), "Yec_d1": (1, 0, 1)}
+    return {condition: {"argv": list(argv), "environment": {
+        "PYTHONHASHSEED": "7", "MIA_DETECTION_CACHE_ROOT": "{cache_root}",
+        "MIA_DETECTION_CACHE_MODE": "read", "MIA_ACTIVE_PACKET_STAGES": "all",
+        "MIA_IMPORT_VARIANT_MMTRACK": "1", "MIA_CASCADE_LOGGING": "1",
+        "MIA_ASYNC_CHANNEL_DELAYS": '{{' + '"homography": 0, "id_state": %d, "local": 0, "supplement": %d' % values[condition][:2] + '}}',
+        "MIA_CASCADE_EDGE_CUT": str(values[condition][2]),
+        "MIA_CASCADE_SHADOW": "1" if condition in ("Y10_d1", "Yec_d1") else "0"}}
+            for condition in values}
+
+
 def _head() -> str:
     return subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
 
@@ -37,8 +50,7 @@ def _formal_package(tmp_path: Path):
     cache_sha = seal_cache(cache, {key: image.resolve()}, identity={"population": "train",
         "condition_core_sha256": sha256_bytes(canonical_json(core)), "formal_authorization_sha256": auth_sha})
     static["cache_manifest_sha256"] = cache_sha
-    execution = {"packetized": {"argv": ["fake", "{pair}", "{condition}", "{attempt_root}"],
-        "environment": {"PYTHONHASHSEED": "7", "MIA_DETECTION_CACHE_ROOT": "{cache_root}", "MIA_DETECTION_CACHE_MODE": "read"}},
+    execution = {"packetized": _packetized(["fake", "{pair}", "{condition}", "{attempt_root}"]),
         "reference": {"argv": ["fake-reference", "{pair}", "{attempt_root}"], "environment": {"PYTHONHASHSEED": "7"}}}
     render_manifests(batch, "train", batch.name, source_mda=source, authority_static=static,
         cache_static={"cache_manifest_path": str(cache / "cache_manifest.json"), "cache_manifest_sha256": cache_sha},
@@ -74,3 +86,21 @@ def test_formal_package_requires_independent_reference_plan(tmp_path: Path):
     assert len(condition["reference_records"]) == 10
     assert all(row["execution_role"] == "PACKETIZED" for row in condition["records"])
     assert all(row["execution_role"] == "REFERENCE" for row in condition["reference_records"])
+
+
+def test_all_fifty_packetized_specs_bind_registered_condition_environment(tmp_path: Path):
+    batch, _ = _formal_package(tmp_path)
+    plan = json.loads((batch / "EXECUTION_PLAN_MANIFEST.json").read_text())
+    packetized = [row for row in plan["launch_specs"] if row["execution_role"] == "PACKETIZED"]
+    references = [row for row in plan["launch_specs"] if row["execution_role"] == "REFERENCE"]
+    assert len(packetized) == 50 and len(references) == 10
+    expected = {"Y00": (0, 0, "0", "0"), "Y01": (0, 1, "0", "0"),
+                "Y10_d1": (1, 0, "0", "1"), "Y11_d1": (1, 1, "0", "0"),
+                "Yec_d1": (1, 0, "1", "1")}
+    for row in packetized:
+        identity, supplement, edge, shadow = expected[row["logical_condition"]]
+        env = row["environment"]
+        assert json.loads(env["MIA_ASYNC_CHANNEL_DELAYS"]) == {"homography": 0, "id_state": identity,
+            "local": 0, "supplement": supplement}
+        assert (env["MIA_CASCADE_EDGE_CUT"], env["MIA_CASCADE_SHADOW"],
+                env["MIA_DETECTION_CACHE_MODE"]) == (edge, shadow, "read")

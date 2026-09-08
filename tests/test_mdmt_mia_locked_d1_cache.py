@@ -11,6 +11,19 @@ from tracking.mdmt_mia_locked_d1_package import (EXPERIMENT_CONTRACT_COMMIT, FOR
     RESEARCH_DECISION_COMMIT, TRAIN_PAIRS, LockedD1Error)
 
 
+def _packetized(argv):
+    values = {"Y00": (0, 0, 0), "Y01": (0, 1, 0), "Y10_d1": (1, 0, 0),
+              "Y11_d1": (1, 1, 0), "Yec_d1": (1, 0, 1)}
+    return {condition: {"argv": list(argv), "environment": {
+        "PYTHONHASHSEED": "7", "MIA_DETECTION_CACHE_ROOT": "{cache_root}",
+        "MIA_DETECTION_CACHE_MODE": "read", "MIA_ACTIVE_PACKET_STAGES": "all",
+        "MIA_IMPORT_VARIANT_MMTRACK": "1", "MIA_CASCADE_LOGGING": "1",
+        "MIA_ASYNC_CHANNEL_DELAYS": '{{' + '"homography": 0, "id_state": %d, "local": 0, "supplement": %d' % values[condition][:2] + '}}',
+        "MIA_CASCADE_EDGE_CUT": str(values[condition][2]),
+        "MIA_CASCADE_SHADOW": "1" if condition in ("Y10_d1", "Yec_d1") else "0"}}
+            for condition in values}
+
+
 def test_cache_key_follows_resolved_physical_image_identity(tmp_path: Path):
     target = tmp_path / "source" / "000001.jpg"; target.parent.mkdir(); target.write_bytes(b"x")
     link = tmp_path / "stage" / "000001.jpg"; link.parent.mkdir(); link.symlink_to(target)
@@ -30,9 +43,7 @@ def test_authorized_train_cache_seed_seals_exact_image_set_and_binding(tmp_path:
     batch = tmp_path / "locked_d1_train_batch_001"; batch.mkdir(); image = tmp_path / "image.jpg"; image.write_bytes(b"x")
     head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
     authorization = tmp_path / "authorization.json"
-    execution = {"packetized": {"argv": ["fake-cache", "{pair}"],
-        "environment": {"PYTHONHASHSEED": "7", "MIA_DETECTION_CACHE_ROOT": "{cache_root}",
-                        "MIA_DETECTION_CACHE_MODE": "read"}},
+    execution = {"packetized": _packetized(["fake-cache", "{pair}"]),
         "reference": {"argv": ["fake-reference", "{pair}"], "environment": {"PYTHONHASHSEED": "7"}}}
     seed = {"profile": TRAIN_CACHE_PROFILE, "commands": derive_train_cache_seed_profiles(batch, execution)}
     authorization.write_text(json.dumps({"schema_version": FORMAL_TRAIN_AUTHORIZATION_SCHEMA, "state": "AUTHORIZED",
@@ -62,8 +73,7 @@ def test_authorized_train_cache_seed_seals_exact_image_set_and_binding(tmp_path:
 
 def test_train_cache_profile_rejects_pair_or_command_substitution(tmp_path: Path):
     batch = tmp_path / "locked_d1_train_batch_001"; batch.mkdir()
-    execution = {"packetized": {"argv": ["frozen", "{pair}"],
-        "environment": {"PYTHONHASHSEED": "7", "MIA_DETECTION_CACHE_ROOT": "{cache_root}", "MIA_DETECTION_CACHE_MODE": "read"}}}
+    execution = {"packetized": _packetized(["frozen", "{pair}"])}
     profiles = derive_train_cache_seed_profiles(batch, execution)
     assert [row["pair"] for row in profiles] == list(TRAIN_PAIRS)
     assert all(row["environment"]["MIA_DETECTION_CACHE_MODE"] == "write" for row in profiles)

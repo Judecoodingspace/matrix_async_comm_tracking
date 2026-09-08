@@ -106,7 +106,7 @@ def derive_train_cache_seed_profiles(batch_root: Path, execution_static: Mapping
     cache write is the Y00 materialization for every registered Train pair, with a unique
     cache-seed attempt root and the cache mode changed from canonical read to write.
     """
-    argv, environment = _profile(execution_static, "packetized")
+    argv, environment = _profile(execution_static, "packetized", "Y00")
     profiles: list[dict[str, object]] = []
     for index, pair in enumerate(TRAIN_PAIRS, 1):
         attempt_root = str((batch_root / "cache_seed" / "attempt_001" / ("pair_%02d_%s" % (index, pair))).resolve())
@@ -164,13 +164,10 @@ def seed_authorized_train_cache(batch_root: Path, authorization_path: Path, *, i
     cache_root = batch_root / "detector_cache"
     if cache_root.exists(): raise LockedD1Error("formal cache root collision")
     cache_root.mkdir(parents=True, exist_ok=False)
-    values = {"cache_root": str(cache_root.resolve())}
-    try:
-        rendered = [{"pair": row["pair"], "argv": [item.format(**values) for item in row["argv"]],
-                     "environment": {str(key): str(value).format(**values)
-                                     for key, value in row["environment"].items()}} for row in profiles]
-    except (KeyError, ValueError, AttributeError) as exc:
-        raise LockedD1Error("formal cache seed uses unapproved placeholder") from exc
+    cache_root_text = str(cache_root.resolve())
+    rendered = [{"pair": row["pair"], "argv": [item.replace("{cache_root}", cache_root_text) for item in row["argv"]],
+                 "environment": {str(key): str(value).replace("{cache_root}", cache_root_text)
+                                 for key, value in row["environment"].items()}} for row in profiles]
     for row in rendered:
         env = row["environment"]
         if (env.get("MIA_DETECTION_CACHE_ROOT") != str(cache_root.resolve())
