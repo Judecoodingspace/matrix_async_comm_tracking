@@ -18,6 +18,11 @@ and five independent Y00 reference specifications.
 - Val Source-MDA, image inventory, detector cache, package root, attempt roots,
   and dispatcher state are independently bound to the Val population.
 - Cache seed is derived only from the five authorized Val Y00 profiles.
+- The execution plan is re-derived byte-for-byte from authorization-bound
+  profiles and its core hash is independently bound by the authority manifest.
+- Resume accepts only a complete attempt manifest/state/terminal triplet whose
+  authority, launch spec, and metadata hashes revalidate. Raw-log cleanup is
+  exception-safe.
 - Package load and launch require `FORMAL_VAL`; a Train authority/package cannot
   be substituted.
 - Launch preflight checks a clean local SHA, matching GitHub branch SHA, sealed
@@ -30,7 +35,8 @@ and five independent Y00 reference specifications.
 
 ```text
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider tests/test_mdmt_mia_locked_d1_*.py
-49 passed
+51 passed
+Full repository regression: 393 passed, 2 skipped
 ```
 
 Frozen MIA runtime files were not modified.  No Train, Val, Test, evaluator,

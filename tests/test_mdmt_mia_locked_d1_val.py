@@ -11,7 +11,7 @@ from tracking.mdmt_mia_locked_d1_cache import (VAL_CACHE_PROFILE, cache_key, der
 from tracking.mdmt_mia_locked_d1_package import (EXPERIMENT_CONTRACT_COMMIT, FORMAL_TRAIN_AUTHORIZATION_SCHEMA,
     FORMAL_VAL_AUTHORIZATION_SCHEMA, FROZEN_BASE_COMMIT, IMPLEMENTATION_BRANCH, IMPLEMENTATION_PLAN_COMMIT,
     LOGICAL_CONDITIONS, P11_MANIFEST_SHA256, RESEARCH_DECISION_COMMIT, VAL_PAIRS, LockedD1Error,
-    load_formal_val_authorization, render_manifests, sha256_file)
+    canonical_json, load_formal_val_authorization, render_manifests, sha256_file)
 from tracking.mdmt_mia_locked_d1_val_executor import (dispatch_remaining_val, execute_val_attempt,
     preflight_formal_val_launch)
 
@@ -134,7 +134,8 @@ def test_val_cache_package_preflight_and_attempt_are_end_to_end_outcome_blind(tm
     monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor._git_head", lambda _: _head())
     monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor._git_remote_head", lambda _: _head())
     monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor.filesystem_available", lambda _: 160_000_000_000)
-    gpu = lambda: {"returncode": 0, "visible_device_count": 1}
+    gpu = lambda: {"returncode": 0, "visible_device_count": 1,
+                   "torch_cuda_available": True, "device": "cuda:0"}
     result = preflight_formal_val_launch(batch, authorization, gpu_probe=gpu)
     assert result["host_gpu"]["status"] == "PASS"
     assert result["outcome_embargo"] is True and result["train_artifact_accessed"] is False
@@ -181,21 +182,25 @@ def test_val_preflight_fail_closes_on_gpu_remote_storage_and_analysis(tmp_path: 
     monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor.filesystem_available", lambda _: 160_000_000_000)
     with pytest.raises(LockedD1Error, match="GPU_NOT_VISIBLE"):
         preflight_formal_val_launch(batch, authorization,
-            gpu_probe=lambda: {"returncode": 0, "visible_device_count": 0})
+            gpu_probe=lambda: {"returncode": 0, "visible_device_count": 0,
+                               "torch_cuda_available": False, "device": "cuda:0"})
     monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor._git_remote_head", lambda _: "0" * 40)
     with pytest.raises(LockedD1Error, match="remote/local"):
         preflight_formal_val_launch(batch, authorization,
-            gpu_probe=lambda: {"returncode": 0, "visible_device_count": 1})
+            gpu_probe=lambda: {"returncode": 0, "visible_device_count": 1,
+                               "torch_cuda_available": True, "device": "cuda:0"})
     monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor._git_remote_head", lambda _: _head())
     monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor.filesystem_available", lambda _: 149_999_999_999)
     with pytest.raises(LockedD1Error, match="INSUFFICIENT"):
         preflight_formal_val_launch(batch, authorization,
-            gpu_probe=lambda: {"returncode": 0, "visible_device_count": 1})
+            gpu_probe=lambda: {"returncode": 0, "visible_device_count": 1,
+                               "torch_cuda_available": True, "device": "cuda:0"})
     monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor.filesystem_available", lambda _: 160_000_000_000)
     (batch / "analysis").mkdir()
     with pytest.raises(LockedD1Error, match="analysis root"):
         preflight_formal_val_launch(batch, authorization,
-            gpu_probe=lambda: {"returncode": 0, "visible_device_count": 1})
+            gpu_probe=lambda: {"returncode": 0, "visible_device_count": 1,
+                               "torch_cuda_available": True, "device": "cuda:0"})
 
 
 def test_val_preflight_revalidates_current_images_and_exact_cache_set(tmp_path: Path, monkeypatch):
@@ -203,7 +208,8 @@ def test_val_preflight_revalidates_current_images_and_exact_cache_set(tmp_path: 
     monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor._git_head", lambda _: _head())
     monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor._git_remote_head", lambda _: _head())
     monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor.filesystem_available", lambda _: 160_000_000_000)
-    gpu = lambda: {"returncode": 0, "visible_device_count": 1}
+    gpu = lambda: {"returncode": 0, "visible_device_count": 1,
+                   "torch_cuda_available": True, "device": "cuda:0"}
     auth = json.loads(authorization.read_text()); first = auth["bound_inputs"]["cache_images"][0]
     image = Path(first["path"]); original = image.read_bytes(); image.write_bytes(b"tampered")
     with pytest.raises(LockedD1Error, match="image fingerprint"):
@@ -214,44 +220,85 @@ def test_val_preflight_revalidates_current_images_and_exact_cache_set(tmp_path: 
         preflight_formal_val_launch(batch, authorization, gpu_probe=gpu)
 
 
+def test_val_preflight_rejects_rehashed_post_seal_plan_substitution(tmp_path: Path, monkeypatch):
+    batch, authorization = _seed_and_render(tmp_path)
+    monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor._git_head", lambda _: _head())
+    monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor._git_remote_head", lambda _: _head())
+    monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor.filesystem_available",
+                        lambda _: 160_000_000_000)
+    gpu = lambda: {"returncode": 0, "visible_device_count": 1,
+                   "torch_cuda_available": True, "device": "cuda:0"}
+    plan_path = batch / "EXECUTION_PLAN_MANIFEST.json"
+    plan = json.loads(plan_path.read_text())
+    plan["launch_specs"][0]["environment"]["MIA_DETECTION_CACHE_MODE"] = "write"
+    plan["launch_specs"][0]["environment"]["MIA_OUTPUT_ROOT"] = str(tmp_path / "escaped")
+    plan_path.write_bytes(canonical_json(plan))
+    package_path = batch / "EXECUTION_PACKAGE_MANIFEST.json"
+    package = json.loads(package_path.read_text())
+    package["execution_plan_sha256"] = sha256_file(plan_path)
+    package_path.write_bytes(canonical_json(package))
+    with pytest.raises(LockedD1Error, match="authorized derivation"):
+        preflight_formal_val_launch(batch, authorization, gpu_probe=gpu)
+
+
+def test_val_runner_exception_removes_raw_log_and_writes_sanitized_terminal(tmp_path: Path, monkeypatch):
+    batch, authorization = _seed_and_render(tmp_path)
+    monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor._git_head", lambda _: _head())
+    monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor._git_remote_head", lambda _: _head())
+    monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor.filesystem_available",
+                        lambda _: 160_000_000_000)
+    gpu = lambda: {"returncode": 0, "visible_device_count": 1,
+                   "torch_cuda_available": True, "device": "cuda:0"}
+    def raising_runner(argv, **kwargs):
+        output = Path(kwargs["env"]["MIA_OUTPUT_ROOT"]) / "mia" / "val_22"
+        output.mkdir(parents=True); (output / "author.log").write_text("must disappear")
+        raise RuntimeError("raw exception must not be retained")
+    with pytest.raises(LockedD1Error, match="raw output removed"):
+        execute_val_attempt(batch, "22", "Y00", 1, authorization_path=authorization, launch=True,
+                            runner=raising_runner, gpu_probe=gpu)
+    attempt = batch / "attempts" / "22" / "Y00" / "attempt_001"
+    assert not (attempt / "mia" / "val_22" / "author.log").exists()
+    terminal = json.loads((attempt / "attempt_terminal_state.json").read_text())
+    assert terminal["error_category"] == "RUNNER_EXCEPTION" and terminal["returncode"] == -1
+    assert "raw exception" not in json.dumps(terminal)
+
+
 def test_val_dispatcher_resumes_successes_and_stops_on_first_failure(tmp_path: Path, monkeypatch):
     import tracking.mdmt_mia_locked_d1_val_executor as module
-    batch = tmp_path / "locked_d1_val_batch_001"; batch.mkdir()
-    authorization = tmp_path / "authorization.json"; authorization.write_text("{}")
-    monkeypatch.setattr(module, "preflight_formal_val_launch", lambda *a, **k: {})
-    first = batch / "references" / VAL_PAIRS[0] / "Y00" / "attempt_001"
-    first.mkdir(parents=True)
-    (first / "attempt_terminal_state.json").write_text(json.dumps({
-        "state": "PROCESS_COMPLETE_PENDING_VALIDITY", "returncode": 0}))
+    success_root = tmp_path / "success"; success_root.mkdir()
+    batch, authorization = _seed_and_render(success_root)
+    monkeypatch.setattr(module, "_git_head", lambda _: _head())
+    monkeypatch.setattr(module, "_git_remote_head", lambda _: _head())
+    monkeypatch.setattr(module, "filesystem_available", lambda _: 160_000_000_000)
+    gpu = lambda: {"returncode": 0, "visible_device_count": 1,
+                   "torch_cuda_available": True, "device": "cuda:0"}
     calls = []
-    def successful(batch_root, pair, condition, ordinal, **kwargs):
-        calls.append((pair, condition, kwargs["execution_role"]))
-        attempt = module._attempt_path(batch_root, pair, condition, kwargs["execution_role"])
-        attempt.mkdir(parents=True)
-        (attempt / "attempt_terminal_state.json").write_text(json.dumps({
-            "state": "PROCESS_COMPLETE_PENDING_VALIDITY", "returncode": 0}))
-        return attempt
-    monkeypatch.setattr(module, "execute_val_attempt", successful)
-    final = dispatch_remaining_val(batch, authorization, launch=True)
-    assert final["completed"] == 30 and len(calls) == 29
+    def successful(argv, **kwargs):
+        calls.append(tuple(argv))
+        pair = argv[2]
+        output = Path(kwargs["env"]["MIA_OUTPUT_ROOT"]) / "mia" / ("val_" + pair)
+        output.mkdir(parents=True); (output / "author.log").write_text("discard")
+        return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+    execute_val_attempt(batch, VAL_PAIRS[0], "Y00", 1, authorization_path=authorization,
+        execution_role="REFERENCE", launch=True, runner=successful, gpu_probe=gpu)
+    final = dispatch_remaining_val(batch, authorization, launch=True, runner=successful, gpu_probe=gpu)
+    assert final["completed"] == 30 and len(calls) == 30
     assert json.loads((batch / "VAL_DISPATCHER_STATE.json").read_text())["state"] == "COMPLETE_PENDING_VALIDITY"
-    calls.clear(); dispatch_remaining_val(batch, authorization, launch=True)
+    calls.clear(); dispatch_remaining_val(batch, authorization, launch=True, runner=successful, gpu_probe=gpu)
     assert calls == []
+    manifest = batch / "references" / VAL_PAIRS[0] / "Y00" / "attempt_001" / "attempt_manifest.json"
+    forged = json.loads(manifest.read_text()); forged["argv"].append("--forged"); manifest.write_text(json.dumps(forged))
+    with pytest.raises(LockedD1Error, match="authority/spec"):
+        dispatch_remaining_val(batch, authorization, launch=True, runner=successful, gpu_probe=gpu)
 
-    failed_batch = tmp_path / "locked_d1_val_batch_002"; failed_batch.mkdir()
+    failure_root = tmp_path / "failure"; failure_root.mkdir()
+    failed_batch, failed_authorization = _seed_and_render(failure_root)
     counter = {"value": 0}
-    def failing(*args, **kwargs):
+    def failing(argv, **kwargs):
         counter["value"] += 1
-        if counter["value"] == 2:
-            raise LockedD1Error("synthetic non-scientific failure")
-        attempt = module._attempt_path(args[0], args[1], args[2], kwargs["execution_role"])
-        attempt.mkdir(parents=True)
-        (attempt / "attempt_terminal_state.json").write_text(json.dumps({
-            "state": "PROCESS_COMPLETE_PENDING_VALIDITY", "returncode": 0}))
-        return attempt
-    monkeypatch.setattr(module, "execute_val_attempt", failing)
-    with pytest.raises(LockedD1Error, match="synthetic"):
-        dispatch_remaining_val(failed_batch, authorization, launch=True)
+        return SimpleNamespace(returncode=1 if counter["value"] == 2 else 0, stdout=b"", stderr=b"")
+    with pytest.raises(LockedD1Error, match="author process failed"):
+        dispatch_remaining_val(failed_batch, failed_authorization, launch=True, runner=failing, gpu_probe=gpu)
     state = json.loads((failed_batch / "VAL_DISPATCHER_STATE.json").read_text())
     assert state["state"] == "STOPPED_FAILURE" and state["completed"] == 1
     assert "stdout" not in state and "stderr" not in state

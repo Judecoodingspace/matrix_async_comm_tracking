@@ -11,15 +11,32 @@ from typing import Callable, Mapping
 from tracking.mdmt_mia_locked_d1_cache import verify_sealed_val_cache
 from tracking.mdmt_mia_locked_d1_executor import _bytes, _git_head, _git_remote_head
 from tracking.mdmt_mia_locked_d1_package import (IMPLEMENTATION_BRANCH, LOGICAL_CONDITIONS, VAL_PAIRS,
-    LockedD1Error, canonical_json, condition_record_sha256, load_formal_val_authorization, load_launch_spec,
+    LockedD1Error, _profile, canonical_json, condition_core_records, condition_record_sha256,
+    derive_launch_specs, load_formal_val_authorization, load_launch_spec, reference_core_records,
     sha256_bytes, sha256_file, validate_source_mda_registry)
 from tracking.mdmt_mia_locked_d1_storage import filesystem_available, preflight
 
 
-def _default_gpu_probe() -> Mapping[str, object]:
-    result = subprocess.run(["nvidia-smi", "--query-gpu=index", "--format=csv,noheader"],
-                            capture_output=True, text=True, check=False)
-    return {"returncode": result.returncode, "visible_device_count": len(result.stdout.splitlines())}
+def _default_gpu_probe(authorization: Mapping[str, object]) -> Mapping[str, object]:
+    bound = authorization.get("bound_inputs")
+    execution = bound.get("execution_static") if isinstance(bound, Mapping) else None
+    if not isinstance(execution, Mapping):
+        return {"returncode": 1, "visible_device_count": 0, "torch_cuda_available": False}
+    _, environment = _profile(execution, "packetized", "Y00")
+    mia_root = environment.get("MIA_ROOT")
+    if not isinstance(mia_root, str):
+        return {"returncode": 1, "visible_device_count": 0, "torch_cuda_available": False}
+    python = Path(mia_root) / ".conda-env" / "bin" / "python"
+    probe = ("import json,torch;print(json.dumps({'available':torch.cuda.is_available(),"
+             "'count':torch.cuda.device_count()}))")
+    result = subprocess.run([str(python), "-c", probe], capture_output=True, text=True, check=False,
+                            env={**os.environ, **environment})
+    try:
+        payload = json.loads(result.stdout.strip()) if result.returncode == 0 else {}
+    except json.JSONDecodeError:
+        payload = {}
+    return {"returncode": result.returncode, "visible_device_count": payload.get("count", 0),
+            "torch_cuda_available": payload.get("available") is True, "device": environment.get("DEVICE")}
 
 
 def _require_host_gpu(gpu_probe: Callable[[], Mapping[str, object]]) -> dict[str, object]:
@@ -28,9 +45,18 @@ def _require_host_gpu(gpu_probe: Callable[[], Mapping[str, object]]) -> dict[str
     except (OSError, subprocess.SubprocessError) as exc:
         raise LockedD1Error("FORMAL_VAL_HOST_GPU_PREFLIGHT_FAILED") from exc
     if value.get("returncode") != 0 or not isinstance(value.get("visible_device_count"), int) \
-            or int(value["visible_device_count"]) < 1:
+            or int(value["visible_device_count"]) < 1 or value.get("torch_cuda_available") is not True:
         raise LockedD1Error("FORMAL_VAL_HOST_GPU_NOT_VISIBLE")
-    return {"status": "PASS", "visible_device_count": int(value["visible_device_count"])}
+    device = value.get("device", "cuda:0")
+    if not isinstance(device, str) or not device.startswith("cuda:"):
+        raise LockedD1Error("FORMAL_VAL_AUTHORIZED_DEVICE_IS_NOT_CUDA")
+    try:
+        index = int(device.split(":", 1)[1])
+    except (ValueError, IndexError) as exc:
+        raise LockedD1Error("FORMAL_VAL_AUTHORIZED_DEVICE_INVALID") from exc
+    if index < 0 or index >= int(value["visible_device_count"]):
+        raise LockedD1Error("FORMAL_VAL_AUTHORIZED_CUDA_DEVICE_NOT_VISIBLE")
+    return {"status": "PASS", "visible_device_count": int(value["visible_device_count"]), "device": device}
 
 
 def _tree_sha256(root: Path) -> str:
@@ -135,8 +161,34 @@ def _validate_all_val_launch_specs(batch_root: Path, batch_id: str) -> None:
             raise LockedD1Error("formal Val reference argv split mismatch")
 
 
+def _validate_sealed_val_plan(batch_root: Path, batch_id: str, authorization: Mapping[str, object],
+                              authority: Mapping[str, object]) -> None:
+    bound = authorization.get("bound_inputs")
+    source = bound.get("source_mda") if isinstance(bound, Mapping) else None
+    static = bound.get("authority_static") if isinstance(bound, Mapping) else None
+    execution = bound.get("execution_static") if isinstance(bound, Mapping) else None
+    if not isinstance(source, Mapping) or not isinstance(static, Mapping) or not isinstance(execution, Mapping):
+        raise LockedD1Error("formal Val plan inputs missing")
+    records = condition_core_records("val", batch_id, source_mda=source, authority_static=static)
+    references = reference_core_records("val", batch_id, source_mda=source, authority_static=static)
+    expected = {"batch_id": batch_id, "population": "val", "pairs": list(VAL_PAIRS),
+                "conditions": list(LOGICAL_CONDITIONS), "reference_pairs": list(VAL_PAIRS),
+                "launch_specs": derive_launch_specs(batch_root, "val", records, references, execution),
+                "outcome_embargo": True}
+    try:
+        plan = json.loads((batch_root / "EXECUTION_PLAN_MANIFEST.json").read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise LockedD1Error("formal Val execution plan unreadable") from exc
+    if (not isinstance(plan, Mapping) or set(plan) != set(expected) | {"authority_manifest_sha256"}
+            or {key: value for key, value in plan.items() if key != "authority_manifest_sha256"} != expected):
+        raise LockedD1Error("formal Val execution plan differs from authorized derivation")
+    expected_sha = sha256_bytes(canonical_json(expected))
+    if authority.get("execution_plan_core_sha256") != expected_sha:
+        raise LockedD1Error("formal Val execution plan lacks independent authority binding")
+
+
 def preflight_formal_val_launch(batch_root: Path, authorization_path: Path, *, repo_root: Path | None = None,
-                                gpu_probe: Callable[[], Mapping[str, object]] = _default_gpu_probe) -> dict[str, object]:
+                                gpu_probe: Callable[[], Mapping[str, object]] | None = None) -> dict[str, object]:
     """Fail closed on Val authority, isolation, cache, host GPU, remote SHA, storage, and embargo."""
     repo = repo_root or Path(__file__).resolve().parents[2]
     local_head = _git_head(repo)
@@ -157,6 +209,7 @@ def preflight_formal_val_launch(batch_root: Path, authorization_path: Path, *, r
         raise LockedD1Error("formal Val authorization identity mismatch")
     _verify_val_input_binding(batch_root, authorization, authority, repo)
     _validate_all_val_launch_specs(batch_root, batch_id)
+    _validate_sealed_val_plan(batch_root, batch_id, authorization, authority)
     cache = verify_sealed_val_cache(batch_root, authority)
     projected = authorization.get("bound_inputs", {}).get("projected_storage_bytes")
     if not isinstance(projected, int) or projected < 0:
@@ -166,7 +219,8 @@ def preflight_formal_val_launch(batch_root: Path, authorization_path: Path, *, r
         raise LockedD1Error("STORAGE_BUDGET_REVIEW_REQUIRED")
     if (batch_root / "analysis").exists():
         raise LockedD1Error("analysis root exists before unblinding")
-    gpu = _require_host_gpu(gpu_probe)
+    probe = gpu_probe or (lambda: _default_gpu_probe(authorization))
+    gpu = _require_host_gpu(probe)
     return {"authorization_sha256": authorization_sha, "remote_candidate_sha": remote_head,
             "authority_bundle_sha256": authority["authority_bundle_sha256"],
             "cache_manifest_sha256": cache["cache_manifest_sha256"], "storage": storage, "host_gpu": gpu,
@@ -176,7 +230,7 @@ def preflight_formal_val_launch(batch_root: Path, authorization_path: Path, *, r
 def execute_val_attempt(batch_root: Path, pair: str, condition: str, ordinal: int, *, authorization_path: Path,
                         execution_role: str = "PACKETIZED", launch: bool = False,
                         runner: Callable = subprocess.run, repo_root: Path | None = None,
-                        gpu_probe: Callable[[], Mapping[str, object]] = _default_gpu_probe) -> Path:
+                        gpu_probe: Callable[[], Mapping[str, object]] | None = None) -> Path:
     """Launch exactly one Val attempt from a sealed spec; raw process text is never retained."""
     if not launch:
         raise LockedD1Error("FORMAL_VAL_EXECUTION_REQUIRES_EXPLICIT_LAUNCH")
@@ -205,16 +259,29 @@ def execute_val_attempt(batch_root: Path, pair: str, condition: str, ordinal: in
         "argv": spec["argv"], "environment": spec["environment"], "state": "PLANNED",
         "outcome_embargo": True, "train_artifact_accessed": False, "scientific_outcome_accessed": False})
     atomic_json(attempt / "attempt_state.json", {"state": "RUNNING", "outcome_embargo": True})
-    result = runner(list(spec["argv"]), cwd=Path.cwd(), env=dict(spec["environment"]), check=False,
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    _discard_raw_author_log(attempt, pair)
+    manifest_sha = sha256_file(attempt / "attempt_manifest.json")
+    state_sha = sha256_file(attempt / "attempt_state.json")
+    runner_failure: BaseException | None = None
+    result = None
+    try:
+        result = runner(list(spec["argv"]), cwd=Path.cwd(), env=dict(spec["environment"]), check=False,
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except BaseException as exc:
+        runner_failure = exc
+    finally:
+        _discard_raw_author_log(attempt, pair)
     stdout, stderr = _bytes(getattr(result, "stdout", b"")), _bytes(getattr(result, "stderr", b""))
-    process = {"returncode": int(getattr(result, "returncode", 1)), "stdout_bytes": len(stdout),
+    process = {"returncode": int(getattr(result, "returncode", -1)), "stdout_bytes": len(stdout),
         "stdout_sha256": hashlib.sha256(stdout).hexdigest(), "stderr_bytes": len(stderr),
         "stderr_sha256": hashlib.sha256(stderr).hexdigest(), "raw_author_log_retained": False,
+        "attempt_manifest_sha256": manifest_sha, "attempt_state_sha256": state_sha,
+        "error_category": "RUNNER_EXCEPTION" if runner_failure is not None else
+                          ("NONE" if int(getattr(result, "returncode", 1)) == 0 else "AUTHOR_NONZERO"),
         "train_artifact_accessed": False, "scientific_outcome_accessed": False}
     state = "PROCESS_COMPLETE_PENDING_VALIDITY" if process["returncode"] == 0 else "FAILURE_PENDING_CLASSIFICATION"
     atomic_json(attempt / "attempt_terminal_state.json", {"state": state, **process})
+    if runner_failure is not None:
+        raise LockedD1Error("Val author runner exception; raw output removed") from None
     if process["returncode"]:
         raise LockedD1Error("Val author process failed; failure requires evidence classification")
     return attempt
@@ -236,41 +303,85 @@ def _attempt_path(batch_root: Path, pair: str, condition: str, role: str) -> Pat
     return batch_root / "attempts" / pair / condition / "attempt_001"
 
 
+def _verify_completed_attempt(batch_root: Path, pair: str, condition: str, role: str,
+                              preflight_result: Mapping[str, object]) -> None:
+    attempt = _attempt_path(batch_root, pair, condition, role)
+    manifest_path, state_path = attempt / "attempt_manifest.json", attempt / "attempt_state.json"
+    terminal_path = attempt / "attempt_terminal_state.json"
+    if not all(path.is_file() and not path.is_symlink() for path in (manifest_path, state_path, terminal_path)):
+        raise LockedD1Error("Val dispatcher found incomplete immutable attempt")
+    try:
+        manifest = json.loads(manifest_path.read_text())
+        running = json.loads(state_path.read_text())
+        terminal = json.loads(terminal_path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise LockedD1Error("Val dispatcher attempt metadata unreadable") from exc
+    _, authority, loaded = load_launch_spec(batch_root, "val", batch_root.name, pair, condition, role, 1)
+    record = (loaded["conditions"]["records"].get((pair, condition)) if role == "PACKETIZED"
+              else loaded["conditions"]["references"].get(pair))
+    expected_authority = {"population": "val", "batch_id": batch_root.name,
+        "authority_bundle_sha256": authority["authority_bundle_sha256"],
+        "condition_record_sha256": condition_record_sha256(record),
+        "formal_authorization_sha256": preflight_result["authorization_sha256"]}
+    expected_manifest = {"attempt_id": attempt.name, "pair": pair, "condition": condition,
+        "execution_role": role, "authority": expected_authority, "argv": loaded["spec"]["argv"],
+        "environment": loaded["spec"]["environment"], "state": "PLANNED", "outcome_embargo": True,
+        "train_artifact_accessed": False, "scientific_outcome_accessed": False}
+    required_terminal = {"state", "returncode", "stdout_bytes", "stdout_sha256", "stderr_bytes",
+        "stderr_sha256", "raw_author_log_retained", "attempt_manifest_sha256", "attempt_state_sha256",
+        "error_category", "train_artifact_accessed", "scientific_outcome_accessed"}
+    if manifest != expected_manifest or running != {"state": "RUNNING", "outcome_embargo": True}:
+        raise LockedD1Error("Val dispatcher attempt authority/spec mismatch")
+    if (not isinstance(terminal, Mapping) or set(terminal) != required_terminal
+            or terminal.get("state") != "PROCESS_COMPLETE_PENDING_VALIDITY" or terminal.get("returncode") != 0
+            or terminal.get("error_category") != "NONE" or terminal.get("raw_author_log_retained") is not False
+            or terminal.get("train_artifact_accessed") is not False
+            or terminal.get("scientific_outcome_accessed") is not False
+            or terminal.get("attempt_manifest_sha256") != sha256_file(manifest_path)
+            or terminal.get("attempt_state_sha256") != sha256_file(state_path)
+            or any(not isinstance(terminal.get(key), int) or int(terminal[key]) < 0
+                   for key in ("stdout_bytes", "stderr_bytes"))
+            or any(not isinstance(terminal.get(key), str) or len(str(terminal[key])) != 64
+                   for key in ("stdout_sha256", "stderr_sha256"))):
+        raise LockedD1Error("Val dispatcher attempt terminal integrity mismatch")
+
+
 def dispatch_remaining_val(batch_root: Path, authorization_path: Path, *, launch: bool = False,
                            runner: Callable = subprocess.run, repo_root: Path | None = None,
-                           gpu_probe: Callable[[], Mapping[str, object]] = _default_gpu_probe) -> dict[str, object]:
+                           gpu_probe: Callable[[], Mapping[str, object]] | None = None) -> dict[str, object]:
     """Strictly serial, resumable Val dispatcher; any partial/failed attempt stops the run."""
     if not launch:
         raise LockedD1Error("FORMAL_VAL_DISPATCH_REQUIRES_EXPLICIT_LAUNCH")
-    preflight_formal_val_launch(batch_root, authorization_path, repo_root=repo_root, gpu_probe=gpu_probe)
+    preflight_result = preflight_formal_val_launch(batch_root, authorization_path, repo_root=repo_root, gpu_probe=gpu_probe)
     work = [(pair, "Y00", "REFERENCE") for pair in VAL_PAIRS]
     work += [(pair, condition, "PACKETIZED") for pair in VAL_PAIRS for condition in LOGICAL_CONDITIONS]
     state_path = batch_root / "VAL_DISPATCHER_STATE.json"
     completed = 0
     for pair, condition, role in work:
         attempt = _attempt_path(batch_root, pair, condition, role)
-        terminal_path = attempt / "attempt_terminal_state.json"
         if attempt.exists():
-            if not terminal_path.is_file():
-                raise LockedD1Error("Val dispatcher found incomplete immutable attempt")
-            terminal = json.loads(terminal_path.read_text())
-            if terminal.get("state") != "PROCESS_COMPLETE_PENDING_VALIDITY" or terminal.get("returncode") != 0:
-                raise LockedD1Error("Val dispatcher found failed immutable attempt")
+            _verify_completed_attempt(batch_root, pair, condition, role, preflight_result)
             completed += 1
             continue
         _replace_dispatcher_state(state_path, {"state": "RUNNING", "completed": completed,
             "total": len(work), "active_pair": pair, "active_condition": condition,
-            "active_role": role, "outcome_embargo": True, "scientific_outcome_accessed": False})
+            "active_role": role, "authorization_sha256": preflight_result["authorization_sha256"],
+            "authority_bundle_sha256": preflight_result["authority_bundle_sha256"],
+            "outcome_embargo": True, "scientific_outcome_accessed": False})
         try:
             execute_val_attempt(batch_root, pair, condition, 1, authorization_path=authorization_path,
                 execution_role=role, launch=True, runner=runner, repo_root=repo_root, gpu_probe=gpu_probe)
         except Exception:
             _replace_dispatcher_state(state_path, {"state": "STOPPED_FAILURE", "completed": completed,
                 "total": len(work), "failed_pair": pair, "failed_condition": condition,
-                "failed_role": role, "outcome_embargo": True, "scientific_outcome_accessed": False})
+                "failed_role": role, "authorization_sha256": preflight_result["authorization_sha256"],
+                "authority_bundle_sha256": preflight_result["authority_bundle_sha256"],
+                "outcome_embargo": True, "scientific_outcome_accessed": False})
             raise
         completed += 1
     final = {"state": "COMPLETE_PENDING_VALIDITY", "completed": completed, "total": len(work),
+             "authorization_sha256": preflight_result["authorization_sha256"],
+             "authority_bundle_sha256": preflight_result["authority_bundle_sha256"],
              "outcome_embargo": True, "train_artifact_accessed": False, "scientific_outcome_accessed": False}
     _replace_dispatcher_state(state_path, final)
     return final

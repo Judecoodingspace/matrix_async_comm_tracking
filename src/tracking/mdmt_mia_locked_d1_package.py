@@ -376,6 +376,30 @@ def _materialize(values: Sequence[str], environment: Mapping[str, str], *, pair:
     return argv, env
 
 
+def derive_launch_specs(root: Path, population: str, records: Sequence[Mapping[str, Any]],
+                        references: Sequence[Mapping[str, Any]],
+                        execution_static: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """Derive every launch spec from authorized profiles; no manifest input is trusted."""
+    launch_specs: list[dict[str, Any]] = []
+    if execution_static is None:
+        return launch_specs
+    cache_root = str((root / "detector_cache").resolve())
+    for record in list(records) + list(references):
+        role = str(record["execution_role"])
+        argv, env = _profile(execution_static, "packetized" if role == "PACKETIZED" else "reference",
+                             str(record["logical_condition"]) if role == "PACKETIZED" else None)
+        attempts_root = "attempts" if role == "PACKETIZED" else "references"
+        template = str(root / attempts_root / str(record["pair"]) / str(record["logical_condition"])
+                       / "attempt_{ordinal:03d}")
+        argv, env = _materialize(argv, env, pair=str(record["pair"]),
+                                 condition=str(record["logical_condition"]),
+                                 attempt_template=template, cache_root=cache_root, role=role)
+        launch_specs.append({"pair": record["pair"], "logical_condition": record["logical_condition"],
+                             "execution_role": role, "argv": argv, "environment": env,
+                             "attempt_root_template": template})
+    return launch_specs
+
+
 def render_manifests(root: Path, population: str, batch_id: str, *, source_mda: Mapping[str, Any],
                      authority_static: Mapping[str, Any], cache_static: Mapping[str, Any],
                      execution_static: Mapping[str, Any] | None = None,
@@ -409,11 +433,17 @@ def render_manifests(root: Path, population: str, batch_id: str, *, source_mda: 
                       "condition_core_sha256": core_sha, "cache_static": dict(cache_static),
                       "state": "PLANNED"}
     cache_sha = atomic_json(root / "cache_manifest.json", cache_manifest)
+    launch_specs = derive_launch_specs(root, population, records, references, execution_static)
+    plan_core = {"batch_id": batch_id, "population": population, "pairs": list(pairs),
+                 "conditions": list(LOGICAL_CONDITIONS), "reference_pairs": list(pairs),
+                 "launch_specs": launch_specs, "outcome_embargo": True}
+    plan_core_sha = sha256_bytes(canonical_json(plan_core))
     authority = {"frozen_base_commit": FROZEN_BASE_COMMIT, "implementation_branch": IMPLEMENTATION_BRANCH,
                  "condition_core_sha256": core_sha, "cache_manifest_sha256": cache_sha,
                  "authority_static": dict(authority_static), "source_mda": dict(source_mda),
                  "formal_authorization_sha256": formal_authorization_sha256,
                  "formal_authorization_id": None if formal_authorization is None else formal_authorization.get("authorization_id"),
+                 "execution_plan_core_sha256": plan_core_sha,
                  "execution_mode": ("FORMAL_" + population.upper()) if formal_authorization is not None else "SYNTHETIC_ONLY"}
     authority_sha = sha256_bytes(canonical_json(authority))
     final_conditions = [{**row, "authority_bundle_sha256": authority_sha} for row in records]
@@ -425,25 +455,8 @@ def render_manifests(root: Path, population: str, batch_id: str, *, source_mda: 
     authority_file_sha = atomic_json(root / "AUTHORITY_MANIFEST.json", {**authority,
                                                                            "authority_bundle_sha256": authority_sha,
                                                                            "condition_manifest_file_sha256": condition_sha})
-    launch_specs: list[dict[str, Any]] = []
-    if execution_static is not None:
-        cache_root = str((root / "detector_cache").resolve())
-        for record in final_conditions + final_references:
-            role = str(record["execution_role"])
-            argv, env = _profile(execution_static, "packetized" if role == "PACKETIZED" else "reference",
-                                str(record["logical_condition"]) if role == "PACKETIZED" else None)
-            attempts_root = "attempts" if role == "PACKETIZED" else "references"
-            template = str(root / attempts_root / str(record["pair"]) / str(record["logical_condition"]) / "attempt_{ordinal:03d}")
-            argv, env = _materialize(argv, env, pair=str(record["pair"]), condition=str(record["logical_condition"]),
-                                     attempt_template=template, cache_root=cache_root, role=role)
-            launch_specs.append({"pair": record["pair"], "logical_condition": record["logical_condition"],
-                                 "execution_role": role, "argv": argv, "environment": env,
-                                 "attempt_root_template": template})
-    plan_sha = atomic_json(root / "EXECUTION_PLAN_MANIFEST.json", {"batch_id": batch_id, "population": population,
-                                                                      "pairs": list(pairs), "conditions": list(LOGICAL_CONDITIONS),
-                                                                      "reference_pairs": list(pairs), "launch_specs": launch_specs,
-                                                                      "authority_manifest_sha256": authority_file_sha,
-                                                                      "outcome_embargo": True})
+    plan_sha = atomic_json(root / "EXECUTION_PLAN_MANIFEST.json",
+                           {**plan_core, "authority_manifest_sha256": authority_file_sha})
     package_sha = atomic_json(root / "EXECUTION_PACKAGE_MANIFEST.json", {"batch_id": batch_id,
                                                                             "execution_plan_sha256": plan_sha,
                                                                             "condition_manifest_sha256": condition_sha,
