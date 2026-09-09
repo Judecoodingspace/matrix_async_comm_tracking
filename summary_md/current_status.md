@@ -1497,3 +1497,15 @@ Focused verification: 25 passed (new cache fixtures plus existing executor tests
 py_compile and diff whitespace checks passed. No real scientific/qualification
 run or outcome read. Next manual commands and the API-only MVE invocation:
 `summary_md/experiments/2026-8-17/exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation/DETECTOR_CACHE_SEED_INTEGRATION.md`.
+
+## Latest implementation update (2026-09-09 P13 Val isolation)
+
+A narrow P13 corrective revision adds a separate Formal Val authorization,
+five-pair Val cache lifecycle, 25+5 sealed package plan, host-GPU/remote-SHA/
+storage/embargo preflight, Val-only launcher, and resumable strictly serial
+dispatcher.  Train artifacts and scientific outcomes remain inaccessible.
+
+Synthetic outcome-blind verification: `49 passed`.  Frozen runtime files were
+unchanged and no scientific execution occurred.  The revision must be committed,
+pushed, and independently delta-audited before governance issues Val authority.
+Details: `summary_md/codex_notes/20260909_p13_val_isolation_corrective_revision.md`.

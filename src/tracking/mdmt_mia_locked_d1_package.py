@@ -23,6 +23,7 @@ LOGICAL_CONDITIONS = ("Y00", "Y01", "Y10_d1", "Y11_d1", "Yec_d1")
 FROZEN_BASE_COMMIT = "47ce0fd35f1d9e7c10465297f5dcaf6b69117fab"
 IMPLEMENTATION_BRANCH = "impl/20260907-locked-d1-holdout"
 FORMAL_TRAIN_AUTHORIZATION_SCHEMA = "locked-d1-formal-train-authorization-v1"
+FORMAL_VAL_AUTHORIZATION_SCHEMA = "locked-d1-formal-val-authorization-v1"
 RESEARCH_DECISION_COMMIT = "42c1306ea4f454db5e01503b3ea58052046abfa8"
 EXPERIMENT_CONTRACT_COMMIT = "aa2e081f506e2da8b493e8bc876b8437a23dcd03"
 IMPLEMENTATION_PLAN_COMMIT = "557a220be21780989a0084abb9c14d56c5a030b7"
@@ -95,6 +96,56 @@ def load_formal_train_authorization(path: Path, *, implementation_sha: str | Non
     if not _resolved(value.get("bound_inputs")):
         raise LockedD1Error("FORMAL_TRAIN_AUTHORIZATION_INPUTS_UNBOUND")
     return value, sha256_file(path)
+
+
+def load_formal_val_authorization(path: Path, *, implementation_sha: str | None = None) -> tuple[dict[str, Any], str]:
+    """Load an independently issued Val authorization; it cannot authorize Train or unblinding."""
+    value = _read_json(path)
+    required = {
+        "schema_version": FORMAL_VAL_AUTHORIZATION_SCHEMA,
+        "state": "AUTHORIZED",
+        "scope": "FORMAL_VAL_EXECUTION",
+        "branch": IMPLEMENTATION_BRANCH,
+        "research_decision_sha": RESEARCH_DECISION_COMMIT,
+        "experiment_contract_sha": EXPERIMENT_CONTRACT_COMMIT,
+        "implementation_plan_sha": IMPLEMENTATION_PLAN_COMMIT,
+        "execution_base_sha": FROZEN_BASE_COMMIT,
+        "p11_manifest_sha256": P11_MANIFEST_SHA256,
+        "population": "val",
+        "train_execution_authorized": False,
+        "formal_train_cache_seed_authorized": False,
+        "val_execution_authorized": True,
+        "formal_val_cache_seed_authorized": True,
+        "train_artifact_access_authorized": False,
+        "train_scientific_outcome_access_authorized": False,
+        "scientific_outcome_access_authorized": False,
+    }
+    if any(value.get(key) != expected for key, expected in required.items()):
+        raise LockedD1Error("FORMAL_VAL_AUTHORIZATION_BINDING_MISMATCH")
+    if implementation_sha is not None and value.get("candidate_commit_sha") != implementation_sha:
+        raise LockedD1Error("FORMAL_VAL_AUTHORIZATION_IMPLEMENTATION_MISMATCH")
+    if not _resolved(value.get("bound_inputs")):
+        raise LockedD1Error("FORMAL_VAL_AUTHORIZATION_INPUTS_UNBOUND")
+    _assert_no_train_artifact_reference(value["bound_inputs"])
+    return value, sha256_file(path)
+
+
+def _assert_no_train_artifact_reference(value: Any) -> None:
+    """Reject path-like references capable of importing a prior Train batch into Val."""
+    if isinstance(value, Mapping):
+        for item in value.values():
+            _assert_no_train_artifact_reference(item)
+        return
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            _assert_no_train_artifact_reference(item)
+        return
+    if isinstance(value, str):
+        normalized = value.replace("\\", "/").lower()
+        forbidden = ("locked_d1_train_batch_", "/locked_d1_holdout/train/", "/train/results/",
+                     "/train/predictions/", "/train/detector_cache/")
+        if any(marker in normalized for marker in forbidden):
+            raise LockedD1Error("FORMAL_VAL_TRAIN_ARTIFACT_REFERENCE_FORBIDDEN")
 
 
 def condition_record_sha256(record: Mapping[str, Any]) -> str:
@@ -334,8 +385,12 @@ def render_manifests(root: Path, population: str, batch_id: str, *, source_mda: 
     pairs = population_pairs(population)
     if batch_id != expected_batch_name(population, int(batch_id.rsplit("_", 1)[1])):
         raise LockedD1Error("batch id does not match frozen naming convention")
-    if formal_authorization is not None and population != "train":
-        raise LockedD1Error("Formal Train authorization cannot render Val")
+    if formal_authorization is not None:
+        schema = formal_authorization.get("schema_version")
+        expected_schema = (FORMAL_TRAIN_AUTHORIZATION_SCHEMA if population == "train"
+                           else FORMAL_VAL_AUTHORIZATION_SCHEMA)
+        if schema != expected_schema or formal_authorization.get("population") != population:
+            raise LockedD1Error("formal authorization population mismatch")
     if formal_authorization is not None and (not _resolved(source_mda) or not _resolved(authority_static)
                                                or not _resolved(cache_static) or not _resolved(execution_static)):
         raise LockedD1Error("formal package inputs must be fully bound")
@@ -359,7 +414,7 @@ def render_manifests(root: Path, population: str, batch_id: str, *, source_mda: 
                  "authority_static": dict(authority_static), "source_mda": dict(source_mda),
                  "formal_authorization_sha256": formal_authorization_sha256,
                  "formal_authorization_id": None if formal_authorization is None else formal_authorization.get("authorization_id"),
-                 "execution_mode": "FORMAL_TRAIN" if formal_authorization is not None else "SYNTHETIC_ONLY"}
+                 "execution_mode": ("FORMAL_" + population.upper()) if formal_authorization is not None else "SYNTHETIC_ONLY"}
     authority_sha = sha256_bytes(canonical_json(authority))
     final_conditions = [{**row, "authority_bundle_sha256": authority_sha} for row in records]
     final_references = [{**row, "authority_bundle_sha256": authority_sha} for row in references]
@@ -404,7 +459,7 @@ def render_manifests(root: Path, population: str, batch_id: str, *, source_mda: 
 def load_launch_spec(batch: Path, population: str, batch_id: str, pair: str, condition: str,
                      execution_role: str, ordinal: int) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     package, authority, conditions = load_sealed_package(batch, population, batch_id)
-    if authority.get("execution_mode") != "FORMAL_TRAIN":
+    if authority.get("execution_mode") != "FORMAL_" + population.upper():
         raise LockedD1Error("formal launch requires a formally bound package")
     plan = _read_json(batch / "EXECUTION_PLAN_MANIFEST.json")
     matching = [item for item in plan.get("launch_specs", []) if isinstance(item, Mapping)
