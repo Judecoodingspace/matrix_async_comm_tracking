@@ -314,26 +314,31 @@ def seed_authorized_val_cache(batch_root: Path, authorization_path: Path, *, imp
             "reference_records": reference_core_records("val", batch_root.name, source_mda=source, authority_static=static)}
     core_sha = sha256_bytes(canonical_json(core))
     expected: dict[str, Path] = {}
-    represented_pairs: set[str] = set()
+    represented_pair_views: set[tuple[str, int]] = set()
     for row in images:
         if (not isinstance(row, Mapping) or row.get("population") != "val"
-                or str(row.get("pair")) not in VAL_PAIRS or not isinstance(row.get("path"), str)
+                or str(row.get("pair")) not in VAL_PAIRS or type(row.get("view")) is not int
+                or int(row["view"]) not in (1, 2) or not isinstance(row.get("path"), str)
                 or not isinstance(row.get("sha256"), str)):
             raise LockedD1Error("formal Val cache image binding invalid")
-        image = Path(str(row["path"])).resolve(strict=True)
+        declared_image = Path(str(row["path"]))
+        if declared_image.is_symlink():
+            raise LockedD1Error("formal Val cache image symlink forbidden")
+        image = declared_image.resolve(strict=True)
         normalized = str(image).replace("\\", "/").lower()
         if "/val/" not in normalized or sha256_file(image) != row["sha256"]:
             raise LockedD1Error("formal Val cache source image binding mismatch")
         pair = str(row["pair"])
-        if not any(part in {pair, "1-" + pair, "2-" + pair} for part in image.parts):
-            raise LockedD1Error("formal Val cache image/pair mismatch")
+        view = int(row["view"])
+        if f"{pair}-{view}" not in image.parts:
+            raise LockedD1Error("formal Val cache image/pair-view mismatch")
         key = cache_key(image)
         if key in expected:
             raise LockedD1Error("formal Val cache duplicate image key")
         expected[key] = image
-        represented_pairs.add(pair)
-    if represented_pairs != set(VAL_PAIRS):
-        raise LockedD1Error("formal Val cache image population incomplete")
+        represented_pair_views.add((pair, view))
+    if represented_pair_views != {(pair, view) for pair in VAL_PAIRS for view in (1, 2)}:
+        raise LockedD1Error("formal Val cache pair-view population incomplete")
     profiles = _validated_val_cache_profiles(batch_root, bound)
     cache_root = batch_root / "detector_cache"
     if cache_root.exists():

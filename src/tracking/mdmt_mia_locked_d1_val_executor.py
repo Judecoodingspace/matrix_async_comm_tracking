@@ -112,21 +112,29 @@ def _verify_val_input_binding(batch_root: Path, authorization: Mapping[str, obje
         raise LockedD1Error("formal Val image inventory missing")
     authorized: dict[str, str] = {}
     for row in images:
+        pair, view = str(row.get("pair")), row.get("view")
         if (not isinstance(row, Mapping) or row.get("population") != "val"
-                or str(row.get("pair")) not in VAL_PAIRS or not isinstance(row.get("path"), str)
-                or not isinstance(row.get("sha256"), str)):
+                or pair not in VAL_PAIRS or type(view) is not int or int(view) not in (1, 2)
+                or not isinstance(row.get("path"), str) or not isinstance(row.get("sha256"), str)):
             raise LockedD1Error("formal Val image inventory invalid")
         declared_path = Path(str(row["path"]))
         if declared_path.is_symlink():
             raise LockedD1Error("formal Val image symlink forbidden")
         path = declared_path.resolve(strict=True)
-        if sha256_file(path) != row["sha256"] or str(path) in authorized:
+        normalized = str(path).replace("\\", "/").lower()
+        if "/val/" not in normalized or f"{pair}-{int(view)}" not in path.parts:
+            raise LockedD1Error("formal Val image pair-view binding mismatch")
+        key = f"{pair}:{int(view)}:{path}"
+        if sha256_file(path) != row["sha256"] or key in authorized:
             raise LockedD1Error("formal Val image fingerprint mismatch")
-        authorized[str(path)] = str(row["sha256"])
+        authorized[key] = str(row["sha256"])
+    represented = {(key.split(":", 2)[0], int(key.split(":", 2)[1])) for key in authorized}
+    if represented != {(pair, view) for pair in VAL_PAIRS for view in (1, 2)}:
+        raise LockedD1Error("formal Val image pair-view population incomplete")
     manifest = json.loads((batch_root / "detector_cache" / "cache_manifest.json").read_text())
     entries = manifest.get("entries") if isinstance(manifest, Mapping) else None
     if not isinstance(entries, Mapping) or {str(row.get("image")) for row in entries.values()
-                                            if isinstance(row, Mapping)} != set(authorized):
+                                            if isinstance(row, Mapping)} != {key.split(":", 2)[2] for key in authorized}:
         raise LockedD1Error("formal Val image/cache inventory mismatch")
 
 
@@ -179,7 +187,9 @@ def _validate_sealed_val_plan(batch_root: Path, batch_id: str, authorization: Ma
         plan = json.loads((batch_root / "EXECUTION_PLAN_MANIFEST.json").read_text())
     except (OSError, json.JSONDecodeError) as exc:
         raise LockedD1Error("formal Val execution plan unreadable") from exc
+    authority_sha = sha256_file(batch_root / "AUTHORITY_MANIFEST.json")
     if (not isinstance(plan, Mapping) or set(plan) != set(expected) | {"authority_manifest_sha256"}
+            or plan.get("authority_manifest_sha256") != authority_sha
             or {key: value for key, value in plan.items() if key != "authority_manifest_sha256"} != expected):
         raise LockedD1Error("formal Val execution plan differs from authorized derivation")
     expected_sha = sha256_bytes(canonical_json(expected))

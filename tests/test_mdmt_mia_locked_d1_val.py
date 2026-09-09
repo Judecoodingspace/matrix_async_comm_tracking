@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+import tracking.mdmt_mia_locked_d1_val_executor as val_executor
 from tracking.mdmt_mia_locked_d1_cache import (VAL_CACHE_PROFILE, cache_key, derive_val_cache_seed_profiles,
     seed_authorized_val_cache)
 from tracking.mdmt_mia_locked_d1_package import (EXPERIMENT_CONTRACT_COMMIT, FORMAL_TRAIN_AUTHORIZATION_SCHEMA,
@@ -50,9 +51,11 @@ def _source_mda(tmp_path: Path):
 def _images(tmp_path: Path):
     rows = []
     for pair in VAL_PAIRS:
-        path = tmp_path / "M3OT" / "1" / "rgb" / "val" / ("1-" + pair) / "img1" / "000001.jpg"
-        path.parent.mkdir(parents=True); path.write_bytes(("image-" + pair).encode())
-        rows.append({"population": "val", "pair": pair, "path": str(path.resolve()), "sha256": sha256_file(path)})
+        for view in (1, 2):
+            path = tmp_path / "M3OT" / str(view) / "rgb" / "val" / (pair + "-" + str(view)) / "img1" / "000001.jpg"
+            path.parent.mkdir(parents=True); path.write_bytes(("image-%s-%d" % (pair, view)).encode())
+            rows.append({"population": "val", "pair": pair, "view": view,
+                         "path": str(path.resolve()), "sha256": sha256_file(path)})
     return rows
 
 
@@ -127,6 +130,18 @@ def test_fixed_five_pair_val_cache_profile_and_cross_split_rejection(tmp_path: P
     authorization.write_text(json.dumps(auth))
     with pytest.raises(LockedD1Error, match="image binding invalid"):
         seed_authorized_val_cache(batch, authorization, implementation_sha=_head(), runner=lambda *a, **k: None)
+
+    auth["bound_inputs"]["cache_images"][0]["population"] = "val"
+    auth["bound_inputs"]["cache_images"][0]["view"] = 2
+    authorization.write_text(json.dumps(auth))
+    with pytest.raises(LockedD1Error, match="pair-view mismatch"):
+        seed_authorized_val_cache(batch, authorization, implementation_sha=_head(), runner=lambda *a, **k: None)
+    auth["bound_inputs"]["cache_images"][0]["view"] = 1
+    auth["bound_inputs"]["cache_images"].pop()
+    authorization.write_text(json.dumps(auth))
+    with pytest.raises(LockedD1Error, match="pair-view population incomplete"):
+        seed_authorized_val_cache(batch, authorization, implementation_sha=_head(), runner=lambda *a, **k: None)
+
 
 
 def test_val_cache_package_preflight_and_attempt_are_end_to_end_outcome_blind(tmp_path: Path, monkeypatch):
@@ -223,6 +238,7 @@ def test_val_preflight_revalidates_current_images_and_exact_cache_set(tmp_path: 
 def test_val_preflight_rejects_rehashed_post_seal_plan_substitution(tmp_path: Path, monkeypatch):
     batch, authorization = _seed_and_render(tmp_path)
     monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor._git_head", lambda _: _head())
+
     monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor._git_remote_head", lambda _: _head())
     monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor.filesystem_available",
                         lambda _: 160_000_000_000)
@@ -240,6 +256,44 @@ def test_val_preflight_rejects_rehashed_post_seal_plan_substitution(tmp_path: Pa
     with pytest.raises(LockedD1Error, match="authorized derivation"):
         preflight_formal_val_launch(batch, authorization, gpu_probe=gpu)
 
+
+
+def test_default_gpu_probe_uses_authorized_runtime_python_and_environment(tmp_path: Path, monkeypatch):
+    _, _, auth, _ = _authorization(tmp_path)
+    environment = auth["bound_inputs"]["execution_static"]["packetized"]["Y00"]["environment"]
+    environment["MIA_ROOT"] = "/author"
+    environment["DEVICE"] = "cuda:0"
+    captured = {}
+    def fake_run(argv, **kwargs):
+        captured["argv"] = argv
+        captured["environment"] = kwargs["env"]
+        return SimpleNamespace(returncode=0, stdout='{"available": true, "count": 1}')
+    monkeypatch.setattr(val_executor.subprocess, "run", fake_run)
+    result = val_executor._default_gpu_probe(auth)
+    assert captured["argv"][0] == "/author/.conda-env/bin/python"
+    assert captured["environment"]["DEVICE"] == "cuda:0"
+    assert result == {"returncode": 0, "visible_device_count": 1,
+                      "torch_cuda_available": True, "device": "cuda:0"}
+
+
+def test_val_preflight_rejects_rehashed_authority_manifest_link_tamper(tmp_path: Path, monkeypatch):
+    batch, authorization = _seed_and_render(tmp_path)
+    monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor._git_head", lambda _: _head())
+    monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor._git_remote_head", lambda _: _head())
+    monkeypatch.setattr("tracking.mdmt_mia_locked_d1_val_executor.filesystem_available",
+                        lambda _: 160_000_000_000)
+    gpu = lambda: {"returncode": 0, "visible_device_count": 1,
+                   "torch_cuda_available": True, "device": "cuda:0"}
+    plan_path = batch / "EXECUTION_PLAN_MANIFEST.json"
+    plan = json.loads(plan_path.read_text())
+    plan["authority_manifest_sha256"] = "0" * 64
+    plan_path.write_bytes(canonical_json(plan))
+    package_path = batch / "EXECUTION_PACKAGE_MANIFEST.json"
+    package = json.loads(package_path.read_text())
+    package["execution_plan_sha256"] = sha256_file(plan_path)
+    package_path.write_bytes(canonical_json(package))
+    with pytest.raises(LockedD1Error, match="authorized derivation"):
+        preflight_formal_val_launch(batch, authorization, gpu_probe=gpu)
 
 def test_val_runner_exception_removes_raw_log_and_writes_sanitized_terminal(tmp_path: Path, monkeypatch):
     batch, authorization = _seed_and_render(tmp_path)

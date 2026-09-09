@@ -17,6 +17,8 @@ and five independent Y00 reference specifications.
   access.
 - Val Source-MDA, image inventory, detector cache, package root, attempt roots,
   and dispatcher state are independently bound to the Val population.
+- The image inventory requires the exact ten `(pair, view)` roots using the real
+  M3OT Val sequence layout `<pair>-<view>`; missing or substituted views fail closed.
 - Cache seed is derived only from the five authorized Val Y00 profiles.
 - The execution plan is re-derived byte-for-byte from authorization-bound
   profiles and its core hash is independently bound by the authority manifest.
@@ -28,6 +30,7 @@ and five independent Y00 reference specifications.
 - Launch preflight checks a clean local SHA, matching GitHub branch SHA, sealed
   authorization/package/cache bindings, every 25+5 launch spec, host GPU
   visibility, Val storage reserve, absent analysis root, and the outcome embargo.
+  The default probe uses the authorization-bound runtime Python and CUDA environment.
 - The serial dispatcher skips only successful immutable attempts, stops on any
   failed or incomplete attempt, and persists only non-scientific stage metadata.
 
@@ -35,8 +38,8 @@ and five independent Y00 reference specifications.
 
 ```text
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider tests/test_mdmt_mia_locked_d1_*.py
-51 passed
-Full repository regression: 393 passed, 2 skipped
+53 passed
+Full repository regression: 395 passed, 2 skipped
 ```
 
 Frozen MIA runtime files were not modified.  No Train, Val, Test, evaluator,

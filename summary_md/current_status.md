@@ -1505,7 +1505,8 @@ five-pair Val cache lifecycle, 25+5 sealed package plan, host-GPU/remote-SHA/
 storage/embargo preflight, Val-only launcher, and resumable strictly serial
 dispatcher.  Train artifacts and scientific outcomes remain inaccessible.
 
-Synthetic outcome-blind verification: `51 passed`; full regression: `393 passed, 2 skipped`. Frozen runtime files were
-unchanged and no scientific execution occurred.  The revision must be committed,
-pushed, and independently delta-audited before governance issues Val authority.
+Synthetic outcome-blind verification: `53 passed`; full regression:
+`395 passed, 2 skipped`. The inventory now binds the real M3OT Val
+`<pair>-<view>` layout. Frozen runtime files remain unchanged and no scientific
+execution occurred. Independent delta audit remains required before Val authority.
 Details: `summary_md/codex_notes/20260909_p13_val_isolation_corrective_revision.md`.
