@@ -39,9 +39,12 @@ def main() -> None:
             source_mda_gt=[Path(p) for p in request["source_mda_gt"]],
             minimal_mechanism_trace=Path(request["minimal_mechanism_trace"]) if request.get("minimal_mechanism_trace") else None,
             packet_trace=Path(request["packet_trace"]) if request.get("packet_trace") else None,
+            runtime_packet_trace=Path(request["runtime_packet_trace"]) if request.get("runtime_packet_trace") else None,
             runtime_manifests=[Path(p) for p in request["runtime_manifests"]])); return
     if arguments.command == "check-runtime-gates":
-        print(produce_runtime_gates_checked(**common, logical_condition=request["logical_condition"], runtime_manifests=[Path(p) for p in request["runtime_manifests"]])); return
+        print(produce_runtime_gates_checked(**common, logical_condition=request["logical_condition"],
+            runtime_manifests=[Path(p) for p in request["runtime_manifests"]],
+            runtime_packet_trace=Path(request["runtime_packet_trace"]) if request.get("runtime_packet_trace") else None)); return
     if arguments.command == "check-y00-parity":
         print(produce_y00_reference_parity(**common, reference_attempt_root=Path(request["reference_attempt_root"]),
             reference_artifacts=[Path(p) for p in request["reference_artifacts"]], packetized_artifacts=[Path(p) for p in request["packetized_artifacts"]])) ; return

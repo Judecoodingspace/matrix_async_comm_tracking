@@ -2,6 +2,21 @@
 
 Updated: 2026-09-05
 
+## P13 Formal Val validity evidence correction (2026-09-10)
+
+The completed Formal Val batch remains under scientific outcome embargo. Its
+first outcome-blind validity audit was blocked because the raw runtime manifests
+do not inline `pending_at_end_count`; the immutable packet traces record the
+corresponding `packet_action = "pending_at_end"` events instead. A narrow P13
+validity adapter now derives and cryptographically binds this non-scientific
+count and revalidates current trace bytes during acceptance verification.
+
+All focused, locked-d1, and repository tests pass, and a read-only rehearsal on
+the existing batch closes 25/25 runtime gates without reading predictions or
+metrics. The revision still requires an independent Team B delta audit before
+the existing Val artifacts may be resealed for outcome-blind validity. No Val
+rerun or scientific unblinding is authorized by this implementation change.
+
 ## Latest governance closure
 
 The formal successor Packet Census has been closed and its tracked report is

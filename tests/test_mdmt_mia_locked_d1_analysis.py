@@ -205,6 +205,7 @@ def test_runtime_evidence_is_rebound_to_current_manifests_and_rederived(tmp_path
             "population", "authority_bundle_sha256", "condition_record_sha256")}
         runtime.update({"state": "RUNTIME_GATES_CHECKED", "checked_runtime_manifest_sha256s": {
             path.name: sha256_file(path) for path in runtime_paths}, "gate_results": json.loads(runtime_paths[0].read_text()),
+            "pending_at_end_evidence": {"source": "RUNTIME_MANIFEST", "pending_at_end_count": 0},
             "all_mandatory_gates_pass": True, "scientific_outcome_accessed": False})
         return attempt, runtime_paths, runtime
 
@@ -263,6 +264,94 @@ def test_verify_acceptance_seal_rereads_runtime_manifests(tmp_path):
         verify_acceptance_seal(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
             logical_condition=condition, attempt_root=attempt, condition_record=records[(pair, condition)],
             authority_bundle_sha256=digests["authority_bundle_sha256"])
+
+
+def test_runtime_pending_at_end_is_derived_bound_and_reverified_from_trace(tmp_path):
+    batch, _, gt, records, digests = setup_case(tmp_path, seal_population=False)
+    pair, condition = VAL_PAIRS[0], "Y01"
+    attempt = _make_attempt(batch, digests["authority_bundle_sha256"], records, gt,
+                            pair, condition, index=2, seal=False)
+    runtime = attempt / "runtime_manifest.json"
+    payload = json.loads(runtime.read_text())
+    payload.pop("pending_at_end_count")
+    payload["packet_emission_count"] = 2
+    payload["packet_consumption_count"] = 1
+    runtime.write_text(json.dumps(payload))
+    trace = attempt / "runtime_packet_trace.jsonl"
+    trace.write_text("\n".join((
+        json.dumps({"capture_frame": 1, "kind": "local", "direction": "v1_to_v2"}),
+        json.dumps({"capture_frame": 2, "kind": "local", "direction": "v1_to_v2",
+                    "packet_action": "pending_at_end"}),
+    )) + "\n")
+    artifact = produce_artifact_validation(batch_root=batch, population="val", batch_id=batch.name,
+        pair=pair, logical_condition=condition, attempt_root=attempt,
+        prediction_artifacts=[attempt / "prediction_v1.json", attempt / "prediction_v2.json"],
+        source_mda_gt=gt, runtime_packet_trace=trace, runtime_manifests=[runtime])
+    gates = produce_runtime_gates_checked(batch_root=batch, population="val", batch_id=batch.name,
+        pair=pair, logical_condition=condition, attempt_root=attempt,
+        runtime_manifests=[runtime], runtime_packet_trace=trace)
+    evidence = json.loads(gates.read_text())
+    assert evidence["gate_results"]["pending_at_end_count"] == 1
+    assert evidence["pending_at_end_evidence"] == {
+        "source": "PACKET_TRACE_DERIVED", "identifier": trace.name,
+        "sha256": sha256_file(trace), "bytes": trace.stat().st_size,
+        "pending_at_end_count": 1}
+    seal_attempt_acceptance(batch_root=batch, population="val", batch_id=batch.name, pair=pair,
+        logical_condition=condition, attempt_root=attempt, artifact_validation_evidence=artifact,
+        runtime_gate_evidence=gates)
+    trace.write_text(trace.read_text().replace("pending_at_end", "discarded"))
+    with pytest.raises(LockedD1Error, match="digest"):
+        verify_acceptance_seal(batch_root=batch, population="val", batch_id=batch.name,
+            pair=pair, logical_condition=condition, attempt_root=attempt,
+            condition_record=records[(pair, condition)],
+            authority_bundle_sha256=digests["authority_bundle_sha256"])
+
+
+def test_runtime_pending_adapter_rejects_missing_conflicting_and_unsafe_trace(tmp_path):
+    batch, _, gt, records, digests = setup_case(tmp_path, seal_population=False)
+    pair, condition = VAL_PAIRS[0], "Y01"
+
+    missing = _make_attempt(batch, digests["authority_bundle_sha256"], records, gt,
+                            pair, condition, index=2, seal=False)
+    missing_runtime = missing / "runtime_manifest.json"
+    payload = json.loads(missing_runtime.read_text()); payload.pop("pending_at_end_count")
+    missing_runtime.write_text(json.dumps(payload))
+    with pytest.raises(LockedD1Error, match="runtime hard gate missing"):
+        produce_runtime_gates_checked(batch_root=batch, population="val", batch_id=batch.name,
+            pair=pair, logical_condition=condition, attempt_root=missing,
+            runtime_manifests=[missing_runtime])
+
+    conflict = _make_attempt(batch, digests["authority_bundle_sha256"], records, gt,
+                             pair, condition, index=3, seal=False)
+    conflict_trace = conflict / "runtime_packet_trace.jsonl"
+    conflict_trace.write_text(json.dumps({"capture_frame": 1, "kind": "local",
+        "packet_action": "pending_at_end"}) + "\n")
+    with pytest.raises(LockedD1Error, match="PENDING_AT_END_CONFLICT"):
+        produce_runtime_gates_checked(batch_root=batch, population="val", batch_id=batch.name,
+            pair=pair, logical_condition=condition, attempt_root=conflict,
+            runtime_manifests=[conflict / "runtime_manifest.json"],
+            runtime_packet_trace=conflict_trace)
+
+    unsafe = _make_attempt(batch, digests["authority_bundle_sha256"], records, gt,
+                           pair, condition, index=4, seal=False)
+    unsafe_runtime = unsafe / "runtime_manifest.json"
+    payload = json.loads(unsafe_runtime.read_text()); payload.pop("pending_at_end_count")
+    unsafe_runtime.write_text(json.dumps(payload))
+    unsafe_trace = unsafe / "runtime_packet_trace.jsonl"
+    unsafe_trace.write_text(json.dumps({"capture_frame": 1, "kind": "local", "mda": 0.5,
+        "packet_action": "pending_at_end"}) + "\n")
+    with pytest.raises(LockedD1Error, match="FORBIDDEN"):
+        produce_runtime_gates_checked(batch_root=batch, population="val", batch_id=batch.name,
+            pair=pair, logical_condition=condition, attempt_root=unsafe,
+            runtime_manifests=[unsafe_runtime], runtime_packet_trace=unsafe_trace)
+
+    target = unsafe / "real_trace.jsonl"
+    target.write_text(json.dumps({"capture_frame": 1, "kind": "local"}) + "\n")
+    link = unsafe / "linked_trace.jsonl"; link.symlink_to(target)
+    with pytest.raises(LockedD1Error, match="symlink forbidden"):
+        produce_runtime_gates_checked(batch_root=batch, population="val", batch_id=batch.name,
+            pair=pair, logical_condition=condition, attempt_root=unsafe,
+            runtime_manifests=[unsafe_runtime], runtime_packet_trace=link)
 
 
 def test_y00_parity_producer_uses_raw_bytes_and_reference_identity(tmp_path):

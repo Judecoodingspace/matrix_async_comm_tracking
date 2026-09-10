@@ -107,6 +107,9 @@ def _context(*, batch_root: Path, population: str, batch_id: str, pair: str, log
 
 
 def _trace(path: Path, role: str) -> None:
+    if role == "packet_trace":
+        _runtime_packet_trace(path, path.parent)
+        return
     rows = []
     try:
         for line in path.read_text().splitlines():
@@ -117,7 +120,35 @@ def _trace(path: Path, role: str) -> None:
     except json.JSONDecodeError as exc: raise LockedD1Error("trace schema invalid") from exc
     assert_outcome_blind(rows)
     if role == "minimal_mechanism_trace": project_minimal_trace(rows)
-    elif any(not {"capture_frame", "kind", "packet_action"} <= set(row) for row in rows): raise LockedD1Error("packet trace field missing")
+
+
+def _runtime_packet_trace(path: Path, root: Path) -> tuple[Path, int]:
+    """Derive the non-scientific terminal packet count from current trace bytes."""
+    resolved = _contained(path, root); pending = 0
+
+    def assert_trace_outcome_blind(value: Any) -> None:
+        if isinstance(value, Mapping):
+            forbidden = (FORBIDDEN_SCIENTIFIC_FIELDS - {"direction"}) & set(value)
+            if forbidden:
+                raise LockedD1Error("VALIDITY_FORBIDDEN_SCIENTIFIC_FIELD: " + ",".join(sorted(forbidden)))
+            for child in value.values(): assert_trace_outcome_blind(child)
+        elif isinstance(value, (list, tuple)):
+            for child in value: assert_trace_outcome_blind(child)
+
+    try:
+        for line in resolved.read_text().splitlines():
+            if not line.strip(): continue
+            row = json.loads(line)
+            if not isinstance(row, Mapping) or not {"capture_frame", "kind"} <= set(row):
+                raise LockedD1Error("runtime packet trace schema invalid")
+            assert_trace_outcome_blind(row)
+            action = row.get("packet_action")
+            if action is not None and not isinstance(action, str):
+                raise LockedD1Error("runtime packet action schema invalid")
+            pending += int(action == "pending_at_end")
+    except json.JSONDecodeError as exc:
+        raise LockedD1Error("runtime packet trace schema invalid") from exc
+    return resolved, pending
 
 
 def _identity_evidence(value: Mapping[str, Any], c: Mapping[str, Any], state: str) -> None:
@@ -125,7 +156,7 @@ def _identity_evidence(value: Mapping[str, Any], c: Mapping[str, Any], state: st
     if any(value.get(k) != v for k, v in expected.items()): raise LockedD1Error("evidence authority mismatch")
 
 
-def produce_artifact_validation(*, batch_root: Path, population: str, batch_id: str, pair: str, logical_condition: str, attempt_root: Path, prediction_artifacts: Sequence[Path], source_mda_gt: Sequence[Path], minimal_mechanism_trace: Path | None = None, packet_trace: Path | None = None, runtime_manifests: Sequence[Path] = ()) -> Path:
+def produce_artifact_validation(*, batch_root: Path, population: str, batch_id: str, pair: str, logical_condition: str, attempt_root: Path, prediction_artifacts: Sequence[Path], source_mda_gt: Sequence[Path], minimal_mechanism_trace: Path | None = None, packet_trace: Path | None = None, runtime_packet_trace: Path | None = None, runtime_manifests: Sequence[Path] = ()) -> Path:
     """Mechanically validate permitted artifacts, then emit immutable evidence."""
     c = _context(batch_root=batch_root, population=population, batch_id=batch_id, pair=pair, logical_condition=logical_condition, attempt_root=attempt_root)
     if len(prediction_artifacts) != 2 or len(source_mda_gt) != 2: raise LockedD1Error("accepted evaluator artifact cardinality invalid")
@@ -142,6 +173,9 @@ def produce_artifact_validation(*, batch_root: Path, population: str, batch_id: 
     for role, path in (("minimal_mechanism_trace", minimal_mechanism_trace), ("packet_trace", packet_trace)):
         if path is not None:
             resolved = _contained(path, attempt_root); _trace(resolved, role); entries.append(_entry(role, resolved, str(resolved.relative_to(attempt_root.resolve()))))
+    if runtime_packet_trace is not None:
+        resolved, _ = _runtime_packet_trace(runtime_packet_trace, attempt_root)
+        entries.append(_entry("runtime_packet_trace", resolved, str(resolved.relative_to(attempt_root.resolve()))))
     for i, path in enumerate(runtime_manifests, 1):
         resolved = _contained(path, attempt_root); value = _read_json(resolved, "runtime manifest schema invalid")
         if not isinstance(value, Mapping): raise LockedD1Error("runtime manifest schema invalid")
@@ -166,9 +200,16 @@ def _runtime_values(paths: Sequence[Path], root: Path) -> tuple[list[dict[str, o
     return entries, values
 
 
-def derive_runtime_gate_results(runtime_manifests: Sequence[Path], attempt_root: Path) -> dict[str, Any]:
+def derive_runtime_gate_results(runtime_manifests: Sequence[Path], attempt_root: Path,
+                                runtime_packet_trace: Path | None = None) -> dict[str, Any]:
     """Re-derive the complete frozen gate mapping from current manifest bytes."""
     _, results = _runtime_values(runtime_manifests, attempt_root)
+    if runtime_packet_trace is not None:
+        _, pending = _runtime_packet_trace(runtime_packet_trace, attempt_root)
+        declared = results.get("pending_at_end_count")
+        if declared is not None and declared != pending:
+            raise LockedD1Error("RUNTIME_PENDING_AT_END_CONFLICT")
+        results["pending_at_end_count"] = pending
     return results
 
 
@@ -183,12 +224,16 @@ def _check_gates(gates: Mapping[str, Any]) -> None:
     if gates.get("packet_emission_count") != gates.get("packet_consumption_count", -1) + gates.get("pending_at_end_count", -1): raise LockedD1Error("runtime hard gate failed: packet conservation")
 
 
-def produce_runtime_gates_checked(*, batch_root: Path, population: str, batch_id: str, pair: str, logical_condition: str, attempt_root: Path, runtime_manifests: Sequence[Path]) -> Path:
+def produce_runtime_gates_checked(*, batch_root: Path, population: str, batch_id: str, pair: str, logical_condition: str, attempt_root: Path, runtime_manifests: Sequence[Path], runtime_packet_trace: Path | None = None) -> Path:
     c = _context(batch_root=batch_root, population=population, batch_id=batch_id, pair=pair, logical_condition=logical_condition, attempt_root=attempt_root)
     if not runtime_manifests: raise LockedD1Error("runtime provenance manifest required")
     entries, _ = _runtime_values(runtime_manifests, attempt_root)
-    gates = derive_runtime_gate_results(runtime_manifests, attempt_root); _check_gates(gates)
-    evidence = {"state": "RUNTIME_GATES_CHECKED", **{k: c[k] for k in ("attempt_id", "pair", "logical_condition", "batch_id", "population", "authority_bundle_sha256", "condition_record_sha256")}, "checked_runtime_manifest_sha256s": {str(x["identifier"]): str(x["sha256"]) for x in entries}, "gate_results": gates, "all_mandatory_gates_pass": True, "scientific_outcome_accessed": False}
+    gates = derive_runtime_gate_results(runtime_manifests, attempt_root, runtime_packet_trace); _check_gates(gates)
+    pending_evidence: dict[str, object] = {"source": "RUNTIME_MANIFEST", "pending_at_end_count": gates["pending_at_end_count"]}
+    if runtime_packet_trace is not None:
+        trace, pending = _runtime_packet_trace(runtime_packet_trace, attempt_root)
+        pending_evidence = {"source": "PACKET_TRACE_DERIVED", "identifier": str(trace.relative_to(attempt_root.resolve())), "sha256": sha256_file(trace), "bytes": trace.stat().st_size, "pending_at_end_count": pending}
+    evidence = {"state": "RUNTIME_GATES_CHECKED", **{k: c[k] for k in ("attempt_id", "pair", "logical_condition", "batch_id", "population", "authority_bundle_sha256", "condition_record_sha256")}, "checked_runtime_manifest_sha256s": {str(x["identifier"]): str(x["sha256"]) for x in entries}, "pending_at_end_evidence": pending_evidence, "gate_results": gates, "all_mandatory_gates_pass": True, "scientific_outcome_accessed": False}
     path = attempt_root / RUNTIME_EVIDENCE; atomic_json(path, evidence); return path
 
 
@@ -234,8 +279,8 @@ def _verify_artifact(value: Mapping[str, Any], c: Mapping[str, Any]) -> list[dic
     _verify_inventory(entries, c); return [dict(x) for x in entries]
 
 
-def _verify_runtime(value: Mapping[str, Any], runtime_artifacts: Sequence[Mapping[str, Any]], c: Mapping[str, Any]) -> None:
-    if value.get("all_mandatory_gates_pass") is not True or not isinstance(value.get("checked_runtime_manifest_sha256s"), Mapping) or not isinstance(value.get("gate_results"), Mapping): raise LockedD1Error("runtime gate evidence invalid")
+def _verify_runtime(value: Mapping[str, Any], runtime_artifacts: Sequence[Mapping[str, Any]], artifact_roles: Mapping[str, Mapping[str, Any]], c: Mapping[str, Any]) -> None:
+    if value.get("all_mandatory_gates_pass") is not True or not isinstance(value.get("checked_runtime_manifest_sha256s"), Mapping) or not isinstance(value.get("gate_results"), Mapping) or not isinstance(value.get("pending_at_end_evidence"), Mapping): raise LockedD1Error("runtime gate evidence invalid")
     expected_hashes: dict[str, str] = {}
     paths = []
     for artifact in runtime_artifacts:
@@ -250,7 +295,20 @@ def _verify_runtime(value: Mapping[str, Any], runtime_artifacts: Sequence[Mappin
         raise LockedD1Error("RUNTIME_MANIFEST_SET_MISMATCH")
     if dict(evidence_hashes) != expected_hashes:
         raise LockedD1Error("RUNTIME_MANIFEST_SHA_MISMATCH")
-    rederived = derive_runtime_gate_results(paths, c["attempt_root"])
+    pending = value["pending_at_end_evidence"]; source = pending.get("source")
+    trace_path = None
+    if source == "PACKET_TRACE_DERIVED":
+        artifact = artifact_roles.get("runtime_packet_trace")
+        if artifact is None or pending.get("identifier") != artifact.get("identifier"):
+            raise LockedD1Error("RUNTIME_PACKET_TRACE_BINDING_MISMATCH")
+        trace_path = _contained(c["attempt_root"] / str(pending["identifier"]), c["attempt_root"])
+        if pending.get("sha256") != sha256_file(trace_path) or pending.get("bytes") != trace_path.stat().st_size:
+            raise LockedD1Error("RUNTIME_PACKET_TRACE_SHA_MISMATCH")
+    elif source != "RUNTIME_MANIFEST" or "runtime_packet_trace" in artifact_roles:
+        raise LockedD1Error("RUNTIME_PENDING_AT_END_SOURCE_MISMATCH")
+    rederived = derive_runtime_gate_results(paths, c["attempt_root"], trace_path)
+    if pending.get("pending_at_end_count") != rederived.get("pending_at_end_count"):
+        raise LockedD1Error("RUNTIME_PENDING_AT_END_RESULT_MISMATCH")
     if dict(value["gate_results"]) != rederived:
         raise LockedD1Error("RUNTIME_GATE_RESULT_MISMATCH")
     _check_gates(rederived)
@@ -273,9 +331,9 @@ def seal_attempt_acceptance(*, batch_root: Path, population: str, batch_id: str,
     c = _context(batch_root=batch_root, population=population, batch_id=batch_id, pair=pair, logical_condition=logical_condition, attempt_root=attempt_root)
     artifact, artifact_sha = _verified_evidence(artifact_validation_evidence, c, "ARTIFACT_VALIDATED")
     runtime, runtime_sha = _verified_evidence(runtime_gate_evidence, c, "RUNTIME_GATES_CHECKED")
-    entries = _verify_artifact(artifact, c)
+    entries = _verify_artifact(artifact, c); roles = _verify_inventory(entries, c)
     runtime_artifacts = [entry for entry in entries if str(entry.get("artifact_role", "")).startswith("runtime_manifest_")]
-    _verify_runtime(runtime, runtime_artifacts, c); parity_sha = None
+    _verify_runtime(runtime, runtime_artifacts, roles, c); parity_sha = None
     if logical_condition == "Y00":
         if y00_parity_evidence is None: raise LockedD1Error("Y00 reference parity incomplete")
         parity, parity_sha = _verified_evidence(y00_parity_evidence, c, "Y00_REFERENCE_PARITY_CHECKED")
@@ -309,12 +367,11 @@ def verify_acceptance_seal(*, batch_root: Path, population: str, batch_id: str, 
     artifact, artifact_sha = _verified_evidence(attempt_root / ARTIFACT_EVIDENCE, c, "ARTIFACT_VALIDATED")
     runtime, runtime_sha = _verified_evidence(attempt_root / RUNTIME_EVIDENCE, c, "RUNTIME_GATES_CHECKED")
     if seal.get("artifact_validation_evidence_sha256") != artifact_sha or seal.get("runtime_gate_evidence_sha256") != runtime_sha: raise LockedD1Error("acceptance evidence digest mismatch")
-    entries = _verify_artifact(artifact, c)
+    entries = _verify_artifact(artifact, c); roles = _verify_inventory(entries, c)
     runtime_artifacts = [entry for entry in entries if str(entry.get("artifact_role", "")).startswith("runtime_manifest_")]
-    _verify_runtime(runtime, runtime_artifacts, c)
+    _verify_runtime(runtime, runtime_artifacts, roles, c)
     inventory = _read_json(inventory_path, "artifact inventory invalid")
     if not isinstance(inventory, Mapping) or inventory.get("artifacts") != entries: raise LockedD1Error("artifact inventory invalid")
-    roles = _verify_inventory(entries, c)
     if logical_condition == "Y00":
         parity, parity_sha = _verified_evidence(attempt_root / Y00_EVIDENCE, c, "Y00_REFERENCE_PARITY_CHECKED")
         if seal.get("y00_parity_evidence_sha256") != parity_sha or parity.get("y00_reference_parity_pass") is not True: raise LockedD1Error("Y00 reference parity invalid")
