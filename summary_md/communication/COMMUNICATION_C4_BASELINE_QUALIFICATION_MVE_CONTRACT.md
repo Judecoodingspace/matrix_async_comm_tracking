@@ -9,6 +9,9 @@ DATASET_MVE_EXECUTION_AUTHORIZED = NO
 FORMAL_COMMUNICATION_EXECUTION_AUTHORIZED = NO
 TRAIN_HOLDOUT_OUTCOME_READ_AUTHORIZED = NO
 VAL_OUTCOME_READ_AUTHORIZED = NO
+U1_U4_STATUS = FROZEN
+U1_U4_UNRESOLVED = NO
+U5_U6_STATUS = NEEDS_PRODUCT_OWNER_DECISION
 ```
 
 ## 1. Status and authority
@@ -34,8 +37,8 @@ traffic, an airtime measurement, or a capacity requirement.
 
 This candidate does not authorize implementation or execution. Dataset-level
 C4 MVE execution remains blocked until the locked-d1 Train Holdout is complete,
-U1--U4 are frozen, this candidate and the later execution materials pass review,
-and a separate MVE Execution Authorization is issued.
+this finalized candidate and the later implementation/execution materials pass
+review, and a separate MVE Execution Authorization is issued.
 
 ## 2. Purpose
 
@@ -138,20 +141,29 @@ any scheduler comparison is authorized?
 - **FACT:** C3 places only `ID State` and `Supplement` on the constrained shared
   server; `Local Track` and `Homography` bypass it timely.
 - **FACT:** C4 freezes Unlimited, FIFO, and fixed-delay bridge roles.
+- **FACT:** U1 freezes the workload-only three-pair cohort as pair `23` (low),
+  pair `44` (median), and pair `66` (high), mechanically selected from the
+  frozen 25-pair Packet Census.
+- **FACT:** U2 freezes one global rate set across all three pairs:
+  `R_STRONG=16649`, `R_MODERATE=26148`, and `R_MILD=31987` logical bytes per
+  frame, mechanically rounded from the P20/P50/P80 pair-level `W_comm`
+  quantiles.
+- **FACT:** U3 freezes `Y10_d1` as the primary fixed-delay bridge and `Y11_d1`
+  as the secondary fixed-delay bridge.
+- **FACT:** U4 freezes MDA as the primary tracking diagnostic and IDSW as the
+  secondary tracking diagnostic, without a significance test.
 - **FACT:** Dataset-level C4 MVE execution is not currently authorized.
 - **INFERENCE:** If the abstraction is implemented faithfully, an
   outcome-blind finite rate can expose endogenous queue timing without adding a
   semantic policy. This must be tested, not assumed.
-- **ASSUMPTION:** U1--U4 can later be frozen so that Unlimited parity and finite
-  service pressure are discriminating within a minimum dataset-level run.
-- **UNKNOWN:** The exact development cohort, finite rates, fixed-delay bridge
-  conditions, and tracking diagnostic hierarchy.
+- **ASSUMPTION:** The later implementation can render the frozen U1--U4 design
+  faithfully enough to test Unlimited parity and finite service pressure.
 - **UNKNOWN:** Whether finite FIFO timing produces a material tracking effect.
   A significant MDA reduction is not an implementation or qualification gate.
 
 ### Primary qualification hypothesis
 
-With a later outcome-blind U1--U4 freeze, Unlimited preserves the existing
+Under the frozen outcome-blind U1--U4 decisions, Unlimited preserves the existing
 timely/reference behavior through the same communication interface without
 queue-induced delay, while finite FIFO creates deterministic and conserved
 endogenous service timing that is observable through backlog, waiting,
@@ -195,7 +207,24 @@ experiment.
 A packet may receive service across more than one frame. Once service starts,
 it continues non-preemptively until completion. The semantic consumer cannot
 observe a partially served packet; availability occurs only after complete
-service. The exact finite values of `R` are U2 and remain unset.
+service. The exact finite values of `R` are frozen below by U2.
+
+The U2 global fixed-rate regime is:
+
+```text
+R_STRONG = 16649 LOGICAL_BYTES_PER_FRAME
+R_MODERATE = 26148 LOGICAL_BYTES_PER_FRAME
+R_MILD = 31987 LOGICAL_BYTES_PER_FRAME
+SERVER_RATE_SCOPE = GLOBAL_FIXED_ACROSS_PAIRS
+PAIR_NORMALIZED_R = NO
+ROUNDING_RULE = ROUND_TO_NEAREST_INTEGER_LOGICAL_BYTE
+```
+
+These values are the mechanically rounded P20/P50/P80 quantiles of pair-level
+mean `ID State + Supplement JSON_WIRE_BYTES/frame` from the frozen 25-pair
+Census. Their exact derivation is recorded in
+`summary_md/communication/COMMUNICATION_C4_U1_U2_WORKLOAD_DERIVATION.md`.
+Tracking, Holdout, and Val outcomes were not used.
 
 Each video frame provides `R` logical bytes of service budget. Service is
 work-conserving: if the packet in service completes before the current frame's
@@ -277,7 +306,22 @@ Role: `MECHANISM BRIDGE CONTROL`.
 Fixed delay is an exogenous mechanism control linking earlier fixed-delay
 evidence to endogenous FIFO queueing delay. It is not a scheduler, not a
 same-resource baseline, and need not reproduce FIFO's delay distribution. Its
-exact delay and channel combination are U3 and remain unset.
+frozen U3 bridge conditions are:
+
+```text
+PRIMARY_FIXED_DELAY_BRIDGE = Y10_d1
+PRIMARY_BRIDGE_SEMANTICS = ID_STATE_PLUS_1_FRAME__SUPPLEMENT_TIMELY
+SECONDARY_FIXED_DELAY_BRIDGE = Y11_d1
+SECONDARY_BRIDGE_SEMANTICS = ID_STATE_PLUS_1_FRAME__SUPPLEMENT_PLUS_1_FRAME
+Y01_d1 = NOT_INCLUDED_IN_FIRST_C4_MVE
+D5_OR_LARGER_DELAY_SWEEP = NOT_INCLUDED
+BRIDGE_ROLE = MECHANISM_INTERPRETATION_ONLY
+BRIDGE_IS_SCHEDULER_BASELINE = NO
+FIFO_FIXED_DELAY_NUMERICAL_MATCH_REQUIRED = NO
+TRACKING_OUTCOME_USED_TO_SELECT_DELAY = NO
+```
+
+No additional delay or channel-combination sweep is authorized.
 
 ## 9. Qualification objectives Q1--Q4
 
@@ -339,9 +383,25 @@ Every future packet/service ledger must make the following fields auditable:
 - logical-byte conservation, terminal-state conservation, and deterministic
   replay evidence.
 
-MDA, IDSW, and other U4-approved identity metrics may be recorded as tracking
-diagnostics. Their primary/secondary hierarchy remains unresolved, and no
-tracking outcome may retroactively define implementation correctness.
+The frozen U4 tracking-diagnostic hierarchy is:
+
+```text
+PRIMARY_TRACKING_DIAGNOSTIC = MDA
+PRIMARY_CONTRAST = FIFO_AT_EACH_FINITE_R_VS_UNLIMITED_WITHIN_THE_SAME_PAIR
+SECONDARY_TRACKING_DIAGNOSTIC = IDSW
+OTHER_EXISTING_EVALUATOR_METRICS = DESCRIPTIVE_ONLY
+NEW_TRACKING_METRIC_INTRODUCTION = NO
+POST_HOC_METRIC_PROMOTION = FORBIDDEN
+MVE_STATISTICAL_SIGNIFICANCE_TEST = NO
+PAIR_LEVEL_REPORTING = REQUIRED
+CROSS_PAIR_SUMMARY = DESCRIPTIVE_ONLY
+FIXED_DELAY_BRIDGE_COMPARISON = DIRECTIONAL_AND_STRUCTURAL_ONLY
+FIFO_FIXED_DELAY_NUMERICAL_EQUALITY = NOT_REQUIRED
+TRACKING_METRIC_DEGRADATION = NOT_A_QUALIFICATION_PASS_REQUIREMENT
+```
+
+No tracking outcome may retroactively define implementation correctness or
+change this hierarchy.
 
 At minimum, the later execution audit must establish:
 
@@ -371,10 +431,11 @@ At minimum, the later execution audit must establish:
 - Primary qualification variable: service condition—Unlimited reference versus
   finite semantic-unaware FIFO. The fixed-delay condition is a separate
   mechanism bridge, not a scheduler level.
-- Controlled variables: once U1--U4 are frozen, dataset/cohort, frame range,
-  seed, detector, tracker, checkpoints, thresholds, message schema, packet
-  costs, server semantics, evaluator, and reporting code must be identical
-  wherever the baseline roles permit.
+- Controlled variables: the frozen U1 cohort, U2 global rates, U3 bridge
+  conditions, and U4 diagnostic hierarchy must be held fixed. The later
+  Implementation Plan must freeze frame range, seed, detector, tracker,
+  checkpoints, thresholds, message schema, packet costs, server semantics,
+  evaluator, and reporting code identically wherever the baseline roles permit.
 - Safety baseline: C4-B FIFO under the same finite `R` later used for any
   semantic intervention.
 - Reference condition: C4-A Unlimited.
@@ -382,17 +443,22 @@ At minimum, the later execution audit must establish:
 - Diagnostic upper bound: none is authorized or required for this baseline
   qualification contract. A new upper bound requires an explicit research
   decision.
-- Dataset/cohort, frame range, condition count, runtime estimate, output root,
-  cache root, checkpoint/resume details, and exact stop/retry mechanics remain
-  unset until the applicable Product Owner decisions and later plans exist.
+- Frame range, condition rendering, runtime estimate, output root, cache root,
+  checkpoint/resume details, and exact stop/retry mechanics remain for the later
+  reviewed Implementation Plan and execution materials. They must not alter
+  U1--U4.
 
 ## 12. Minimum viable and formal execution boundary
 
-No dataset-level run is specified or authorized here because U1--U4 remain
-unresolved and the Train Holdout is not yet complete.
+No dataset-level run is authorized here. U1--U4 are frozen, but the Train
+Holdout completion gate remains independent, and no reviewed Implementation
+Plan, implementation audit, or MVE Execution Authorization exists under this
+contract.
 
-The future minimum viable execution must be the smallest U1-approved
-development cohort and U2/U3-approved finite set that can discriminate Q1--Q4.
+The future minimum viable execution must use U1 pairs `23`, `44`, and `66`, the
+same U2 global rates `16649`, `26148`, and `31987` logical bytes/frame across
+all three pairs, and only the U3 `Y10_d1`/`Y11_d1` bridge conditions. It must
+apply the frozen U4 hierarchy and discriminate Q1--Q4.
 It must stop before scientific interpretation if Unlimited parity,
 conservation, atomicity, causality, deterministic replay, isolation, or storage
 preflight fails.
@@ -416,8 +482,8 @@ MERMAID_FLOWCHART = OPTIONAL_WHEN_JUSTIFIED
 ```
 
 ```text
-MVE_CONDITION_COUNT = NEEDS_PRODUCT_OWNER_DECISION
-MVE_EXPECTED_RUNTIME = UNKNOWN_UNTIL_U1_U3_FREEZE_AND_PREFLIGHT
+MVE_CONDITION_RENDERING = IMPLEMENTATION_PLAN_REQUIRED_WITHOUT_U1_U4_CHANGE
+MVE_EXPECTED_RUNTIME = UNKNOWN_UNTIL_IMPLEMENTATION_PLAN_AND_PREFLIGHT
 FORMAL_RUN = OUT_OF_SCOPE
 ```
 
@@ -443,9 +509,11 @@ Before separate execution authorization, the following remain forbidden:
 - reading Train Holdout or Val scientific outcomes for `R` selection, pair
   selection, policy design, or metric promotion.
 
-The Census evidence may support outcome-blind workload reasoning after U2's
-selection rule is approved. Tracking outcomes must not select rates, pairs,
-bridge conditions, or metric prominence.
+The Census evidence supports the frozen outcome-blind U1/U2 workload
+derivation recorded in
+`summary_md/communication/COMMUNICATION_C4_U1_U2_WORKLOAD_DERIVATION.md`.
+Tracking outcomes did not and must not select rates, pairs, bridge conditions,
+or metric prominence.
 
 ## 14. Future worktree, GPU, output, cache, and storage isolation
 
@@ -530,47 +598,94 @@ storage plan requires one, it remains `NEEDS_PRODUCT_OWNER_DECISION`.
 Exact output and cache roots must be frozen in a later execution plan. They may
 not alias, resolve into, or symlink to Holdout output/cache locations.
 
-## 15. Unresolved Product Owner decisions
+## 15. Frozen U1--U4 and unresolved U5--U6
 
-Each item below blocks dataset-level MVE execution but does not block review of
-this contract candidate.
+U1--U4 are now frozen from Product Owner decisions and the mechanical frozen
+Census derivation. U5/U6 remain unresolved and outside this C4 scope.
 
 ### U1 — exact C4 MVE development pair/cohort
 
 ```text
-STATUS = NEEDS_PRODUCT_OWNER_DECISION
+U1_STATUS = FROZEN
+U1_COHORT_SIZE = 3
+U1_SOURCE_POPULATION = 25_PREAUDITED_RUNNABLE_TRAIN_PAIRS_FROM_FROZEN_PACKET_CENSUS
+U1_SELECTION_INFORMATION = PACKET_CENSUS_WORKLOAD_ONLY
+U1_WORKLOAD_DEFINITION = PAIR_MEAN_ID_STATE_PLUS_SUPPLEMENT_JSON_WIRE_BYTES_PER_FRAME
+U1_SELECTION_RULE = NEAREST_PAIR_TO_P20_P50_P80
+U1_TIE_BREAK = SMALLER_CANONICAL_PAIR_IDENTIFIER
+LOW_WORKLOAD_PAIR = 23
+MEDIAN_WORKLOAD_PAIR = 44
+HIGH_WORKLOAD_PAIR = 66
+TRACKING_OUTCOME_USED_FOR_SELECTION = NO
+HOLDOUT_OUTCOME_USED = NO
+VAL_OUTCOME_USED = NO
 ```
 
-No pair, cohort, or frame subset is selected by this contract.
+The full mechanical table, exact quantiles, and selection distances are in
+`summary_md/communication/COMMUNICATION_C4_U1_U2_WORKLOAD_DERIVATION.md`.
 
 ### U2 — exact finite service-rate regime
 
 ```text
-R_mild = NEEDS_PRODUCT_OWNER_DECISION
-R_moderate = NEEDS_PRODUCT_OWNER_DECISION
-R_strong = NEEDS_PRODUCT_OWNER_DECISION
-SELECTION_RULE = NEEDS_PRODUCT_OWNER_DECISION
+U2_STATUS = FROZEN
+U2_SERVER_RATE_SCOPE = GLOBAL_FIXED_ACROSS_PAIRS
+U2_CALIBRATION_POPULATION = 25_PREAUDITED_RUNNABLE_TRAIN_PAIRS_FROM_FROZEN_PACKET_CENSUS
+U2_PAIR_WORKLOAD = MEAN_ID_STATE_PLUS_SUPPLEMENT_JSON_WIRE_BYTES_PER_FRAME
+U2_QUANTILE_UNIT = PAIR_LEVEL_MEANS
+P20_W_COMM_EXACT = 203952879/12250
+P50_W_COMM_EXACT = 1176644/45
+P80_W_COMM_EXACT = 43981789/1375
+R_STRONG = 16649_LOGICAL_BYTES_PER_FRAME
+R_MODERATE = 26148_LOGICAL_BYTES_PER_FRAME
+R_MILD = 31987_LOGICAL_BYTES_PER_FRAME
+ROUNDING_RULE = ROUND_TO_NEAREST_INTEGER_LOGICAL_BYTE
+PAIR_NORMALIZED_R = NO
+POST_HOC_R_TUNING_FROM_MDA_OR_IDSW = FORBIDDEN
+TRACKING_OUTCOME_USED_FOR_RATE_SELECTION = NO
+HOLDOUT_OUTCOME_USED = NO
+VAL_OUTCOME_USED = NO
+UNLIMITED = SEPARATE_NO_BOTTLENECK_REFERENCE
 ```
 
-No numeric rate or Census-derived selection rule is invented. Rates must be
-frozen outcome-blind and must never be chosen from tracking results.
+The three U1 pairs share this single global rate set. Rates were mechanically
+derived from Census workload and must not be retuned from tracking results.
 
 ### U3 — exact fixed-delay bridge condition(s)
 
 ```text
-STATUS = NEEDS_PRODUCT_OWNER_DECISION
+U3_STATUS = FROZEN
+PRIMARY_FIXED_DELAY_BRIDGE = Y10_d1
+SECONDARY_FIXED_DELAY_BRIDGE = Y11_d1
+Y01_d1 = NOT_INCLUDED_IN_FIRST_C4_MVE
+D5_OR_LARGER_DELAY_SWEEP = NOT_INCLUDED
+BRIDGE_ROLE = MECHANISM_INTERPRETATION_ONLY
+BRIDGE_IS_SCHEDULER_BASELINE = NO
+FIFO_FIXED_DELAY_NUMERICAL_MATCH_REQUIRED = NO
+TRACKING_OUTCOME_USED_TO_SELECT_DELAY = NO
 ```
 
-No `d1`/`d2`/other delay or channel combination is selected here.
+Fixed delay remains an exogenous bridge; finite FIFO remains endogenous
+queueing. No extra delay sweep is authorized.
 
 ### U4 — exact tracking diagnostic metric hierarchy
 
 ```text
-STATUS = NEEDS_PRODUCT_OWNER_DECISION
+U4_STATUS = FROZEN
+PRIMARY_TRACKING_DIAGNOSTIC = MDA
+PRIMARY_CONTRAST = FIFO_AT_EACH_FINITE_R_VS_UNLIMITED_WITHIN_THE_SAME_PAIR
+SECONDARY_TRACKING_DIAGNOSTIC = IDSW
+OTHER_EXISTING_EVALUATOR_METRICS = DESCRIPTIVE_ONLY
+NEW_TRACKING_METRIC_INTRODUCTION = NO
+POST_HOC_METRIC_PROMOTION = FORBIDDEN
+MVE_STATISTICAL_SIGNIFICANCE_TEST = NO
+PAIR_LEVEL_REPORTING = REQUIRED
+CROSS_PAIR_SUMMARY = DESCRIPTIVE_ONLY
+FIXED_DELAY_BRIDGE_COMPARISON = DIRECTIONAL_AND_STRUCTURAL_ONLY
+FIFO_FIXED_DELAY_NUMERICAL_EQUALITY = NOT_REQUIRED
+TRACKING_METRIC_DEGRADATION = NOT_A_QUALIFICATION_PASS_REQUIREMENT
 ```
 
-MDA and identity-related metrics may be logged, but their primary/secondary
-reporting hierarchy is not frozen.
+Future results cannot change this hierarchy post hoc.
 
 ### U5 — C5 semantic freshness definition
 
@@ -604,9 +719,10 @@ SEMANTIC_POLICY_AUTHORIZED = NO
 ```
 
 An approved contract candidate is necessary but not sufficient for execution.
-Execution requires Holdout completion, frozen U1--U4, reviewed implementation
-and execution materials, all isolation/storage preflights, and an explicit
-separate MVE Execution Authorization.
+Execution requires Holdout completion, a reviewed Implementation Plan,
+implementation and execution audits, all isolation/storage preflights, and an
+explicit separate MVE Execution Authorization. U1--U4 are frozen but do not
+grant execution authority.
 
 ## 17. Failure and fail-close rules
 
@@ -615,7 +731,8 @@ The later qualification must fail closed if any of the following occurs:
 - authority, branch, worktree, input, config, checkpoint, or evaluator identity
   differs from the later frozen execution materials;
 - any Holdout/Val scientific outcome is read or used for design;
-- U1--U4 remain unresolved at launch;
+- the implementation or execution configuration differs from any frozen
+  U1--U4 decision;
 - Unlimited fails timely/reference parity;
 - logical-byte or terminal-state conservation fails;
 - a packet is delivered partially, delivered before completion, or preempted;
@@ -676,7 +793,9 @@ semantic scheduler works and does not authorize C1-B.
 ```text
 IF contract review fails:
     REVISE CONTRACT ONLY
-ELSE IF Holdout is incomplete OR U1-U4 are unresolved:
+ELSE IF Holdout is incomplete:
+    DATASET_MVE_EXECUTION_AUTHORIZED = NO
+ELSE IF reviewed Implementation Plan or implementation audit is absent:
     DATASET_MVE_EXECUTION_AUTHORIZED = NO
 ELSE IF implementation/execution audit or isolation preflight fails:
     DATASET_MVE_EXECUTION_AUTHORIZED = NO
@@ -707,9 +826,10 @@ cleanup.
 - [ ] C4 Unlimited, FIFO, and fixed-delay roles preserved.
 - [ ] Q1--Q4 are separately testable.
 - [ ] Required evidence and all conservation/replay invariants are planned.
-- [ ] U1--U6 remain explicitly unresolved.
-- [ ] No numeric `R`, cohort, fixed delay, channel combination, metric
-      hierarchy, semantic policy, physical model, or GB threshold invented.
+- [ ] U1--U4 match the frozen Product Owner decisions and mechanical Census
+      derivation; U5/U6 remain explicitly unresolved.
+- [ ] No post-hoc `R`, cohort, bridge, metric hierarchy, semantic policy,
+      physical model, or GB threshold invented.
 - [ ] Holdout/Val contamination firewall preserved.
 - [ ] Future worktree/GPU/output/cache/environment/storage isolation preserved.
 - [ ] Failed-attempt history, permanent minimum evidence, quarantine, and
@@ -718,7 +838,10 @@ cleanup.
 - [ ] No runtime code, Implementation Plan, experiment, or GPU job created by
       this contract task.
 
-### Drafting self-audit record
+### Prior drafting and P1--P3 corrective self-audit record
+
+This block records the earlier audits before U1--U4 finalization; it is retained
+as historical governance evidence and is not the current U1--U4 state.
 
 ```text
 C1 faithfully represented = YES
@@ -769,16 +892,58 @@ HOLDOUT_OUTCOME_READ = NO
 VAL_OUTCOME_READ = NO
 ```
 
+### U1--U4 finalization self-audit record
+
+```text
+U1_RULE_MATCHES_PRODUCT_OWNER = YES
+U1_CONCRETE_PAIRS_DERIVED_MECHANICALLY = YES
+
+U2_RULE_MATCHES_PRODUCT_OWNER = YES
+U2_R_VALUES_DERIVED_MECHANICALLY = YES
+U2_GLOBAL_FIXED_R = YES
+U2_PAIR_NORMALIZATION = NO
+
+U3_Y10_D1_PRIMARY = YES
+U3_Y11_D1_SECONDARY = YES
+U3_EXTRA_DELAY_SWEEP = NO
+
+U4_MDA_PRIMARY = YES
+U4_IDSW_SECONDARY = YES
+U4_SIGNIFICANCE_TEST = NO
+U4_POST_HOC_METRIC_PROMOTION = NO
+
+U5_UNRESOLVED = YES
+U6_UNRESOLVED = YES
+
+C1_CHANGED = NO
+C2_CHANGED = NO
+C3_CHANGED = NO
+C4_BASELINE_ROLE_CHANGED = NO
+P1_P3_CHANGED = NO
+
+TRACKING_OUTCOME_READ = NO
+HOLDOUT_OUTCOME_READ = NO
+VAL_OUTCOME_READ = NO
+
+TRACKER_EXECUTED = NO
+EVALUATOR_EXECUTED = NO
+GPU_JOB_STARTED = NO
+DATASET_MVE_EXECUTED = NO
+
+IMPLEMENTATION_PLAN_CREATED = NO
+IMPLEMENTATION_STARTED = NO
+ONLY_ALLOWED_FILES_CHANGED = YES
+```
+
 ## 20. Governance next gate
 
-1. Product Owner / ChatGPT / Team B reviews this contract candidate.
+1. Product Owner / ChatGPT / Team B reviews this narrow U1--U4 finalization
+   delta.
 2. Do not create an Implementation Plan as part of this task.
-3. Separately freeze U1--U4 without reading Holdout/Val outcomes and without
-   result-driven selection.
-4. Wait for confirmed Train Holdout completion.
-5. Prepare and review later implementation/execution materials under explicit
+3. Wait for confirmed Train Holdout completion.
+4. Prepare and review later implementation/execution materials under explicit
    authority, including exact output/cache isolation and storage projection.
-6. Issue a separate MVE Execution Authorization before any dataset-level C4
+5. Issue a separate MVE Execution Authorization before any dataset-level C4
    run.
 
 Until all required gates close:
