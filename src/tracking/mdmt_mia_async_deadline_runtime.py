@@ -10,6 +10,7 @@ environment by ``prepare_mdmt_mia_async_packet_variant.py``.
 from __future__ import annotations
 
 import base64
+from collections import deque
 import copy
 import hashlib
 import heapq
@@ -27,6 +28,12 @@ CENSUS_TERMINAL_CLASSES = (
     "TIMELY_DELIVERED", "ARRIVED_ACCEPTED", "ARRIVED_REJECTED", "EXPIRED", "PENDING_AT_END",
 )
 CENSUS_NOT_EXPLICIT = "NOT_EXPLICIT"
+C4_CONSTRAINED_CHANNELS = ("id_state", "supplement")
+C4_FIFO_RATES = {
+    "FIFO_strong": 16649,
+    "FIFO_moderate": 26148,
+    "FIFO_mild": 31987,
+}
 
 
 def _array(value):
@@ -94,6 +101,58 @@ def _parse_delays(raw):
             raise ValueError("delay must be non-negative")
         delays[name] = value
     return delays
+
+
+def _parse_c4_service_config(raw):
+    """Parse the fail-closed C4 service configuration without changing wire data."""
+    if not raw:
+        return {"mode": "disabled", "condition": "legacy_fixed_delay",
+                "rate_logical_bytes_per_frame": None, "ledger_enabled": False,
+                "run_id": "", "pair_id": ""}
+    try:
+        parsed = json.loads(str(raw))
+    except ValueError as exc:
+        raise ValueError("MIA_C4_SERVICE_CONFIG must be JSON") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("MIA_C4_SERVICE_CONFIG must be a JSON object")
+    allowed = {"mode", "condition", "rate_logical_bytes_per_frame", "ledger_enabled", "run_id", "pair_id"}
+    unknown = set(parsed) - allowed
+    if unknown:
+        raise ValueError("unknown C4 service config fields: {}".format(sorted(unknown)))
+    mode = str(parsed.get("mode", "")).lower()
+    condition = str(parsed.get("condition", ""))
+    rate = parsed.get("rate_logical_bytes_per_frame")
+    if mode not in ("disabled", "unlimited", "fifo"):
+        raise ValueError("unknown C4 service mode: {}".format(mode))
+    if mode == "unlimited":
+        if condition and condition != "Unlimited":
+            raise ValueError("Unlimited mode requires the Unlimited condition")
+        if rate is not None:
+            raise ValueError("Unlimited must not have a numeric R")
+        condition = condition or "Unlimited"
+    elif mode == "fifo":
+        if condition not in C4_FIFO_RATES:
+            raise ValueError("FIFO mode requires a frozen FIFO condition")
+        if isinstance(rate, bool) or int(rate) != C4_FIFO_RATES[condition]:
+            raise ValueError("FIFO rate does not match frozen condition")
+        rate = int(rate)
+    else:
+        if rate is not None:
+            raise ValueError("disabled service must not have a numeric R")
+        condition = condition or "legacy_fixed_delay"
+        if condition not in ("legacy_fixed_delay", "Y10_d1", "Y11_d1"):
+            raise ValueError("disabled C4 service accepts only the frozen fixed-delay bridges")
+    ledger_enabled = parsed.get("ledger_enabled", mode != "disabled")
+    if not isinstance(ledger_enabled, bool):
+        raise ValueError("ledger_enabled must be boolean")
+    return {
+        "mode": mode,
+        "condition": condition,
+        "rate_logical_bytes_per_frame": rate,
+        "ledger_enabled": ledger_enabled,
+        "run_id": str(parsed.get("run_id", "")),
+        "pair_id": str(parsed.get("pair_id", "")),
+    }
 
 
 def _row_key(row):
@@ -482,6 +541,392 @@ class _PacketCensusSidecar(object):
         return report
 
 
+class _C4SharedLogicalServer(object):
+    """Deterministic shared logical-byte service for ID State and Supplement."""
+
+    def __init__(self, mode, rate_logical_bytes_per_frame=None, output_dir=None,
+                 sequence_name="", run_id="", condition="", pair_id="",
+                 ledger_enabled=True):
+        mode = str(mode).lower()
+        if mode not in ("unlimited", "fifo"):
+            raise ValueError("C4 shared server mode must be unlimited or fifo")
+        if mode == "unlimited":
+            if rate_logical_bytes_per_frame is not None:
+                raise ValueError("Unlimited must not have a numeric R")
+            rate = None
+        else:
+            if isinstance(rate_logical_bytes_per_frame, bool):
+                raise ValueError("finite R must be a positive integer")
+            rate = int(rate_logical_bytes_per_frame)
+            if rate <= 0:
+                raise ValueError("finite R must be a positive integer")
+        self.mode = mode
+        self.rate = rate
+        self.output_dir = None if output_dir is None else Path(output_dir)
+        self.sequence_name = str(sequence_name)
+        self.run_id = str(run_id)
+        self.condition = str(condition)
+        self.pair_id = str(pair_id)
+        self.ledger_enabled = bool(ledger_enabled)
+        self.ledger_path = None if self.output_dir is None else self.output_dir / (
+            "c4_service_ledger_" + self.sequence_name + ".jsonl")
+        self.summary_path = None if self.output_dir is None else self.output_dir / (
+            "c4_service_summary_" + self.sequence_name + ".json")
+        self.io_failure = ""
+        self._ledger_started = False
+        if self.ledger_enabled and self.ledger_path is not None and self.ledger_path.exists():
+            self.io_failure = "existing_service_ledger_refused"
+        self._queue = deque()
+        self._in_service = None
+        self._completed = []
+        self._items = []
+        self._events = []
+        self._frame_summaries = []
+        self._current_frame = -1
+        self._frame_service_budget = None
+        self._frame_served = 0
+        self._packet_sequence = 0
+        self._sealed = False
+
+    def _packet_id(self, census_emission, packet_sequence):
+        if census_emission is not None:
+            return copy.deepcopy(census_emission["packet_id"])
+        return {"sequence_name": self.sequence_name, "packet_sequence": int(packet_sequence)}
+
+    def _backlog_bytes(self):
+        waiting = sum(int(item["remaining_service_bytes"]) for item in self._queue)
+        active = 0 if self._in_service is None else int(self._in_service["remaining_service_bytes"])
+        return waiting + active
+
+    def _event(self, event_type, item=None, **updates):
+        event = {
+            "record_type": "C4_SERVICE_EVENT",
+            "event_type": str(event_type),
+            "event_ordinal": len(self._events) + 1,
+            "run_id": self.run_id,
+            "condition": self.condition,
+            "pair_id": self.pair_id,
+            "runtime_instance_id": "" if item is None else str(item["runtime_instance_id"]),
+            "packet_id": None if item is None else copy.deepcopy(item["packet_id"]),
+            "wire_digest": "" if item is None else str(item["wire_digest"]),
+            "channel": "" if item is None else str(item["channel"]),
+            "JSON_WIRE_BYTES": None if item is None else int(item["JSON_WIRE_BYTES"]),
+            "SEMANTIC_ARRAY_RAW_BYTES": None if item is None else int(item["SEMANTIC_ARRAY_RAW_BYTES"]),
+            "emission_frame": None if item is None else int(item["emission_frame"]),
+            "enqueue_frame": None if item is None else int(item["enqueue_frame"]),
+            "service_start_frame": None if item is None or item["service_start_frame"] is None
+                else int(item["service_start_frame"]),
+            "service_completion_frame": None if item is None or item["service_completion_frame"] is None
+                else int(item["service_completion_frame"]),
+            "availability_frame": None if item is None or item["availability_frame"] is None
+                else int(item["availability_frame"]),
+            "packet_sequence": None if item is None else int(item["packet_sequence"]),
+            "bytes_offered": 0,
+            "bytes_served": 0,
+            "remaining_service_bytes": None if item is None else int(item["remaining_service_bytes"]),
+            "frame": None if self._current_frame < 0 else int(self._current_frame),
+            "frame_service_budget": self.rate,
+            "frame_unused_budget": self._frame_service_budget,
+            "queue_length": len(self._queue),
+            "queue_backlog_bytes": self._backlog_bytes(),
+            "waiting_delay": None if item is None or item["service_start_frame"] is None
+                else int(item["service_start_frame"]) - int(item["enqueue_frame"]),
+            "service_duration": None if item is None or item["service_completion_frame"] is None
+                else int(item["service_completion_frame"]) - int(item["service_start_frame"]),
+            "completion_delay": None if item is None or item["service_completion_frame"] is None
+                else int(item["service_completion_frame"]) - int(item["emission_frame"]),
+            "id_state_age_frames": None,
+            "id_state_terminal_consequence": "",
+            "supplement_terminal_consequence": "",
+            "terminal_disposition": "",
+            "terminal_reason": "",
+        }
+        event.update(_json_safe(updates))
+        self._events.append(event)
+        if self.ledger_enabled and self.ledger_path is not None and not self.io_failure:
+            try:
+                self.output_dir.mkdir(parents=True, exist_ok=True)
+                mode = "a" if self._ledger_started else "x"
+                with self.ledger_path.open(mode, encoding="utf-8") as handle:
+                    handle.write(_canonical_json(event) + "\n")
+                self._ledger_started = True
+            except Exception as exc:
+                self.io_failure = "{}".format(type(exc).__name__)
+        return event
+
+    def _close_frame(self):
+        if self._current_frame < 0:
+            return
+        summary = {
+            "record_type": "C4_SERVICE_FRAME_SUMMARY",
+            "run_id": self.run_id,
+            "condition": self.condition,
+            "pair_id": self.pair_id,
+            "frame": int(self._current_frame),
+            "R": self.rate,
+            "bytes_served": int(self._frame_served),
+            "unused_budget": self._frame_service_budget,
+            "queue_length": len(self._queue),
+            "queue_backlog_bytes": self._backlog_bytes(),
+        }
+        self._frame_summaries.append(summary)
+        self._event("frame_summary", bytes_served=int(self._frame_served),
+                    frame_unused_budget=self._frame_service_budget)
+
+    def begin_frame(self, frame_id):
+        frame_id = int(frame_id)
+        if frame_id <= self._current_frame:
+            raise ValueError("C4 service frames must be strictly increasing")
+        if self._current_frame >= 0 and frame_id != self._current_frame + 1:
+            raise ValueError("C4 service frames must be consecutive")
+        self._close_frame()
+        self._current_frame = frame_id
+        self._frame_service_budget = None if self.mode == "unlimited" else int(self.rate)
+        self._frame_served = 0
+        self._event("frame_open")
+        self._serve()
+        return self.take_completed()
+
+    def admit(self, channel, frame_id, wire, encoded, wire_digest,
+              census_emission=None, semantic_array_raw_bytes=0):
+        channel = str(channel)
+        frame_id = int(frame_id)
+        if channel not in C4_CONSTRAINED_CHANNELS:
+            raise ValueError("Local Track and Homography cannot enter the C4 shared server")
+        if frame_id != self._current_frame:
+            raise ValueError("packet must be admitted in its opened emission frame")
+        self._packet_sequence += 1
+        cost = len(encoded.encode("utf-8"))
+        if census_emission is not None:
+            if int(census_emission["JSON_WIRE_BYTES"]) != cost:
+                raise ValueError("C4 service cost differs from canonical Census JSON_WIRE_BYTES")
+            if int(census_emission["SEMANTIC_ARRAY_RAW_BYTES"]) != int(semantic_array_raw_bytes):
+                raise ValueError("C4 RAW diagnostic differs from canonical Census accounting")
+        item = {
+            "packet_sequence": self._packet_sequence,
+            "packet_id": self._packet_id(census_emission, self._packet_sequence),
+            "runtime_instance_id": "" if census_emission is None
+                else str(census_emission["runtime_instance_id"]),
+            "wire": wire,
+            "encoded": encoded,
+            "wire_digest": str(wire_digest),
+            "census_emission": census_emission,
+            "channel": channel,
+            "JSON_WIRE_BYTES": cost,
+            "SEMANTIC_ARRAY_RAW_BYTES": int(semantic_array_raw_bytes),
+            "emission_frame": frame_id,
+            "enqueue_frame": frame_id,
+            "service_start_frame": None,
+            "service_completion_frame": None,
+            "availability_frame": None,
+            "remaining_service_bytes": cost,
+            "bytes_served_total": 0,
+            "terminal_disposition": "",
+            "terminal_reason": "",
+            "terminal_location": "",
+        }
+        self._items.append(item)
+        self._queue.append(item)
+        self._event("enqueue", item, bytes_offered=cost)
+        self._serve()
+        for index, completed in enumerate(self._completed):
+            if int(completed["packet_sequence"]) == int(item["packet_sequence"]):
+                return self._completed.pop(index)
+        return None
+
+    def _start_next(self):
+        if self._in_service is not None or not self._queue:
+            return
+        self._in_service = self._queue.popleft()
+        self._in_service["service_start_frame"] = int(self._current_frame)
+        self._event("service_start", self._in_service)
+
+    def _complete_current(self):
+        item = self._in_service
+        item["service_completion_frame"] = int(self._current_frame)
+        item["availability_frame"] = int(self._current_frame)
+        self._event("completion", item)
+        self._completed.append(item)
+        self._in_service = None
+
+    def _serve(self):
+        while self._in_service is not None or self._queue:
+            if self.mode == "fifo" and int(self._frame_service_budget) <= 0:
+                return
+            self._start_next()
+            item = self._in_service
+            if int(item["remaining_service_bytes"]) == 0:
+                self._complete_current()
+                continue
+            amount = int(item["remaining_service_bytes"]) if self.mode == "unlimited" else min(
+                int(self._frame_service_budget), int(item["remaining_service_bytes"]))
+            before = self._frame_service_budget
+            item["remaining_service_bytes"] -= amount
+            item["bytes_served_total"] += amount
+            self._frame_served += amount
+            if self.mode == "fifo":
+                self._frame_service_budget -= amount
+            self._event("service_slice", item, bytes_served=amount,
+                        frame_budget_before=before,
+                        frame_unused_budget=self._frame_service_budget)
+            if int(item["remaining_service_bytes"]) == 0:
+                self._complete_current()
+
+    def take_completed(self):
+        completed = list(self._completed)
+        self._completed = []
+        return completed
+
+    def mark_terminal(self, item, disposition, reason, semantic_consequence=""):
+        if item["terminal_disposition"]:
+            raise ValueError("duplicate C4 service terminal")
+        item["terminal_disposition"] = str(disposition)
+        item["terminal_reason"] = str(reason)
+        item["terminal_location"] = "completed"
+        updates = {"terminal_disposition": str(disposition), "terminal_reason": str(reason)}
+        if item["channel"] == "id_state":
+            updates["id_state_age_frames"] = int(item["availability_frame"]) - int(item["emission_frame"])
+            updates["id_state_terminal_consequence"] = str(semantic_consequence)
+        else:
+            updates["supplement_terminal_consequence"] = str(semantic_consequence)
+        self._event("terminal", item, **updates)
+
+    def finalize_pending(self, frame_id):
+        if self._sealed:
+            raise ValueError("C4 shared server already finalized")
+        if self._current_frame >= 0:
+            self._close_frame()
+        pending = []
+        if self._in_service is not None:
+            item = self._in_service
+            item["terminal_disposition"] = "pending_at_end"
+            item["terminal_reason"] = "in_service_at_end"
+            item["terminal_location"] = "in_service"
+            self._event("terminal", item, terminal_disposition="pending_at_end",
+                        terminal_reason="in_service_at_end")
+            pending.append(item)
+            self._in_service = None
+        while self._queue:
+            item = self._queue.popleft()
+            item["terminal_disposition"] = "pending_at_end"
+            item["terminal_reason"] = "queued_at_end"
+            item["terminal_location"] = "queue"
+            self._event("terminal", item, terminal_disposition="pending_at_end",
+                        terminal_reason="queued_at_end")
+            pending.append(item)
+        self._sealed = True
+        return pending
+
+    @staticmethod
+    def _disposition_from_census(terminal):
+        terminal_class = str(terminal.get("terminal_class", ""))
+        if terminal_class in ("TIMELY_DELIVERED", "ARRIVED_ACCEPTED"):
+            return "completed_delivered"
+        if terminal_class in ("ARRIVED_REJECTED", "EXPIRED"):
+            return "completed_expired_or_rejected"
+        if terminal_class == "PENDING_AT_END":
+            return "pending_at_end"
+        return ""
+
+    def seal_evidence(self, census_terminals):
+        if not self._sealed:
+            raise ValueError("finalize_pending must run before evidence sealing")
+        by_digest = {str(row.get("wire_digest", "")): row for row in census_terminals}
+        for item in self._items:
+            terminal = by_digest.get(item["wire_digest"])
+            if terminal is not None and not item["terminal_disposition"]:
+                item["terminal_disposition"] = self._disposition_from_census(terminal)
+                item["terminal_reason"] = str(terminal.get("terminal_reason", ""))
+                item["terminal_location"] = "completed"
+            if not item["terminal_disposition"] and item["service_completion_frame"] is not None:
+                item["terminal_disposition"] = "completed_delivered"
+                item["terminal_reason"] = "census_disabled"
+                item["terminal_location"] = "completed"
+            consequence = item["terminal_reason"]
+            self._event(
+                "packet_summary", item,
+                bytes_offered=int(item["JSON_WIRE_BYTES"]),
+                bytes_served=int(item["bytes_served_total"]),
+                terminal_disposition=item["terminal_disposition"],
+                terminal_reason=item["terminal_reason"],
+                id_state_age_frames=(
+                    None if item["channel"] != "id_state" or item["availability_frame"] is None
+                    else int(item["availability_frame"]) - int(item["emission_frame"])),
+                id_state_terminal_consequence=consequence if item["channel"] == "id_state" else "",
+                supplement_terminal_consequence=consequence if item["channel"] == "supplement" else "",
+                terminal_location=item["terminal_location"],
+            )
+        byte_conservation = all(
+            int(item["JSON_WIRE_BYTES"]) == int(item["bytes_served_total"]) +
+            int(item["remaining_service_bytes"]) for item in self._items)
+        frame_conservation = self.mode == "unlimited" or all(
+            int(row["R"]) == int(row["bytes_served"]) + int(row["unused_budget"])
+            for row in self._frame_summaries)
+        work_conserving = self.mode == "unlimited" or all(
+            int(row["unused_budget"]) == 0 or int(row["queue_backlog_bytes"]) == 0
+            for row in self._frame_summaries)
+        terminal_conservation = all(item["terminal_disposition"] in (
+            "completed_delivered", "completed_expired_or_rejected", "pending_at_end")
+            for item in self._items)
+        packet_identity_authoritative = not self.ledger_enabled or all(
+            item["census_emission"] is not None for item in self._items)
+        summary = {
+            "record_type": "C4_SERVICE_FINALIZATION",
+            "run_id": self.run_id,
+            "condition": self.condition,
+            "pair_id": self.pair_id,
+            "sequence_name": self.sequence_name,
+            "mode": self.mode,
+            "R": self.rate,
+            "packet_count": len(self._items),
+            "completed_packet_count": sum(
+                item["service_completion_frame"] is not None for item in self._items),
+            "pending_at_end_count": sum(
+                item["terminal_disposition"] == "pending_at_end" for item in self._items),
+            "JSON_WIRE_BYTES_offered": sum(int(item["JSON_WIRE_BYTES"]) for item in self._items),
+            "logical_bytes_served": sum(int(item["bytes_served_total"]) for item in self._items),
+            "remaining_service_bytes": sum(int(item["remaining_service_bytes"]) for item in self._items),
+            "byte_conservation": int(byte_conservation),
+            "frame_budget_conservation": int(frame_conservation),
+            "work_conserving": int(work_conserving),
+            "terminal_conservation": int(terminal_conservation),
+            "packet_identity_authoritative": int(packet_identity_authoritative),
+            "queue_empty_after_finalization": int(not self._queue),
+            "in_service_empty_after_finalization": int(self._in_service is None),
+            "ledger_io_failure": self.io_failure,
+        }
+        summary["passed"] = int(
+            byte_conservation and frame_conservation and work_conserving and
+            terminal_conservation and packet_identity_authoritative and not self.io_failure)
+        self._event("service_finalization", passed=summary["passed"],
+                    byte_conservation=summary["byte_conservation"],
+                    frame_budget_conservation=summary["frame_budget_conservation"],
+                    work_conserving=summary["work_conserving"],
+                    terminal_conservation=summary["terminal_conservation"],
+                    packet_identity_authoritative=summary["packet_identity_authoritative"])
+        if self.ledger_enabled and self.summary_path is not None and not self.io_failure:
+            try:
+                with self.summary_path.open("x", encoding="utf-8") as handle:
+                    handle.write(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+            except Exception as exc:
+                self.io_failure = "{}".format(type(exc).__name__)
+                summary["ledger_io_failure"] = self.io_failure
+                summary["passed"] = 0
+        return summary
+
+    def normalized_events(self):
+        normalized = []
+        for source in self._events:
+            event = copy.deepcopy(source)
+            event.pop("runtime_instance_id", None)
+            packet_id = event.get("packet_id")
+            if isinstance(packet_id, dict):
+                packet_id.pop("runtime_instance_id", None)
+                packet_id.pop("census_run_id", None)
+            normalized.append(event)
+        return normalized
+
+
 class PacketRuntime(object):
     """JSON-wire packet transport with online deadline semantics.
 
@@ -495,9 +940,24 @@ class PacketRuntime(object):
         self.output_dir = Path(result_dir) / str(method)
         self.sequence_name = str(sequence_name)
         self.delays = _parse_delays(os.environ.get("MIA_ASYNC_CHANNEL_DELAYS", ""))
+        self.c4_service_config = _parse_c4_service_config(os.environ.get("MIA_C4_SERVICE_CONFIG", ""))
+        if self.c4_service_config["mode"] != "disabled" and any(self.delays.values()):
+            raise ValueError("Unlimited/FIFO requires zero exogenous delay for all channels")
         self._census = _PacketCensusSidecar(
             self.output_dir, self.sequence_name, os.environ.get("MIA_PACKET_CENSUS_RUN_ID", ""),
         )
+        self._c4_service = None
+        if self.c4_service_config["mode"] != "disabled":
+            self._c4_service = _C4SharedLogicalServer(
+                self.c4_service_config["mode"],
+                self.c4_service_config["rate_logical_bytes_per_frame"],
+                self.output_dir,
+                self.sequence_name,
+                self.c4_service_config["run_id"],
+                self.c4_service_config["condition"],
+                self.c4_service_config["pair_id"],
+                self.c4_service_config["ledger_enabled"],
+            )
         self.events = []
         self.state_version = 0
         self._packet_version = 0
@@ -556,6 +1016,26 @@ class PacketRuntime(object):
 
     def _send(self, channel, capture_frame, payload, census_arrays):
         wire, encoded, wire_digest, census_emission = self._wire(channel, capture_frame, payload, census_arrays)
+        if self._c4_service is not None and channel in C4_CONSTRAINED_CHANNELS:
+            completed = self._c4_service.admit(
+                channel, capture_frame, wire, encoded, wire_digest, census_emission,
+                sum(int(np.ascontiguousarray(value).nbytes) for value in census_arrays),
+            )
+            if completed is None:
+                self._record(channel, capture_frame, capture_frame, packet_action="service_queued",
+                             delay_frames=0, wire_digest=wire_digest,
+                             source_state_version=int(wire["source_state_version"]))
+                return None
+            self.consumed_count += 1
+            self._record(channel, capture_frame, capture_frame, packet_action="timely",
+                         delay_frames=0, wire_digest=wire_digest,
+                         source_state_version=int(wire["source_state_version"]),
+                         service_mode=self.c4_service_config["mode"])
+            self._census.terminal(census_emission, "TIMELY_DELIVERED", "timely", capture_frame)
+            consequence = "timely"
+            self._c4_service.mark_terminal(
+                completed, "completed_delivered", "timely", consequence)
+            return completed["wire"]
         if int(wire["arrival_frame"]) == int(capture_frame):
             self.consumed_count += 1
             self._record(channel, capture_frame, int(wire["arrival_frame"]), packet_action="timely",
@@ -651,6 +1131,13 @@ class PacketRuntime(object):
 
     def begin_frame(self, frame_id, rows1, rows2, matched_ids, confirmed_ids):
         self._current_frame = int(frame_id)
+        if self._c4_service is not None:
+            for item in self._c4_service.begin_frame(frame_id):
+                self._queue_sequence += 1
+                queued = (int(frame_id), self._queue_sequence, item["wire"], item["encoded"])
+                if self._census.enabled:
+                    queued += (item["census_emission"],)
+                heapq.heappush(self._queues[item["channel"]], queued)
         self._current_local_ready = {1: int(self.delays["local"]) == 0, 2: int(self.delays["local"]) == 0}
         for wire, census_emission in self._drain("local", frame_id):
             self.expired_count += 1
@@ -800,6 +1287,15 @@ class PacketRuntime(object):
         return first, second, bboxes1, ids1, labels1, bboxes2, ids2, labels2
 
     def finalize(self):
+        if self._c4_service is not None:
+            finalization_frame = self._current_frame if self._current_frame >= 0 else 0
+            for item in self._c4_service.finalize_pending(finalization_frame):
+                self.expired_count += 1
+                self._record(item["channel"], item["wire"]["capture_frame"], finalization_frame,
+                             packet_action="pending_at_end",
+                             remaining_service_bytes=int(item["remaining_service_bytes"]))
+                self._census.terminal(
+                    item["census_emission"], "PENDING_AT_END", item["terminal_reason"], finalization_frame)
         # Account for delayed messages that arrive after the final source frame.
         for channel, queue in self._queues.items():
             while queue:
@@ -839,6 +1335,13 @@ class PacketRuntime(object):
         if census_report is not None:
             manifest["packet_census_status"] = census_report["census_status"]
             manifest["packet_census_validation"] = census_report
+        if self._c4_service is not None:
+            service_report = self._c4_service.seal_evidence(self._census.terminals)
+            manifest["c4_service_config"] = self.c4_service_config
+            manifest["c4_service_status"] = "COMPLETE" if service_report["passed"] else "INCOMPLETE"
+            manifest["c4_service_validation"] = service_report
+            manifest["c4_service_ledger"] = str(self._c4_service.ledger_path)
+            manifest["c4_service_summary"] = str(self._c4_service.summary_path)
         manifest_path = self.output_dir / ("async_packet_manifest_" + self.sequence_name + ".json")
         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return trace_path, manifest_path
