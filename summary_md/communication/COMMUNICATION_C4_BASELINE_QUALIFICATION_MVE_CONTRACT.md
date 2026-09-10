@@ -14,6 +14,8 @@ VAL_OUTCOME_READ_AUTHORIZED = NO
 ## 1. Status and authority
 
 - Status: `CONTRACT_CANDIDATE / REVIEW_REQUIRED / EXECUTION_BLOCKED`.
+- Product Owner review:
+  `PASS_WITH_MINOR_CORRECTIVE_REVISION` limited to approved P1--P3.
 - Frozen communication base:
   `cf5bc6f7acfc9cad39a393a985f56e788526dc2a`.
 - Expected base commit subject:
@@ -130,8 +132,9 @@ any scheduler comparison is authorized?
   physical network measurements.
 - **FACT:** C1 limits the first primary science question to `ID State` and
   `Supplement` temporal sensitivity.
-- **FACT:** C2 freezes one deterministic, fixed-rate, non-preemptive logical
-  server with atomic semantic delivery and cross-frame service.
+- **FACT:** C2 freezes one deterministic, fixed-rate, work-conserving,
+  non-preemptive logical server with same-frame eligibility, atomic semantic
+  delivery, and cross-frame service.
 - **FACT:** C3 places only `ID State` and `Supplement` on the constrained shared
   server; `Local Track` and `Homography` bypass it timely.
 - **FACT:** C4 freezes Unlimited, FIFO, and fixed-delay bridge roles.
@@ -149,10 +152,11 @@ any scheduler comparison is authorized?
 ### Primary qualification hypothesis
 
 With a later outcome-blind U1--U4 freeze, Unlimited preserves the existing
-timely/reference behavior, while finite FIFO creates deterministic and
-conserved endogenous service timing that is observable through backlog,
-waiting, cross-frame service, completion delay, `ID State` age consequences,
-and `Supplement` expiry consequences.
+timely/reference behavior through the same communication interface without
+queue-induced delay, while finite FIFO creates deterministic and conserved
+endogenous service timing that is observable through backlog, waiting,
+cross-frame service, completion delay, `ID State` age consequences, and
+`Supplement` expiry consequences.
 
 ### Plausible alternative hypothesis
 
@@ -173,6 +177,12 @@ CROSS_FRAME_SERVICE = ALLOWED
 PREEMPTION = FORBIDDEN
 SEMANTIC_LAYER_PACKET_ATOMICITY = REQUIRED
 PARTIAL_PACKET_DELIVERY = FORBIDDEN
+WORK_CONSERVING_SERVICE = YES
+CAPACITY_WASTED_WHILE_QUEUE_NONEMPTY = FORBIDDEN
+SAME_FRAME_SERVICE_ELIGIBLE = YES
+SAME_FRAME_COMPLETION_ALLOWED = YES
+SAME_FRAME_AVAILABILITY_ALLOWED = YES
+AUTOMATIC_PLUS_ONE_FRAME_DELAY = FORBIDDEN
 ```
 
 `service_cost(packet) = JSON_WIRE_BYTES(packet)` is the sole primary accounting
@@ -186,6 +196,21 @@ A packet may receive service across more than one frame. Once service starts,
 it continues non-preemptively until completion. The semantic consumer cannot
 observe a partially served packet; availability occurs only after complete
 service. The exact finite values of `R` are U2 and remain unset.
+
+Each video frame provides `R` logical bytes of service budget. Service is
+work-conserving: if the packet in service completes before the current frame's
+budget is exhausted and another eligible FIFO packet is waiting, the remaining
+budget must immediately continue serving the next packet in the same frame.
+Packet boundaries must not waste capacity. Unused capacity is permitted only
+when no eligible packet is waiting or in service; a packet that has begun
+service remains non-preemptive until completion.
+
+A packet emitted at frame `t` is eligible for communication service during
+frame `t`. If all of its required logical service completes within that frame,
+then `service_completion_frame = t` and `availability_frame = t`; the existing
+semantic consumer may observe it within frame `t`, subject only to the original
+runtime's causal ordering. The communication abstraction must not impose an
+automatic additional one-frame delay.
 
 ## 7. Frozen C3 queue scope
 
@@ -217,6 +242,20 @@ Unlimited must be effectively unconstrained so that the shared-service layer
 preserves the existing timely/reference path. It is the no-service-bottleneck
 reference and a parity check, not a same-resource scheduler competitor.
 
+```text
+UNLIMITED_USES_SAME_COMMUNICATION_INTERFACE = YES
+UNLIMITED_QUEUE_INDUCED_DELAY = ZERO
+```
+
+Unlimited must use the same producer, packet representation, enqueue interface,
+communication completion/delivery interface, and semantic consumer boundary as
+finite FIFO. Its service budget must allow every packet eligible in a frame to
+complete without queue-induced delay, including same-frame completion and
+availability under the original runtime's causal ordering. Unlimited bypasses
+the bottleneck, not the communication abstraction; it must not be implemented
+as a direct bypass around that abstraction. This contract does not assign an
+arbitrary numeric `R` to Unlimited.
+
 ### C4-B — FIFO primary communication baseline
 
 Role: `PRIMARY COMMUNICATION BASELINE`.
@@ -245,10 +284,12 @@ exact delay and channel combination are U3 and remain unset.
 ### Q1 — Unlimited parity
 
 Unlimited shared service must reproduce the existing timely/reference path.
-The later plan must define mechanically auditable parity evidence over packet
-availability, consumer-visible inputs, deterministic outputs, and agreed
-tracking/evaluator digests. A parity mismatch fails qualification before any
-finite-service interpretation.
+It must use the same communication interface as finite FIFO, bypass only the
+bottleneck, allow same-frame completion/availability, and impose no automatic
+additional frame of delay. The later plan must define mechanically auditable
+parity evidence over packet availability, consumer-visible inputs,
+deterministic outputs, and agreed tracking/evaluator digests. A parity mismatch
+fails qualification before any finite-service interpretation.
 
 ### Q2 — finite FIFO produces actual service pressure
 
@@ -309,16 +350,21 @@ At minimum, the later execution audit must establish:
 2. no service before enqueue, no completion before service start, and no
    delivery before full completion;
 3. no partial semantic delivery and no preemption after service start;
-4. deterministic FIFO order and deterministic replay under the same frozen
+4. work-conserving use of each frame's budget, including immediate same-frame
+   continuation to the next eligible FIFO packet when budget remains;
+5. same-frame service eligibility, completion, and availability without an
+   abstraction-imposed additional frame of delay;
+6. deterministic FIFO order and deterministic replay under the same frozen
    inputs and configuration;
-5. per-frame and run-total logical-byte conservation;
-6. reconciliation of queue membership, in-service state, completed delivery,
+7. per-frame and run-total logical-byte conservation;
+8. reconciliation of queue membership, in-service state, completed delivery,
    and final pending/terminal state;
-7. timely bypass for `Local Track` and `Homography` without admission to the
+9. timely bypass for `Local Track` and `Homography` without admission to the
    constrained server;
-8. exact separation of primary JSON costing from diagnostic RAW accounting;
-9. Unlimited parity before any finite FIFO result is interpreted;
-10. explicit separation of exogenous fixed delay from endogenous FIFO delay.
+10. exact separation of primary JSON costing from diagnostic RAW accounting;
+11. Unlimited parity through the same communication interface before any
+    finite FIFO result is interpreted;
+12. explicit separation of exogenous fixed delay from endogenous FIFO delay.
 
 ## 11. Design variables and controls
 
@@ -352,8 +398,22 @@ conservation, atomicity, causality, deterministic replay, isolation, or storage
 preflight fails.
 
 A formal communication experiment is not part of this contract. It requires a
-new experiment contract, experiment card, Mermaid flowchart, frozen evaluation
-hierarchy, and separate execution authorization after the C4 MVE is qualified.
+separately reviewed formal experiment contract, reviewed Implementation Plan,
+explicit Execution Authorization, and Validity Audit after the C4 MVE is
+qualified. Additional artifacts such as an experiment card, Mermaid flowchart,
+architecture diagram, storage map, or data-flow diagram are required only when
+they materially improve auditability, implementation clarity, or scientific
+interpretation. The governing principle is documentation by necessity, not
+documentation by ritual.
+
+```text
+FORMAL_EXPERIMENT_CONTRACT = REQUIRED
+IMPLEMENTATION_PLAN = REQUIRED
+EXECUTION_AUTHORIZATION = REQUIRED
+VALIDITY_AUDIT = REQUIRED
+EXPERIMENT_CARD = OPTIONAL_WHEN_JUSTIFIED
+MERMAID_FLOWCHART = OPTIONAL_WHEN_JUSTIFIED
+```
 
 ```text
 MVE_CONDITION_COUNT = NEEDS_PRODUCT_OWNER_DECISION
@@ -411,12 +471,61 @@ Every later execution must satisfy all of the following before launch:
 - Prefer condition-specific event/service ledgers plus packet references.
 - Do not save full queue snapshots per frame by default.
 - Do not copy images, embeddings, or detector tensors into condition outputs.
-- Retain only minimum forensic evidence for failed attempts.
 - Produce a projected storage estimate before dataset-level execution.
 - Fail closed if projected new storage is materially anomalous; do not launch
   first and investigate later.
 - No absolute GB threshold is frozen here. If one is required, it is
   `NEEDS_PRODUCT_OWNER_DECISION`.
+
+```text
+FAILED_ATTEMPT_HISTORY = IMMUTABLE
+AUTO_DELETE_ON_FAILURE = FORBIDDEN
+MINIMUM_AUDIT_PACKAGE = PERMANENT
+HEAVY_TRANSIENT_ARTIFACTS = QUARANTINE_UNTIL_AUDITED
+POST_AUDIT_COMPACTION = ALLOWED_WITH_DISPOSITION_RECORD
+SILENT_OVERWRITE_OR_ERASURE = FORBIDDEN
+REDUNDANT_HEAVY_ARTIFACT_GENERATION = DISCOURAGED_BY_DEFAULT
+```
+
+Failed attempts must preserve an immutable minimum audit package sufficient to
+establish execution identity, failure classification, and reproducibility of
+the failure disposition. No failed attempt may be silently overwritten,
+erased, relabeled, or allowed to disappear from experiment history.
+
+#### Tier 0 — permanent governance evidence
+
+Permanently retain run identity, Git SHA or implementation authority, config
+identity/hash, input authority, command/runtime identity, condition, seed where
+applicable, attempt identity, exit code, status, failure classification, and the
+disposition record.
+
+#### Tier 1 — permanent minimum forensic evidence
+
+Permanently retain the failure report, error/stack trace or a bounded relevant
+log, relevant manifest, required hashes, and the relevant service/queue ledger
+summary or excerpt. Together with Tier 0, this is the sealed minimum audit
+package.
+
+#### Tier 2 — temporary quarantine artifacts
+
+Large debug traces, partial non-authoritative outputs, and large temporary
+intermediates must enter failure quarantine and must not be automatically
+deleted before the failure audit completes. After the failure is audited and
+the minimum audit package is sealed, these artifacts may be compacted,
+archived, or deleted only after sealing a permanent disposition record that
+states what was removed or compacted, why, under which audited failure
+disposition, and which authority records that disposition.
+
+#### Tier 3 — regenerable or redundant heavy artifacts
+
+Duplicated packet payloads, duplicated detector/cache tensors, full queue
+snapshots, and non-authoritative visual/debug copies must not be generated by
+default. If debugging explicitly generates them, they are prioritized for
+post-audit compaction or deletion under the same disposition-record rule.
+
+No quarantine duration, per-failure GB limit, absolute retention duration, or
+absolute artifact-size threshold is frozen here. If a future implementation or
+storage plan requires one, it remains `NEEDS_PRODUCT_OWNER_DECISION`.
 
 Exact output and cache roots must be frozen in a later execution plan. They may
 not alias, resolve into, or symlink to Holdout output/cache locations.
@@ -520,11 +629,18 @@ The later qualification must fail closed if any of the following occurs:
 - output/cache isolation, GPU ownership, environment, storage, disk-space, or
   disk-I/O preflight fails;
 - projected storage is materially anomalous and no approved absolute threshold
-  or disposition exists.
+  or disposition exists;
+- a failed attempt is automatically deleted, silently overwritten, erased,
+  relabeled, or removed from experiment history;
+- Tier 2 or Tier 3 artifacts are compacted, archived, or deleted before failure
+  audit and minimum-package sealing, or without a sealed disposition record.
 
-On failure, preserve only minimum forensic evidence, label the result
+On failure, place non-permanent artifacts in quarantine, preserve and seal the
+permanent Tier 0/Tier 1 minimum audit package, label the result
 `QUALIFICATION_INVALID_OR_INCOMPLETE`, and stop. Do not tune using tracking
-outcomes and do not proceed to C1-B or formal communication execution.
+outcomes and do not proceed to C1-B or formal communication execution. Large
+non-authoritative transient artifacts may be compacted or deleted only after
+the failure audit and only under a sealed disposition record.
 
 ## 18. Decision patterns and gate
 
@@ -585,7 +701,8 @@ cleanup.
 - [ ] Frozen base and evidence identity verified.
 - [ ] C1-A, C1-C, and C1-B roles preserved; C1-B not executed.
 - [ ] C2 one-server, fixed-rate, JSON-primary, cross-frame,
-      non-preemptive, atomic semantics preserved.
+      non-preemptive, atomic, work-conserving, and same-frame semantics
+      preserved.
 - [ ] C3 timely bypass and shared constrained channels preserved.
 - [ ] C4 Unlimited, FIFO, and fixed-delay roles preserved.
 - [ ] Q1--Q4 are separately testable.
@@ -595,6 +712,9 @@ cleanup.
       hierarchy, semantic policy, physical model, or GB threshold invented.
 - [ ] Holdout/Val contamination firewall preserved.
 - [ ] Future worktree/GPU/output/cache/environment/storage isolation preserved.
+- [ ] Failed-attempt history, permanent minimum evidence, quarantine, and
+      disposition-record requirements preserved.
+- [ ] Experiment card and Mermaid flowchart remain optional when justified.
 - [ ] No runtime code, Implementation Plan, experiment, or GPU job created by
       this contract task.
 
@@ -615,6 +735,38 @@ runtime code modified = NO
 implementation plan created = NO
 implementation started = NO
 experiment executed = NO
+
+P1_A_WORK_CONSERVING_ADDED = YES
+P1_B_SAME_FRAME_SEMANTICS_ADDED = YES
+UNLIMITED_SAME_INTERFACE_PRESERVED = YES
+AUTO_PLUS_ONE_FRAME_DELAY_FORBIDDEN = YES
+
+P2_IMMUTABLE_FAILURE_HISTORY_ADDED = YES
+P2_AUTO_DELETE_ON_FAILURE_FORBIDDEN = YES
+P2_POST_AUDIT_COMPACTION_WITH_DISPOSITION = YES
+P2_SILENT_ERASURE_FORBIDDEN = YES
+ABSOLUTE_RETENTION_THRESHOLD_INVENTED = NO
+
+P3_EXPERIMENT_CARD_MANDATORY_REMOVED = YES
+P3_MERMAID_MANDATORY_REMOVED = YES
+NEW_MANDATORY_GOVERNANCE_ARTIFACT_INVENTED = NO
+
+C1_CHANGED = NO
+C3_CHANGED = NO
+C4_BASELINE_ROLES_CHANGED = NO
+U1_U6_RESOLVED = NO
+
+R_VALUE_INVENTED = NO
+PAIR_SELECTED = NO
+FIXED_DELAY_SELECTED = NO
+SEMANTIC_POLICY_DESIGNED = NO
+
+IMPLEMENTATION_PLAN_CREATED = NO
+RUNTIME_CODE_MODIFIED = NO
+DATASET_MVE_EXECUTED = NO
+GPU_JOB_STARTED = NO
+HOLDOUT_OUTCOME_READ = NO
+VAL_OUTCOME_READ = NO
 ```
 
 ## 20. Governance next gate
