@@ -239,7 +239,7 @@ def produce_runtime_gates_checked(*, batch_root: Path, population: str, batch_id
 
 def produce_y00_reference_parity(*, batch_root: Path, population: str, batch_id: str, pair: str, attempt_root: Path, reference_attempt_root: Path, reference_artifacts: Sequence[Path], packetized_artifacts: Sequence[Path]) -> Path:
     c = _context(batch_root=batch_root, population=population, batch_id=batch_id, pair=pair, logical_condition="Y00", attempt_root=attempt_root)
-    expected = batch_root / "attempts" / pair / "Y00" / reference_attempt_root.name
+    expected = batch_root / "references" / pair / "Y00" / reference_attempt_root.name
     if reference_attempt_root.resolve() != expected.resolve() or reference_attempt_root.resolve() == attempt_root.resolve(): raise LockedD1Error("Y00 reference attempt identity mismatch")
     refs, packets = [_contained(p, reference_attempt_root) for p in reference_artifacts], [_contained(p, attempt_root) for p in packetized_artifacts]
     verify_y00_byte_parity(refs, packets)
@@ -315,7 +315,7 @@ def _verify_runtime(value: Mapping[str, Any], runtime_artifacts: Sequence[Mappin
 
 
 def _verify_y00_parity(value: Mapping[str, Any], c: Mapping[str, Any], entries: Sequence[Mapping[str, Any]]) -> None:
-    reference = c["batch_root"] / "attempts" / c["pair"] / "Y00" / str(value.get("reference_attempt_identity", ""))
+    reference = c["batch_root"] / "references" / c["pair"] / "Y00" / str(value.get("reference_attempt_identity", ""))
     if not reference.is_dir() or reference.resolve() == c["attempt_root"].resolve(): raise LockedD1Error("Y00 reference parity invalid")
     refs = [_contained(reference / str(item), reference) for item in value.get("reference_artifact_identifiers", [])]
     packets = [_contained(c["attempt_root"] / str(item), c["attempt_root"]) for item in value.get("packetized_artifact_identifiers", [])]

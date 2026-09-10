@@ -9,7 +9,9 @@ first outcome-blind validity audit was blocked because the raw runtime manifests
 do not inline `pending_at_end_count`; the immutable packet traces record the
 corresponding `packet_action = "pending_at_end"` events instead. A narrow P13
 validity adapter now derives and cryptographically binds this non-scientific
-count and revalidates current trace bytes during acceptance verification.
+count and revalidates current trace bytes during acceptance verification. The
+same end-to-end closure also aligns Y00 parity verification with the sealed P13
+`references/` attempt root rather than the packetized `attempts/` root.
 
 All focused, locked-d1, and repository tests pass, and a read-only rehearsal on
 the existing batch closes 25/25 runtime gates without reading predictions or

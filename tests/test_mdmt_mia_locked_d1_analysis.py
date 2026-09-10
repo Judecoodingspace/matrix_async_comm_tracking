@@ -82,7 +82,7 @@ def _make_attempt(batch, authority_sha, records, gt, pair, condition, index=1, *
             pair=pair, logical_condition=condition, attempt_root=attempt, runtime_manifests=[runtime_manifest])
         parity = None
         if condition == "Y00":
-            reference = batch / "attempts" / pair / "Y00" / "reference_attempt"
+            reference = batch / "references" / pair / "Y00" / "reference_attempt"
             reference.mkdir(parents=True, exist_ok=True)
             reference_paths = []
             for view, prediction in enumerate(predictions, 1):
@@ -357,7 +357,7 @@ def test_runtime_pending_adapter_rejects_missing_conflicting_and_unsafe_trace(tm
 def test_y00_parity_producer_uses_raw_bytes_and_reference_identity(tmp_path):
     batch, _, gt, records, digests = setup_case(tmp_path, seal_population=False)
     pair = VAL_PAIRS[0]; attempt = _make_attempt(batch, digests["authority_bundle_sha256"], records, gt, pair, "Y00", index=2, seal=False)
-    reference = batch / "attempts" / pair / "Y00" / "reference_bytes"; reference.mkdir()
+    reference = batch / "references" / pair / "Y00" / "reference_bytes"; reference.mkdir()
     refs = []
     for view in (1, 2):
         source = attempt / ("prediction_v%d.json" % view); target = reference / ("v%d.json" % view)
@@ -366,7 +366,7 @@ def test_y00_parity_producer_uses_raw_bytes_and_reference_identity(tmp_path):
         attempt_root=attempt, reference_attempt_root=reference, reference_artifacts=refs,
         packetized_artifacts=[attempt / "prediction_v1.json", attempt / "prediction_v2.json"])
     assert json.loads(parity.read_text())["y00_reference_parity_pass"] is True
-    other = batch / "attempts" / VAL_PAIRS[1] / "Y00" / "reference_bytes"
+    other = batch / "references" / VAL_PAIRS[1] / "Y00" / "reference_bytes"
     other.mkdir(parents=True)
     with pytest.raises(LockedD1Error, match="identity mismatch"):
         produce_y00_reference_parity(batch_root=batch, population="val", batch_id=batch.name, pair=pair,

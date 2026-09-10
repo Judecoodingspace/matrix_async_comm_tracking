@@ -29,6 +29,11 @@ The validity layer now accepts a distinct `runtime_packet_trace` input. It:
 The request CLI exposes the same `runtime_packet_trace` input for both artifact
 validation and runtime-gate production.
 
+An end-to-end rehearsal also found that the validity parity producer still
+looked for reference attempts under `attempts/`, while the sealed P13 execution
+plan correctly writes them under the isolated `references/` root. The producer
+and its later seal verifier now enforce that exact sealed reference layout.
+
 ## Verification
 
 ```text
