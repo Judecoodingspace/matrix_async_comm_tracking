@@ -225,3 +225,151 @@ H_ESTIMATOR_CHANGED = NO
 BLOCKERS = NONE
 NEXT_REQUIRED_STAGE = TEAM_B_IMPLEMENTATION_DELTA_AUDIT
 ```
+
+## Execution-path corrective revision (2026-09-11)
+
+The first C4 pre-execution closure correctly stopped at
+`BLOCKED_EXECUTION_PATH_NOT_MATERIALIZED`. The implementation-candidate runner
+could render the frozen matrix, but every non-dry-run invocation exited before
+an authorization artifact could be validated and it contained no launch path.
+Running the rendered shell commands externally would have bypassed the C4
+runner and weakened authority, matrix, and output-isolation enforcement.
+
+The corrective delta changes only the C4 runner, its CPU-only tests, and this
+evidence record. It does not alter `PacketRuntime`, the canonical wire, service
+semantics, fixed-delay semantics, the author wrapper, tracker, detector,
+Homography estimator, evaluator, pairs, rates, or conditions.
+
+### Materialized execution gate
+
+The runner now has two mutually exclusive modes:
+
+```text
+--dry-run
+    render only; never launch a child process
+
+--execute-authorized
+    validate a separately sealed execution-authorization JSON and its
+    independently supplied SHA-256 before any output directory or child
+    process is created
+```
+
+The inert future invocation shape is:
+
+```bash
+python scripts/run_mdmt_mia_c4_baseline_qualification.py \
+  --execute-authorized \
+  --execution-authorization <absolute-authorization-json> \
+  --authorization-sha256 <sealed-64-hex-sha256>
+```
+
+This command is not authorized by this corrective revision and was not run.
+The `--execute-authorized` path rejects all CLI pair, condition, run-ID, and
+output-root overrides. It can launch only the exact 18 cells from the sealed
+matrix manifest.
+
+Before creating output, the runner requires and validates:
+
+- Contract, Plan, implementation-base, current implementation HEAD, branch,
+  clean-worktree, and exact implementation-worktree identities;
+- `pre_execution_closure_status=COMPLETE`, a separately issued
+  `C4_MVE_EXECUTION_AUTHORIZATION`, and `mve_execution_authorized=true`;
+- the expected raw Census SHA-256 with a positive recomputation/match record,
+  locked-d1 Holdout completion, and `FRESH_C4_UNLIMITED_RUN` rendering;
+- authorization-file SHA-256, matrix path/SHA-256, exactly 18 unique frozen
+  cells, and exact pair/condition/rate/delay/output/cache fields;
+- canonical absolute output and run-input roots, empty-root policy, frozen
+  forbidden Holdout/Val write roots, and non-overlap checks;
+- generated author-source manifest, generated PacketRuntime, repository
+  PacketRuntime, C4 runner, author wrapper, MIA config, detector checkpoint,
+  and author-Python SHA-256 identities;
+- exact equality of the generated author-source PacketRuntime and repository
+  PacketRuntime hashes;
+- an explicit device, integer seed, and either no detector cache (`off`) or an
+  existing frozen cache used in `read` mode only.
+
+The authorization JSON therefore must contain the fields consumed by
+`validate_execution_material()`, including:
+
+```text
+document_role = C4_MVE_EXECUTION_AUTHORIZATION
+authorization_status = AUTHORIZED
+mve_execution_authorized = true
+pre_execution_closure_status = COMPLETE
+contract_authority
+implementation_plan_authority
+implementation_base_authority
+implementation_authority
+implementation_worktree
+census_computed_sha256
+census_sha256_match = true
+holdout_completion_verified = true
+unlimited_comparator_rendering = FRESH_C4_UNLIMITED_RUN
+scientific_cell_count = 18
+matrix_manifest_path
+matrix_manifest_sha256
+run_id
+output_root
+run_input_root
+cache_root
+cache_mode
+forbidden_write_roots
+mia_root
+mia_source_root
+dataset_root
+source_variant_manifest_path
+source_variant_manifest_sha256
+source_runtime_sha256
+repository_runtime_sha256
+author_runner_sha256
+c4_runner_sha256
+mia_config
+mia_config_sha256
+checkpoint
+checkpoint_sha256
+author_python
+author_python_sha256
+gpu_required
+device
+cuda_visible_devices
+seed
+```
+
+Each authorized cell is executed by this runner through the unchanged command
+`bash scripts/run_mdmt_mia_author_sync.sh mia train <pair>`. The environment
+binds the frozen source/config/dataset, ID/Supplement service configuration,
+fixed-delay map, dedicated output and run-input roots, cache policy, device,
+CUDA visibility, seed, `PYTHONNOUSERSITE=1`, and a run-local Matplotlib cache.
+Inherited `MIA_*`, device, Python-path, and CUDA-visibility overrides are
+cleared before those frozen values are installed. The run and every cell use
+new paths with exclusive `RUN_START.json` / `RUN_END.json` and
+`ATTEMPT_START.json` / `ATTEMPT_END.json` records. Failure evidence is retained;
+no output is automatically deleted or silently overwritten. A successful child exit is insufficient: both result
+JSONs and PacketRuntime manifests must exist, and Unlimited/FIFO manifests must
+report complete C4 service evidence.
+
+### Corrective CPU-only evidence
+
+```text
+python -m py_compile runner + C4 tests = PASS
+C4 T0/T1 and authorization-path tests = 15 passed
+existing T2 regression/non-interference tests = 24 passed
+combined = 39 passed
+runner --help = PASS
+one-cell dry-run = PASS
+execute-authorized without authorization path/SHA = BLOCKED before dataset access
+mock-authorized exact 18-cell dispatch = PASS; no real child job launched
+mock-authorized failure retention/stop = PASS; failed evidence preserved
+```
+
+```text
+EXECUTION_PATH_MATERIALIZED = YES
+EXECUTION_PATH_AUTHORIZES_MVE_BY_ITSELF = NO
+MVE_EXECUTION_AUTHORIZATION_CREATED = NO
+REAL_DATASET_USED = NO
+DATASET_MVE_EXECUTED = NO
+GPU_EXECUTION = NO
+HOLDOUT_OUTCOME_READ = NO
+VAL_OUTCOME_READ = NO
+NEXT_REQUIRED_STAGE = TEAM_B_EXECUTION_PATH_DELTA_AUDIT
+```

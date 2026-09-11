@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 
@@ -310,3 +311,195 @@ def test_runner_renders_only_frozen_eighteen_cells() -> None:
         module.render_matrix("synthetic", pairs=("23", "26"))
     with pytest.raises(ValueError):
         module.render_condition("Y01_d1", "synthetic", "23")
+
+
+def _load_c4_runner():
+    path = ROOT / "scripts/run_mdmt_mia_c4_baseline_qualification.py"
+    spec = importlib.util.spec_from_file_location("c4_runner_authorization_test", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _write_json(path: Path, payload) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _authorized_execution_fixture(tmp_path: Path):
+    module = _load_c4_runner()
+    implementation_sha = "b" * 40
+    run_id = "c4_baseline_qualification_mve_001"
+    output_root = (tmp_path / "outputs" / run_id).resolve()
+    run_input_root = (tmp_path / "run_inputs" / run_id).resolve()
+    source_root = (tmp_path / "author_source").resolve()
+    dataset_root = (tmp_path / "dataset").resolve()
+    mia_root = (tmp_path / "mia_root").resolve()
+    for directory in (
+        source_root / "demo/utils",
+        dataset_root / "checkpoints/work_dirsfaster_rcnn_r50_fpn_carafe_1x_full_mdmt",
+        mia_root / "run_configs",
+        mia_root / ".conda-env/bin",
+    ):
+        directory.mkdir(parents=True)
+    repository_runtime = ROOT / "src/tracking/mdmt_mia_async_deadline_runtime.py"
+    source_runtime = source_root / "demo/utils/async_deadline_runtime.py"
+    source_runtime.write_bytes(repository_runtime.read_bytes())
+    source_manifest = source_root / "async_deadline_manifest.json"
+    _write_json(source_manifest, {"document_role": "SYNTHETIC_SOURCE_AUTHORITY"})
+    mia_config = mia_root / "run_configs/one_carafe_bytetrack_full_mdmt_reproduction.py"
+    checkpoint = dataset_root \
+        / "checkpoints/work_dirsfaster_rcnn_r50_fpn_carafe_1x_full_mdmt/epoch_12.pth"
+    author_python = mia_root / ".conda-env/bin/python"
+    mia_config.write_text("# frozen synthetic config\n", encoding="utf-8")
+    checkpoint.write_bytes(b"synthetic checkpoint identity")
+    author_python.write_bytes(b"synthetic python identity")
+    matrix = module.build_matrix_manifest(run_id, output_root, None, implementation_sha)
+    matrix_path = (tmp_path / "C4_MATRIX.json").resolve()
+    _write_json(matrix_path, matrix)
+    authorization = {
+        "document_role": module.AUTHORIZATION_ROLE,
+        "authorization_status": "AUTHORIZED",
+        "mve_execution_authorized": True,
+        "pre_execution_closure_status": "COMPLETE",
+        "contract_authority": module.CONTRACT_AUTHORITY,
+        "implementation_plan_authority": module.IMPLEMENTATION_PLAN_AUTHORITY,
+        "implementation_base_authority": module.IMPLEMENTATION_BASE_AUTHORITY,
+        "implementation_authority": implementation_sha,
+        "implementation_worktree": str(ROOT.resolve()),
+        "census_computed_sha256": module.EXPECTED_CENSUS_SHA256,
+        "census_sha256_match": True,
+        "holdout_completion_verified": True,
+        "unlimited_comparator_rendering": "FRESH_C4_UNLIMITED_RUN",
+        "scientific_cell_count": 18,
+        "matrix_manifest_path": str(matrix_path),
+        "matrix_manifest_sha256": _file_sha256(matrix_path),
+        "run_id": run_id,
+        "output_root": str(output_root),
+        "run_input_root": str(run_input_root),
+        "cache_root": None,
+        "cache_mode": "off",
+        "forbidden_write_roots": [
+            str((tmp_path / "holdout_authority").resolve()),
+            str((tmp_path / "val_authority").resolve()),
+        ],
+        "mia_root": str(mia_root),
+        "mia_source_root": str(source_root),
+        "dataset_root": str(dataset_root),
+        "source_variant_manifest_path": str(source_manifest),
+        "source_variant_manifest_sha256": _file_sha256(source_manifest),
+        "source_runtime_sha256": _file_sha256(source_runtime),
+        "repository_runtime_sha256": _file_sha256(repository_runtime),
+        "author_runner_sha256": _file_sha256(ROOT / "scripts/run_mdmt_mia_author_sync.sh"),
+        "c4_runner_sha256": _file_sha256(
+            ROOT / "scripts/run_mdmt_mia_c4_baseline_qualification.py"),
+        "mia_config": str(mia_config),
+        "mia_config_sha256": _file_sha256(mia_config),
+        "checkpoint": str(checkpoint),
+        "checkpoint_sha256": _file_sha256(checkpoint),
+        "author_python": str(author_python),
+        "author_python_sha256": _file_sha256(author_python),
+        "gpu_required": True,
+        "device": "cuda:0",
+        "cuda_visible_devices": "0",
+        "seed": 7,
+    }
+    authorization_path = (tmp_path / "C4_EXECUTION_AUTHORIZATION.json").resolve()
+    _write_json(authorization_path, authorization)
+    state = {
+        "head": implementation_sha,
+        "branch": "impl/20260910-communication-c4-baseline-qualification",
+        "clean": True,
+    }
+    return module, authorization_path, state
+
+
+def test_execution_path_requires_exact_sealed_authority_and_matrix(tmp_path: Path) -> None:
+    module, authorization_path, state = _authorized_execution_fixture(tmp_path)
+    with pytest.raises(module.ExecutionGateError, match="authorization SHA-256 mismatch"):
+        module.validate_execution_material(
+            authorization_path, "0" * 64, repository_state=state)
+    material = module.validate_execution_material(
+        authorization_path, _file_sha256(authorization_path), repository_state=state)
+    assert len(material["cells"]) == 18
+    assert material["cache_mode"] == "off"
+    assert all(cell["execution_authorized"] is False for cell in material["cells"])
+
+    authorization = json.loads(authorization_path.read_text(encoding="utf-8"))
+    authorization["holdout_completion_verified"] = False
+    _write_json(authorization_path, authorization)
+    with pytest.raises(module.ExecutionGateError, match="holdout_completion_verified"):
+        module.validate_execution_material(
+            authorization_path, _file_sha256(authorization_path), repository_state=state)
+
+
+def test_authorized_execution_uses_same_runner_for_exact_18_cells_without_real_jobs(
+        tmp_path: Path) -> None:
+    module, authorization_path, state = _authorized_execution_fixture(tmp_path)
+    material = module.validate_execution_material(
+        authorization_path, _file_sha256(authorization_path), repository_state=state)
+    launches = []
+
+    def fake_launcher(command, *, cwd, environment):
+        launches.append((command, cwd, environment))
+        return 0
+
+    validated = []
+
+    def fake_validator(cell_root, pair_id, condition):
+        validated.append((cell_root, pair_id, condition))
+
+    module.execute_authorized_matrix(
+        material, launcher=fake_launcher, output_validator=fake_validator)
+    assert len(launches) == 18
+    assert len(validated) == 18
+    assert all(command[:4] == ["bash", "scripts/run_mdmt_mia_author_sync.sh", "mia", "train"]
+               for command, _, _ in launches)
+    assert {command[-1] for command, _, _ in launches} == {"23", "44", "66"}
+    assert all(cwd == ROOT for _, cwd, _ in launches)
+    assert all(environment["MIA_ACTIVE_PACKET_STAGES"] == "all"
+               for _, _, environment in launches)
+    assert all(environment["MIA_DETECTION_CACHE_MODE"] == "off"
+               for _, _, environment in launches)
+    assert all(environment["CUDA_VISIBLE_DEVICES"] == "0"
+               for _, _, environment in launches)
+    end_manifests = sorted(Path(material["output_root"]).rglob("ATTEMPT_END.json"))
+    assert len(end_manifests) == 18
+    assert all(json.loads(path.read_text(encoding="utf-8"))["status"] == "COMPLETE"
+               for path in end_manifests)
+    run_end = json.loads(
+        (Path(material["output_root"]) / "RUN_END.json").read_text(encoding="utf-8"))
+    assert run_end["status"] == "COMPLETE"
+    assert run_end["scientific_cell_count"] == 18
+
+
+def test_authorized_execution_failure_is_preserved_and_stops_following_cells(
+        tmp_path: Path) -> None:
+    module, authorization_path, state = _authorized_execution_fixture(tmp_path)
+    material = module.validate_execution_material(
+        authorization_path, _file_sha256(authorization_path), repository_state=state)
+    launches = []
+
+    def failing_launcher(command, *, cwd, environment):
+        launches.append((command, cwd, environment))
+        return 7
+
+    with pytest.raises(module.ExecutionGateError, match="status 7"):
+        module.execute_authorized_matrix(material, launcher=failing_launcher)
+    assert len(launches) == 1
+    output_root = Path(material["output_root"])
+    first_root = output_root / "Unlimited/train_23"
+    assert (first_root / "ATTEMPT_START.json").is_file()
+    attempt_end = json.loads(
+        (first_root / "ATTEMPT_END.json").read_text(encoding="utf-8"))
+    assert attempt_end["status"] == "FAILED"
+    assert attempt_end["exit_code"] == 7
+    assert "status 7" in attempt_end["failure_reason"]
+    run_end = json.loads((output_root / "RUN_END.json").read_text(encoding="utf-8"))
+    assert run_end["status"] == "FAILED"
+    assert not (output_root / "FIFO_mild/train_23").exists()
