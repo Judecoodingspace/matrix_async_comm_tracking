@@ -536,6 +536,26 @@ def test_preflight_mode_never_calls_matrix_execution(monkeypatch, capsys) -> Non
     assert "PASS_NO_OUTPUT_CREATED_NO_CELL_LAUNCHED" in capsys.readouterr().out
 
 
+def test_cell_validator_requires_one_pair_bound_shared_runtime_manifest(tmp_path: Path) -> None:
+    module = _load_c4_runner()
+    cell_root = tmp_path / "Unlimited" / "train_23"
+    result_root = cell_root / "mia/train_23/results/mia_train_23"
+    result_root.mkdir(parents=True)
+    for view in (1, 2):
+        (result_root / f"23-{view}.json").write_text("{}\n", encoding="utf-8")
+    manifest = result_root / "async_packet_manifest_23-1.json"
+    _write_json(manifest, {"sequence_name": "23-1", "c4_service_status": "COMPLETE"})
+    module._validate_cell_outputs(cell_root, "23", "Unlimited")
+
+    _write_json(manifest, {"sequence_name": "23-2", "c4_service_status": "COMPLETE"})
+    with pytest.raises(module.ExecutionGateError, match="sequence_name"):
+        module._validate_cell_outputs(cell_root, "23", "Unlimited")
+
+    _write_json(manifest, {"sequence_name": "23-1", "c4_service_status": "INCOMPLETE"})
+    with pytest.raises(module.ExecutionGateError, match="service evidence is incomplete"):
+        module._validate_cell_outputs(cell_root, "23", "Unlimited")
+
+
 def test_authorized_execution_uses_same_runner_for_exact_18_cells_without_real_jobs(
         tmp_path: Path) -> None:
     module, authorization_path, state = _authorized_execution_fixture(tmp_path)

@@ -466,14 +466,20 @@ def _validate_cell_outputs(cell_root: Path, pair_id: str, condition: str) -> Non
                if not (result_root / f"{pair_id}-{view}.json").is_file()]
     if missing:
         raise ExecutionGateError("cell completed without required result JSON: " + ",".join(missing))
+    expected_name = f"async_packet_manifest_{pair_id}-1.json"
+    expected_manifest = result_root / expected_name
     manifests = sorted(cell_root.rglob("async_packet_manifest_*.json"))
-    if len(manifests) < 2:
-        raise ExecutionGateError("cell completed without both PacketRuntime manifests")
+    if manifests != [expected_manifest]:
+        found = ",".join(str(path) for path in manifests) or "none"
+        raise ExecutionGateError(
+            "cell must contain exactly one shared PacketRuntime manifest "
+            f"({expected_name}); found {found}")
+    manifest = _load_json(expected_manifest, "PacketRuntime manifest")
+    if manifest.get("sequence_name") != f"{pair_id}-1":
+        raise ExecutionGateError("PacketRuntime manifest sequence_name does not bind the current pair")
     if condition == "Unlimited" or condition.startswith("FIFO_"):
-        for path in manifests:
-            manifest = _load_json(path, "PacketRuntime manifest")
-            if manifest.get("c4_service_status") != "COMPLETE":
-                raise ExecutionGateError(f"C4 service evidence is incomplete: {path}")
+        if manifest.get("c4_service_status") != "COMPLETE":
+            raise ExecutionGateError(f"C4 service evidence is incomplete: {expected_manifest}")
 
 
 def _launch(command: list[str], *, cwd: Path, environment: dict[str, str]) -> int:
