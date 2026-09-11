@@ -27,6 +27,46 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new)
 
 
+def patch_optional_model_imports(root: Path) -> None:
+    """Keep the copied MDMT fork importable when unused model families are absent."""
+    path = root / "mmtrack/models/__init__.py"
+    source = path.read_text(encoding="utf-8")
+    for name in ("sot", "vid", "vis"):
+        guarded = f"try:\n    from .{name} import *  # noqa: F401,F403\nexcept ModuleNotFoundError:\n    pass"
+        direct = f"from .{name} import *  # noqa: F401,F403"
+        if guarded in source:
+            continue
+        if direct not in source:
+            raise RuntimeError(f"optional model import is neither direct nor guarded: {name}")
+        source = source.replace(direct, guarded, 1)
+    path.write_text(source, encoding="utf-8")
+
+
+def patch_optional_training_api_imports(root: Path) -> None:
+    """Keep inference imports available when the released fork lacks SOT training APIs."""
+    path = root / "mmtrack/apis/__init__.py"
+    source = path.read_text(encoding="utf-8")
+    replacements = (
+        (
+            "from .test import multi_gpu_test, single_gpu_test",
+            "try:\n    from .test import multi_gpu_test, single_gpu_test\n"
+            "except ModuleNotFoundError:\n    pass",
+        ),
+        (
+            "from .train import init_random_seed, train_model",
+            "try:\n    from .train import init_random_seed, train_model\n"
+            "except ModuleNotFoundError:\n    pass",
+        ),
+    )
+    for direct, guarded in replacements:
+        if guarded in source:
+            continue
+        if direct not in source:
+            raise RuntimeError(f"optional API import is neither direct nor guarded: {direct}")
+        source = source.replace(direct, guarded, 1)
+    path.write_text(source, encoding="utf-8")
+
+
 def disable_gui_calls(root: Path) -> None:
     helper = root / "demo/utils/supplement.py"
     if helper.is_file():
@@ -118,6 +158,8 @@ def patch_variant(root: Path, runtime_source: Path) -> dict[str, object]:
     if not mia.is_file() or not runtime_source.is_file():
         raise FileNotFoundError("missing active MIA entry or asynchronous runtime")
     shutil.copy2(runtime_source, runtime_target)
+    patch_optional_model_imports(root)
+    patch_optional_training_api_imports(root)
     disable_gui_calls(root)
     patch_detector_cache(root)
     patch_confirmed_match_points(root)
@@ -211,11 +253,15 @@ def patch_variant(root: Path, runtime_source: Path) -> dict[str, object]:
             "mmtrack/models/mot/byte_track.py",
             "demo/utils/supplement.py",
             "demo/utils/common.py",
+            "mmtrack/models/__init__.py",
+            "mmtrack/apis/__init__.py",
         ],
         "sha256": {
             "demo/supplement_MIA.py": sha256(mia),
             "demo/utils/async_deadline_runtime.py": sha256(runtime_target),
             "mmtrack/models/mot/byte_track.py": sha256(root / "mmtrack/models/mot/byte_track.py"),
+            "mmtrack/models/__init__.py": sha256(root / "mmtrack/models/__init__.py"),
+            "mmtrack/apis/__init__.py": sha256(root / "mmtrack/apis/__init__.py"),
         },
     }
     (root / "async_deadline_manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")

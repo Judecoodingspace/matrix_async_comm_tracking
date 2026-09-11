@@ -18,6 +18,11 @@ from tracking.mdmt_mia_async_deadline_runtime import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _passing_author_import_smoke(source_root: Path, author_python: Path) -> None:
+    assert source_root.is_dir()
+    assert author_python.is_file()
+
+
 def _server(mode="fifo", rate=10):
     return _C4SharedLogicalServer(
         mode, rate if mode == "fifo" else None, sequence_name="synthetic-1",
@@ -425,7 +430,8 @@ def test_execution_path_requires_exact_sealed_authority_and_matrix(tmp_path: Pat
         module.validate_execution_material(
             authorization_path, "0" * 64, repository_state=state)
     material = module.validate_execution_material(
-        authorization_path, _file_sha256(authorization_path), repository_state=state)
+        authorization_path, _file_sha256(authorization_path), repository_state=state,
+        author_import_smoke=_passing_author_import_smoke)
     assert len(material["cells"]) == 18
     assert material["cache_mode"] == "off"
     assert all(cell["execution_authorized"] is False for cell in material["cells"])
@@ -435,14 +441,41 @@ def test_execution_path_requires_exact_sealed_authority_and_matrix(tmp_path: Pat
     _write_json(authorization_path, authorization)
     with pytest.raises(module.ExecutionGateError, match="holdout_completion_verified"):
         module.validate_execution_material(
-            authorization_path, _file_sha256(authorization_path), repository_state=state)
+            authorization_path, _file_sha256(authorization_path), repository_state=state,
+            author_import_smoke=_passing_author_import_smoke)
+
+
+def test_author_package_import_smoke_hides_cuda_and_uses_generated_demo(
+        tmp_path: Path, monkeypatch) -> None:
+    module, authorization_path, _ = _authorized_execution_fixture(tmp_path)
+    authorization = json.loads(authorization_path.read_text(encoding="utf-8"))
+    source_root = Path(authorization["mia_source_root"])
+    author_python = Path(authorization["author_python"])
+    calls = []
+
+    def fake_run(command, *, cwd, env, text, stdout, stderr, timeout):
+        calls.append((command, cwd, env, text, stdout, stderr, timeout))
+        return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    module._author_package_import_smoke(source_root, author_python)
+    assert len(calls) == 1
+    command, cwd, environment, _, _, _, timeout = calls[0]
+    assert command[:2] == [str(author_python), "-B"]
+    assert "import supplement_MIA" in command[-1]
+    assert cwd == source_root / "demo"
+    assert environment["CUDA_VISIBLE_DEVICES"] == ""
+    assert environment["PYTHONNOUSERSITE"] == "1"
+    assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert timeout == 120
 
 
 def test_authorized_execution_uses_same_runner_for_exact_18_cells_without_real_jobs(
         tmp_path: Path) -> None:
     module, authorization_path, state = _authorized_execution_fixture(tmp_path)
     material = module.validate_execution_material(
-        authorization_path, _file_sha256(authorization_path), repository_state=state)
+        authorization_path, _file_sha256(authorization_path), repository_state=state,
+        author_import_smoke=_passing_author_import_smoke)
     launches = []
 
     def fake_launcher(command, *, cwd, environment):
@@ -482,7 +515,8 @@ def test_authorized_execution_failure_is_preserved_and_stops_following_cells(
         tmp_path: Path) -> None:
     module, authorization_path, state = _authorized_execution_fixture(tmp_path)
     material = module.validate_execution_material(
-        authorization_path, _file_sha256(authorization_path), repository_state=state)
+        authorization_path, _file_sha256(authorization_path), repository_state=state,
+        author_import_smoke=_passing_author_import_smoke)
     launches = []
 
     def failing_launcher(command, *, cwd, environment):

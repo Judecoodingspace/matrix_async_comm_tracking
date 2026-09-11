@@ -74,6 +74,40 @@ def _is_within(path: Path, parent: Path) -> bool:
     return True
 
 
+def _author_package_import_smoke(source_root: Path, author_python: Path) -> None:
+    """Import the actual author entry before any C4 output or dataset access."""
+    demo_root = source_root / "demo"
+    if not demo_root.is_dir():
+        raise ExecutionGateError("generated author source is missing demo/")
+    environment = os.environ.copy()
+    for key in tuple(environment):
+        if key.startswith("MIA_") or key in {
+                "DEVICE", "PYTHONHASHSEED", "PYTHONNOUSERSITE", "PYTHONPATH",
+                "MPLCONFIGDIR", "CUDA_VISIBLE_DEVICES"}:
+            environment.pop(key, None)
+    environment.update({
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "CUDA_VISIBLE_DEVICES": "",
+        "MPLCONFIGDIR": "/tmp/c4_author_import_smoke_matplotlib",
+        "PYTHONPATH": ":".join((str(source_root), str(demo_root), str(demo_root / "utils"))),
+    })
+    command = [
+        str(author_python), "-B", "-c",
+        "import supplement_MIA; from utils.async_deadline_runtime import PacketRuntime",
+    ]
+    try:
+        result = subprocess.run(
+            command, cwd=demo_root, env=environment, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise ExecutionGateError("author-source import smoke timed out") from error
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()[-4000:]
+        raise ExecutionGateError("author-source import smoke failed: " + detail)
+
+
 def _repository_state(root: Path) -> dict[str, object]:
     def git(*arguments: str) -> str:
         return subprocess.check_output(
@@ -187,7 +221,8 @@ def _require_equal(document: dict[str, object], field: str, expected: object,
 
 
 def validate_execution_material(authorization_path: Path, authorization_sha256: str, *,
-                                repository_state: dict[str, object] | None = None) -> dict[str, object]:
+                                repository_state: dict[str, object] | None = None,
+                                author_import_smoke: Callable[[Path, Path], None] | None = None) -> dict[str, object]:
     """Validate all launch authority before creating an output directory."""
     authorization_path = authorization_path.expanduser().resolve()
     if not re.fullmatch(r"[0-9a-f]{64}", authorization_sha256):
@@ -303,6 +338,7 @@ def validate_execution_material(authorization_path: Path, authorization_sha256: 
     _require_equal(authorization, "mia_config", str(mia_config))
     _require_equal(authorization, "checkpoint", str(checkpoint))
     _require_equal(authorization, "author_python", str(author_python))
+    (author_import_smoke or _author_package_import_smoke)(source_root, author_python)
 
     cells = matrix.get("cells")
     if not isinstance(cells, list) or len(cells) != 18:

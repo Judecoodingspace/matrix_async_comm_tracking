@@ -264,3 +264,31 @@ def test_confirmed_id_patch_only_emits_currently_paired_h_points(tmp_path: Path)
     assert 'pts_src.append(cent_allclass[m])' in patched
     assert 'pts_dst.append(cent_allclass2[n])' in patched
     assert '                    break' in patched
+
+
+def test_async_variant_guards_absent_optional_author_packages(tmp_path: Path) -> None:
+    path = ROOT / "scripts/prepare_mdmt_mia_async_packet_variant.py"
+    spec = importlib.util.spec_from_file_location("async_variant_import_guard", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    models = tmp_path / "mmtrack/models/__init__.py"
+    apis = tmp_path / "mmtrack/apis/__init__.py"
+    models.parent.mkdir(parents=True)
+    apis.parent.mkdir(parents=True)
+    models.write_text("\n".join(
+        f"from .{name} import *  # noqa: F401,F403" for name in ("sot", "vid", "vis")),
+        encoding="utf-8",
+    )
+    apis.write_text(
+        "from .test import multi_gpu_test, single_gpu_test\n"
+        "from .train import init_random_seed, train_model\n",
+        encoding="utf-8",
+    )
+    module.patch_optional_model_imports(tmp_path)
+    module.patch_optional_training_api_imports(tmp_path)
+    model_text = models.read_text(encoding="utf-8")
+    api_text = apis.read_text(encoding="utf-8")
+    assert all(f"try:\n    from .{name} import *" in model_text for name in ("sot", "vid", "vis"))
+    assert "try:\n    from .test import multi_gpu_test, single_gpu_test" in api_text
+    assert "try:\n    from .train import init_random_seed, train_model" in api_text
