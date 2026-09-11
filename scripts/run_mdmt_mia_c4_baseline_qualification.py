@@ -108,6 +108,40 @@ def _author_package_import_smoke(source_root: Path, author_python: Path) -> None
         raise ExecutionGateError("author-source import smoke failed: " + detail)
 
 
+def _preflight_gpu_ownership(material: dict[str, object]) -> None:
+    """Fail closed if the exact authorized GPU is occupied before a formal run."""
+    if material["gpu_required"] is not True:
+        return
+    visible = str(material["cuda_visible_devices"])
+    device = str(material["device"])
+    if visible != "0" or device != "cuda:0":
+        raise ExecutionGateError("C4 GPU preflight supports only the sealed cuda:0 / CUDA_VISIBLE_DEVICES=0 binding")
+    try:
+        devices = subprocess.run(
+            ["nvidia-smi", "--query-gpu=index,uuid", "--format=csv,noheader"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30,
+        )
+        if devices.returncode != 0:
+            raise ExecutionGateError("GPU ownership preflight could not query nvidia-smi")
+        physical = {line.split(",", 1)[0].strip(): line.split(",", 1)[1].strip()
+                    for line in devices.stdout.splitlines() if "," in line}
+        target_uuid = physical.get("0")
+        if not target_uuid:
+            raise ExecutionGateError("authorized GPU 0 is unavailable")
+        processes = subprocess.run(
+            ["nvidia-smi", "--query-compute-apps=gpu_uuid,pid", "--format=csv,noheader"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30,
+        )
+        if processes.returncode != 0:
+            raise ExecutionGateError("GPU ownership preflight could not query compute processes")
+    except subprocess.TimeoutExpired as error:
+        raise ExecutionGateError("GPU ownership preflight timed out") from error
+    occupied = [line.strip() for line in processes.stdout.splitlines()
+                if line.strip().startswith(target_uuid + ",")]
+    if occupied:
+        raise ExecutionGateError("authorized GPU 0 is occupied: " + "; ".join(occupied))
+
+
 def _repository_state(root: Path) -> dict[str, object]:
     def git(*arguments: str) -> str:
         return subprocess.check_output(
@@ -562,6 +596,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="render only; never execute")
+    mode.add_argument("--preflight-authorized", action="store_true",
+                      help="validate sealed execution material only; never create outputs or launch")
     mode.add_argument("--execute-authorized", action="store_true",
                       help="execute only after validating a sealed authorization JSON")
     parser.add_argument("--execution-authorization", type=Path)
@@ -602,6 +638,16 @@ def main() -> None:
     try:
         material = validate_execution_material(
             args.execution_authorization, args.authorization_sha256)
+        _preflight_gpu_ownership(material)
+        if args.preflight_authorized:
+            print(json.dumps({
+                "document_role": "C4_AUTHORIZED_EXECUTION_PREFLIGHT",
+                "run_id": material["run_id"],
+                "implementation_authority": material["authorization"]["implementation_authority"],
+                "matrix_manifest_sha256": material["authorization"]["matrix_manifest_sha256"],
+                "status": "PASS_NO_OUTPUT_CREATED_NO_CELL_LAUNCHED",
+            }, indent=2, sort_keys=True))
+            return
         execute_authorized_matrix(material)
     except ExecutionGateError as error:
         raise SystemExit(f"C4_EXECUTION_GATE_BLOCKED: {error}") from error

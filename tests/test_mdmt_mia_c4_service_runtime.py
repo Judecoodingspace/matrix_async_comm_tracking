@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import sys
 
 import numpy as np
 import pytest
@@ -494,6 +495,45 @@ def test_author_package_import_smoke_precedes_dataset_validation(tmp_path: Path)
             authorization_path, _file_sha256(authorization_path), repository_state=state,
             author_import_smoke=smoke)
     assert calls == [(Path(authorization["mia_source_root"]), Path(authorization["author_python"]))]
+
+
+def test_gpu_preflight_requires_authorized_gpu_to_be_unoccupied(tmp_path: Path, monkeypatch) -> None:
+    module, authorization_path, state = _authorized_execution_fixture(tmp_path)
+    material = module.validate_execution_material(
+        authorization_path, _file_sha256(authorization_path), repository_state=state,
+        author_import_smoke=_passing_author_import_smoke)
+
+    def fake_run(command, **_kwargs):
+        if "--query-gpu=index,uuid" in command:
+            return type("Result", (), {"returncode": 0, "stdout": "0, GPU-0\n1, GPU-1\n", "stderr": ""})()
+        return type("Result", (), {"returncode": 0, "stdout": "GPU-1, 999\n", "stderr": ""})()
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    module._preflight_gpu_ownership(material)
+
+    def occupied_run(command, **_kwargs):
+        if "--query-gpu=index,uuid" in command:
+            return type("Result", (), {"returncode": 0, "stdout": "0, GPU-0\n", "stderr": ""})()
+        return type("Result", (), {"returncode": 0, "stdout": "GPU-0, 123\n", "stderr": ""})()
+
+    monkeypatch.setattr(module.subprocess, "run", occupied_run)
+    with pytest.raises(module.ExecutionGateError, match="GPU 0 is occupied"):
+        module._preflight_gpu_ownership(material)
+
+
+def test_preflight_mode_never_calls_matrix_execution(monkeypatch, capsys) -> None:
+    module = _load_c4_runner()
+    material = {"run_id": "c4_baseline_qualification_mve_003", "authorization": {
+        "implementation_authority": "b" * 40, "matrix_manifest_sha256": "a" * 64}}
+    monkeypatch.setattr(module, "validate_execution_material", lambda *_args: material)
+    monkeypatch.setattr(module, "_preflight_gpu_ownership", lambda _material: None)
+    monkeypatch.setattr(module, "execute_authorized_matrix",
+                        lambda _material: pytest.fail("preflight launched matrix"))
+    monkeypatch.setattr(sys, "argv", ["runner", "--preflight-authorized",
+                                       "--execution-authorization", "/tmp/auth.json",
+                                       "--authorization-sha256", "a" * 64])
+    module.main()
+    assert "PASS_NO_OUTPUT_CREATED_NO_CELL_LAUNCHED" in capsys.readouterr().out
 
 
 def test_authorized_execution_uses_same_runner_for_exact_18_cells_without_real_jobs(
