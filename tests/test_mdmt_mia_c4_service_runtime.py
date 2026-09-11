@@ -4,6 +4,7 @@ import importlib.util
 import hashlib
 import json
 from pathlib import Path
+import shutil
 
 import numpy as np
 import pytest
@@ -347,6 +348,8 @@ def _authorized_execution_fixture(tmp_path: Path):
     mia_root = (tmp_path / "mia_root").resolve()
     for directory in (
         source_root / "demo/utils",
+        source_root / "mmtrack/models",
+        source_root / "mmtrack/apis",
         dataset_root / "checkpoints/work_dirsfaster_rcnn_r50_fpn_carafe_1x_full_mdmt",
         mia_root / "run_configs",
         mia_root / ".conda-env/bin",
@@ -357,6 +360,10 @@ def _authorized_execution_fixture(tmp_path: Path):
     source_runtime.write_bytes(repository_runtime.read_bytes())
     source_manifest = source_root / "async_deadline_manifest.json"
     _write_json(source_manifest, {"document_role": "SYNTHETIC_SOURCE_AUTHORITY"})
+    source_models_init = source_root / "mmtrack/models/__init__.py"
+    source_apis_init = source_root / "mmtrack/apis/__init__.py"
+    source_models_init.write_text("# synthetic models init\n", encoding="utf-8")
+    source_apis_init.write_text("# synthetic apis init\n", encoding="utf-8")
     mia_config = mia_root / "run_configs/one_carafe_bytetrack_full_mdmt_reproduction.py"
     checkpoint = dataset_root \
         / "checkpoints/work_dirsfaster_rcnn_r50_fpn_carafe_1x_full_mdmt/epoch_12.pth"
@@ -399,6 +406,9 @@ def _authorized_execution_fixture(tmp_path: Path):
         "source_variant_manifest_path": str(source_manifest),
         "source_variant_manifest_sha256": _file_sha256(source_manifest),
         "source_runtime_sha256": _file_sha256(source_runtime),
+        "generated_source_variant_manifest_sha256": _file_sha256(source_manifest),
+        "source_models_init_sha256": _file_sha256(source_models_init),
+        "source_apis_init_sha256": _file_sha256(source_apis_init),
         "repository_runtime_sha256": _file_sha256(repository_runtime),
         "author_runner_sha256": _file_sha256(ROOT / "scripts/run_mdmt_mia_author_sync.sh"),
         "c4_runner_sha256": _file_sha256(
@@ -468,6 +478,22 @@ def test_author_package_import_smoke_hides_cuda_and_uses_generated_demo(
     assert environment["PYTHONNOUSERSITE"] == "1"
     assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
     assert timeout == 120
+
+
+def test_author_package_import_smoke_precedes_dataset_validation(tmp_path: Path) -> None:
+    module, authorization_path, state = _authorized_execution_fixture(tmp_path)
+    authorization = json.loads(authorization_path.read_text(encoding="utf-8"))
+    calls = []
+
+    def smoke(source_root: Path, author_python: Path) -> None:
+        calls.append((source_root, author_python))
+
+    shutil.rmtree(Path(authorization["dataset_root"]))
+    with pytest.raises(module.ExecutionGateError, match="dataset_root is missing"):
+        module.validate_execution_material(
+            authorization_path, _file_sha256(authorization_path), repository_state=state,
+            author_import_smoke=smoke)
+    assert calls == [(Path(authorization["mia_source_root"]), Path(authorization["author_python"]))]
 
 
 def test_authorized_execution_uses_same_runner_for_exact_18_cells_without_real_jobs(

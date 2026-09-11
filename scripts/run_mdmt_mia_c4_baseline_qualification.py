@@ -307,27 +307,26 @@ def validate_execution_material(authorization_path: Path, authorization_sha256: 
             raise ExecutionGateError(f"write root overlaps forbidden authority: {write_root}")
 
     source_root = _resolved_absolute(authorization.get("mia_source_root"), "mia_source_root")
-    dataset_root = _resolved_absolute(authorization.get("dataset_root"), "dataset_root")
     mia_root = _resolved_absolute(authorization.get("mia_root"), "mia_root")
-    for path, label in ((source_root, "mia_source_root"), (dataset_root, "dataset_root"),
-                        (mia_root, "mia_root")):
+    for path, label in ((source_root, "mia_source_root"), (mia_root, "mia_root")):
         if not path.is_dir():
             raise ExecutionGateError(f"{label} is missing")
     source_manifest = _resolved_absolute(
         authorization.get("source_variant_manifest_path"), "source_variant_manifest_path")
     source_runtime = source_root / "demo/utils/async_deadline_runtime.py"
-    mia_config = mia_root / "run_configs/one_carafe_bytetrack_full_mdmt_reproduction.py"
-    checkpoint = dataset_root / \
-        "checkpoints/work_dirsfaster_rcnn_r50_fpn_carafe_1x_full_mdmt/epoch_12.pth"
+    generated_variant_manifest = source_root / "async_deadline_manifest.json"
+    source_models_init = source_root / "mmtrack/models/__init__.py"
+    source_apis_init = source_root / "mmtrack/apis/__init__.py"
     author_python = mia_root / ".conda-env/bin/python"
     for path, hash_field in (
         (source_manifest, "source_variant_manifest_sha256"),
         (source_runtime, "source_runtime_sha256"),
+        (generated_variant_manifest, "generated_source_variant_manifest_sha256"),
+        (source_models_init, "source_models_init_sha256"),
+        (source_apis_init, "source_apis_init_sha256"),
         (ROOT / "src/tracking/mdmt_mia_async_deadline_runtime.py", "repository_runtime_sha256"),
         (ROOT / "scripts/run_mdmt_mia_author_sync.sh", "author_runner_sha256"),
         (Path(__file__).resolve(), "c4_runner_sha256"),
-        (mia_config, "mia_config_sha256"),
-        (checkpoint, "checkpoint_sha256"),
         (author_python, "author_python_sha256"),
     ):
         if not path.is_file():
@@ -335,10 +334,22 @@ def validate_execution_material(authorization_path: Path, authorization_sha256: 
         _require_equal(authorization, hash_field, sha256(path))
     if authorization.get("source_runtime_sha256") != authorization.get("repository_runtime_sha256"):
         raise ExecutionGateError("generated author source does not contain the authorized PacketRuntime")
-    _require_equal(authorization, "mia_config", str(mia_config))
-    _require_equal(authorization, "checkpoint", str(checkpoint))
     _require_equal(authorization, "author_python", str(author_python))
     (author_import_smoke or _author_package_import_smoke)(source_root, author_python)
+
+    dataset_root = _resolved_absolute(authorization.get("dataset_root"), "dataset_root")
+    if not dataset_root.is_dir():
+        raise ExecutionGateError("dataset_root is missing")
+    mia_config = mia_root / "run_configs/one_carafe_bytetrack_full_mdmt_reproduction.py"
+    checkpoint = dataset_root / \
+        "checkpoints/work_dirsfaster_rcnn_r50_fpn_carafe_1x_full_mdmt/epoch_12.pth"
+    for path, hash_field in ((mia_config, "mia_config_sha256"),
+                             (checkpoint, "checkpoint_sha256")):
+        if not path.is_file():
+            raise ExecutionGateError(f"authorized source file is missing: {path}")
+        _require_equal(authorization, hash_field, sha256(path))
+    _require_equal(authorization, "mia_config", str(mia_config))
+    _require_equal(authorization, "checkpoint", str(checkpoint))
 
     cells = matrix.get("cells")
     if not isinstance(cells, list) or len(cells) != 18:
