@@ -1,139 +1,139 @@
 # C5 Shadow Census Execution Path Enablement Plan
 
 ```text
-DOCUMENT_ROLE = C5_EXECUTION_PATH_ENABLEMENT_PLAN_DRAFT
+DOCUMENT_ROLE = C5_EXECUTION_PATH_ENABLEMENT_PLAN_CORRECTED_DRAFT
 PLAN_BASE_SHA = 413da31b3245c2d7b8bd94759fef89bc6173892f
-PREVIOUS_QUALIFICATION_EVIDENCE = 413da31b3245c2d7b8bd94759fef89bc6173892f
+PREVIOUS_PLAN_SHA = 285c13e37ba3e3c27d18aed631c8bc0240209e20
 SCIENTIFIC_EXECUTION_AUTHORIZED_BY_THIS_PLAN = NO
 RUNNER_IMPLEMENTATION_AUTHORIZED_BY_THIS_PLAN = NO
 ```
 
-## 1. Scope and current blocker
+## Scope, candidate authority, and source identity
 
-This is a runner-harness governance addendum, not a scientific redesign. The
-qualified runner accepts only `--dry-run`; its constant execution authorization
-is false and every non-dry-run invocation exits. Thus real execution currently
-requires a runner source modification. No scientific data was accessed while
-establishing this fact.
+The qualified runner has only `--dry-run`, a false execution constant, and no
+real launch path. A runner-only delta is required; runtime change is not.
+Historical qualification `413da31b...` remains valid for `8f9b48df...`, but
+cannot authorize a changed runner.
+
+Let `C` be the execution-enabled candidate and `Q` its superseding qualification
+evidence. Execution HEAD may descend from C; it need not equal C. Both C and Q
+must be ancestors of execution HEAD, Q must explicitly bind C, and governed
+files must match C byte-for-byte. Runner source must not hard-code its own final
+Git SHA. Q records `previous_qualification_evidence_sha = 413da31b...`,
+`supersession_reason = RUNNER_ONLY_EXECUTION_PATH_ENABLEMENT`, and
+`production_runtime_changed = false`.
+
+Before data access SHA-256 must match C/Q fingerprints for runtime, C5 runner,
+both C5 test modules, and C4 service test. Mismatch is
+`BLOCK_SOURCE_IDENTITY_MISMATCH`.
 
 ```text
-E0-1 = source modification is required because no qualified real-execution route exists.
-E0-2 = runtime remains byte-identical; no runtime change is required.
-E0-3 = a runner-only change is sufficient in principle.
 PRODUCTION_RUNTIME_CHANGE_REQUIRED = NO
+RUNNER_ONLY_SOLUTION_FEASIBLE = YES
+EXECUTION_AUTHORITY_DESCENDANT_MODEL = YES
+PLAN_REQUIRES_SELF_SHA_HARDCODING = NO
 ```
 
-## 2. Proposed fail-closed mechanism
+## Canonical authorization, matrix, and default denial
 
-The sole proposed execution interface is:
+The sole formal CLI is:
 
 ```bash
-python scripts/run_mdmt_mia_c5_shadow_oracle_opportunity_census.py \
-  --authorization-file <canonical_execution_authorization.json>
+python scripts/run_mdmt_mia_c5_shadow_oracle_opportunity_census.py --authorization-file <canonical_authorization.json>
 ```
 
-Without that artifact, or with `--dry-run`, the runner must not access data or
-launch a cell. A successful authorization check is the only route to the
-existing orchestration path; there is no bare `--execute` permission.
+Exact JSON keys are: `schema_version`, `authorization_role`,
+`execution_enabled_candidate_sha`, `superseding_qualification_evidence_sha`,
+`previous_qualification_evidence_sha`, `production_implementation_sha`,
+`contract_authority`, `implementation_plan_authority`,
+`execution_path_plan_authority`, `cells`, `run_id`, `output_root`,
+`allowed_scientific_metrics`, `tracking_evaluation_authorized=false`,
+`closed_loop_intervention_authorized=false`, and `issued_for_exact_run=true`.
+Unknown/missing keys, wrong C/Q/provenance/authority, wrong order/R, duplicate
+cell, malformed run ID, source mismatch, evaluator/intervention enablement,
+output escape, or collision DENY before data access. The JSON scope-binds
+governance; it does not cryptographically authenticate researcher identity.
 
-The canonical JSON artifact must contain exactly these governed bindings:
+| Order | Role | Pair | Condition | R |
+| ---: | --- | --- | --- | ---: |
+| 1 | CONTROL | Pair23 | FIFO_mild | 31987 |
+| 2 | FRONTIER | Pair23 | FIFO_strong | 16649 |
+| 3 | FRONTIER | Pair44 | FIFO_moderate | 26148 |
+| 4 | FRONTIER | Pair66 | FIFO_mild | 31987 |
 
 ```text
-schema_version
-authorization_role = C5_SHADOW_CENSUS_EXECUTION_AUTHORIZATION
-qualification_candidate_sha
-qualification_evidence_authority
-production_implementation_sha
-contract_authority
-implementation_plan_authority
-cells = exact ordered frozen four-cell matrix with exact R
-run_id
-output_root
-allowed_scientific_metrics = approved C5 opportunity metric/counter names only
-tracking_evaluation_authorized = false
-closed_loop_intervention_authorized = false
-issued_for_exact_run = true
+FROZEN_CELL_COUNT = 4
+AUTHORIZATION_CRYPTOGRAPHIC_RESEARCHER_AUTHENTICATION = NO
+AUTHORIZATION_SCOPE_BINDING_ONLY = YES
+ARBITRARY_CLI_OVERRIDE_ALLOWED = NO
+FIFO_STRONG_R = 16649
+FIFO_MODERATE_R = 26148
+FIFO_MILD_R = 31987
 ```
 
-The runner must canonicalize and compare every value to its compiled frozen
-authority/matrix, validate a fresh output root before data access, and reject
-unknown keys, duplicate cells, any CLI cell/R/metric override, malformed run
-identity, mismatched authority, or enabled evaluation/intervention. This binds
-researcher authorization mechanically to one candidate and one run without
-source editing at execution time.
+`--dry-run --run-id <development-or-audit-id>` remains artifact-free render and
+validation only: no data, subprocess, or outcome.
+
+## Real C5 cell orchestration and output isolation
+
+After validation the runner shall reuse the frozen C4 launch pattern only:
 
 ```text
-E0-4 = canonical authorization artifact is executable permission.
-E0-5 = canonical fields bind candidate, qualification authority, matrix, R, and run.
-E0-6 = absent/invalid/mismatched artifact stops before data access.
-E0-7 = artifact and runner accept only exact frozen four cells/R/metrics.
-E0-8 = --dry-run remains render-and-validate only, with no execution.
-BARE_EXECUTION_SWITCH_SUFFICIENT = NO
-DRY_RUN_SEMANTICS_CHANGED = NO
+scripts/run_mdmt_mia_author_sync.sh mia train <pair_id>
 ```
 
-## 3. Candidate supersession and immutable scope
+For every ordered cell: validate authorization; construct frozen environment;
+launch the command through the governed runner; wait; validate runtime output
+and Shadow evidence; then mark VALID or FAILED_MECHANICAL. Environment contains
+exact `MIA_C4_SERVICE_CONFIG` (condition/R), `MIA_C5_SHADOW_CONFIG` (enabled,
+cell-local Shadow directory), `MIA_OUTPUT_ROOT`, `MIA_ASYNC_CHANNEL_DELAYS`,
+`MIA_RUN_INPUT_ROOT` where required by C4, and all pre-existing frozen C4
+bindings. Completion requires exit 0, runtime result JSON, PacketRuntime
+manifest, Shadow evidence/seal, and valid Shadow integrity. A mechanical
+failure writes attempt/run-end evidence, stops remaining cells, preserves
+failure, and neither retries silently nor treats partial values as science.
 
-Changing the runner creates a new execution-enabled candidate. Qualification
-evidence `413da31b...` remains correct historical evidence for candidate
-`8f9b48df...`; it cannot authorize the changed runner. The new chain is:
+Output is only `outputs/c5_shadow_oracle_opportunity_census/<run_id>`. Canonical
+path must remain inside namespace without symlink escape, agree with run ID,
+and be absent/empty; otherwise `BLOCK_OUTPUT_COLLISION`. No arbitrary output
+path is permitted.
+
+## Future allowlist and qualification
+
+Only these future files may change:
 
 ```text
-8f9b48df qualified candidate
--> runner-only authorization-gate delta
--> new execution-enabled candidate
--> independent runner delta audit
--> Q1–Q4 replay plus E1–E4 gate qualification
--> superseding qualification evidence and independent audit
--> separately issued scientific execution authorization
+scripts/run_mdmt_mia_c5_shadow_oracle_opportunity_census.py
+tests/test_mdmt_mia_c5_execution_gate.py
 ```
 
-The implementation scope is expected to be the C5 runner and runner-specific
-tests only. The runtime, predicate, PacketRuntime, C4 runner, patcher,
-evaluator, Contract, approved Implementation Plan, scientific metrics,
-denominators, Supplement scope, R values, and four-cell matrix remain frozen.
+Runtime, existing 42 tests, patcher, C4 runner, evaluator, Contract and
+Implementation Plan remain byte-identical. E1 default-deny; E2 rejects every
+bad C/Q/provenance/authority/cell/R/key/run/output/source/evaluator/intervention
+case; E3 routes valid synthetic authorization to mocked orchestration; E4
+permits exact ordered matrix only; E5 rejects colliding output. The unchanged
+42-test Q1–Q4 suite must replay. One combined Team B audit shall verify
+runner-only delta, byte identity, E1–E5, Q1–Q4, C/Q bindings, source
+fingerprints, reproducible superseding seal, and no science access.
 
-## 4. Required execution-gate qualification
+## Corrective mapping and non-authorization
 
-New runner tests must cover, before any science:
-
-| Gate | Required synthetic/mechanical proof |
+| Item | Section |
 | --- | --- |
-| E1 | no artifact means no execution/data access |
-| E2 | wrong candidate/qualification SHA, cell, R, run-id, tracking evaluation, or closed-loop value is rejected before data access |
-| E3 | a valid synthetic artifact reaches only the intended orchestration route, using mock execution and no scientific data |
-| E4 | valid artifacts instantiate exactly the frozen four-cell matrix and no additional cell |
-
-The reviewed 42-test Q1–Q4 suite must be replayed against the new candidate.
-
-```text
-E0-9 = E1–E4 above.
-E0-10 = Q1/Q2/Q3/Q4 replay is mandatory.
-Q1_REPLAY_REQUIRED = YES
-Q2_REPLAY_REQUIRED = YES
-Q3_REPLAY_REQUIRED = YES
-Q4_REPLAY_REQUIRED = YES
-```
-
-## 5. Output and audit boundaries
-
-Before any future cell launch the authorization artifact binds a new output
-root; existing or ambiguous artifacts produce `BLOCK_OUTPUT_COLLISION`, never
-replacement. Validation finishes before dataset access, cell execution, or
-outcome reading. Retry behavior, if later authorized, is governance-recorded
-and cannot depend on results.
+| C5-EXEC-ORCH-01 | orchestration/output |
+| C5-EXEC-AUTH-01 | authority/authorization |
+| C5-EXEC-SRC-01 | source identity |
+| C5-EXEC-R-01, C5-EXEC-MATRIX-01 | matrix |
+| C5-EXEC-OUT-01, C5-EXEC-WORDING-01 | output/authorization |
+| C5-EXEC-TOUCH-01 | allowlist |
 
 ```text
-E0-11 = expected files are the runner and runner-specific tests; final list requires implementation authorization.
-E0-12 = Team B runner delta audit, Q1–Q4 replay/E1–E4 qualification, then independent qualification audit.
 NEW_SCIENTIFIC_RULE_ADDED = NO
 NEW_METRIC_ADDED = NO
 NEW_THRESHOLD_ADDED = NO
 FOUR_CELL_MATRIX_CHANGED = NO
 RESEARCH_DECISION_REQUIRED = NO
+SCIENTIFIC_DATA_ACCESSED = NO
+NEW_C5_SCIENTIFIC_OUTCOME_READ = NO
+FOUR_CELL_REAL_EXECUTION = NO
 ```
-
-## 6. Non-authorization
-
-This plan neither modifies nor enables the runner. It authorizes no scientific
-data access, no C5 outcome reading, no four-cell run, and no intervention.
