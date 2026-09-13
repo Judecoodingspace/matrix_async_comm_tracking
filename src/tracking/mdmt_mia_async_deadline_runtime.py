@@ -17,6 +17,7 @@ import heapq
 import json
 import os
 from pathlib import Path
+from types import MappingProxyType
 import uuid
 
 import numpy as np
@@ -153,6 +154,213 @@ def _parse_c4_service_config(raw):
         "run_id": str(parsed.get("run_id", "")),
         "pair_id": str(parsed.get("pair_id", "")),
     }
+
+
+def _parse_c5_shadow_config(raw):
+    """Parse an explicit, observational-only C5 Shadow configuration."""
+    if not raw:
+        return {"enabled": False, "run_id": "", "output_dir": ""}
+    try:
+        parsed = json.loads(str(raw))
+    except ValueError as exc:
+        raise ValueError("MIA_C5_SHADOW_CONFIG must be JSON") from exc
+    if not isinstance(parsed, dict) or set(parsed) - {"enabled", "run_id", "output_dir"}:
+        raise ValueError("MIA_C5_SHADOW_CONFIG has unsupported fields")
+    if parsed.get("enabled") is not True:
+        raise ValueError("C5 Shadow requires enabled=true")
+    return {"enabled": True, "run_id": str(parsed.get("run_id", "")),
+            "output_dir": str(parsed.get("output_dir", ""))}
+
+
+class _C5ShadowReceiverSnapshot(object):
+    """Immutable, event-local receiver state used by the C5 pure predicate."""
+
+    def __init__(self, frame, packet_id, rows1, rows2, confirmed_ids, applied_id_map, last_version):
+        self.frame = int(frame)
+        self.packet_id = copy.deepcopy(packet_id)
+        self.live_rows_view1 = _array(rows1)
+        self.live_rows_view2 = _array(rows2)
+        self.live_rows_view1.setflags(write=False)
+        self.live_rows_view2.setflags(write=False)
+        self.confirmed_ids = tuple(copy.deepcopy(confirmed_ids))
+        self.applied_id_map = tuple(sorted(
+            ((int(key[0]), int(key[1]), int(value)) for key, value in applied_id_map.items()),
+            key=lambda value: (value[0], value[1], value[2])))
+        self.last_id_packet_version = int(last_version)
+
+
+class _C5ShadowPacketResult(object):
+    def __init__(self, opportunity, reason_flags, remaps, confirmed):
+        self.whole_packet_currently_non_applicable = bool(opportunity)
+        self.packet_reason_flags = tuple(reason_flags)
+        self.remap_effect_results = tuple(MappingProxyType(dict(row)) for row in remaps)
+        self.confirmed_effect_results = tuple(MappingProxyType(dict(row)) for row in confirmed)
+
+
+def _snapshot_c5_receiver_state(frame, packet_id, rows1, rows2, confirmed_ids, applied_id_map, last_version):
+    return _C5ShadowReceiverSnapshot(frame, packet_id, rows1, rows2, confirmed_ids, applied_id_map, last_version)
+
+
+def _classify_whole_packet_currently_non_applicable(packet, snapshot):
+    """Pure C5 predicate; it reads only its packet and immutable snapshot."""
+    if str(packet.get("kind", "")) != "id_state":
+        raise ValueError("C5 predicate accepts ID-State packets only")
+    version = int(packet["source_state_version"])
+    payload = packet.get("payload", {})
+    if version <= int(snapshot.last_id_packet_version):
+        return _C5ShadowPacketResult(True, ("VERSION_REJECT",), (), ())
+    applied = {(view, source): target for view, source, target in snapshot.applied_id_map}
+    source_sets = {
+        1: frozenset(int(row[0]) for row in snapshot.live_rows_view1),
+        2: frozenset(int(row[0]) for row in snapshot.live_rows_view2),
+    }
+    remaps = []
+    for event in payload.get("remap_events", []):
+        view, source, target = int(event["view_id"]), int(event["source_track_id"]), int(event["target_track_id"])
+        if view not in source_sets:
+            raise ValueError("unsupported C5 remap view")
+        existing = applied.get((view, source))
+        if existing is not None and existing != target:
+            reason, applicable = "REMAP_CONFLICT", False
+        elif source not in source_sets[view]:
+            reason, applicable = "REMAP_SOURCE_ABSENT", False
+        else:
+            reason, applicable = "REMAP_POTENTIALLY_APPLICABLE", True
+        remaps.append({"view_id": view, "source_track_id": source, "target_track_id": target,
+                       "currently_non_applicable": not applicable, "reason": reason})
+    confirmed = []
+    current_confirmed = frozenset(snapshot.confirmed_ids)
+    for value in payload.get("confirmed_ids", []):
+        value = int(value)
+        present = value in current_confirmed
+        confirmed.append({"confirmed_id": value, "currently_non_applicable": present,
+                          "reason": "CONFIRMED_ALREADY_PRESENT" if present else "CONFIRMED_NEW"})
+    effects = remaps + confirmed
+    opportunity = all(row["currently_non_applicable"] for row in effects)
+    flags = []
+    if not effects:
+        flags.append("EMPTY_TASK_EFFECT_PACKET")
+    if any(row["currently_non_applicable"] for row in effects) and any(not row["currently_non_applicable"] for row in effects):
+        flags.append("MIXED_EFFECT_PACKET")
+    return _C5ShadowPacketResult(opportunity, tuple(flags), remaps, confirmed)
+
+
+class _C5ShadowOpportunitySidecar(object):
+    """Detached C5 evidence buffer.  It never participates in service control."""
+
+    SCHEMA_VERSION = "C5_SHADOW_REPLAY_V1"
+
+    def __init__(self, output_dir, sequence_name, run_id="", shadow_output_dir=""):
+        self.enabled = True
+        self.output_dir = Path(shadow_output_dir) if shadow_output_dir else Path(output_dir) / "c5_shadow"
+        self.sequence_name = str(sequence_name)
+        self.run_id = str(run_id)
+        self.records = []
+        self.observed = set()
+        self.failures = []
+        self.validity = "VALID"
+
+    def _failure(self, stage, exc):
+        self.validity = "INVALID_INCOMPLETE"
+        if len(self.failures) < 32:
+            self.failures.append({"INTEGRITY_ONLY": True, "NON_SCIENTIFIC": True,
+                                  "stage": str(stage), "error_type": type(exc).__name__,
+                                  "message": str(exc)[:240]})
+
+    @staticmethod
+    def _packet_key(packet_id):
+        return _canonical_json(packet_id)
+
+    def observe_first_service(self, item, context_provider):
+        """Failure-isolated observer entry point called only by _start_next."""
+        try:
+            if str(item["channel"]) != "id_state":
+                return
+            if context_provider is None:
+                raise ValueError("missing C5 event-local context")
+            if int(item["bytes_served_total"]) != 0 or int(item["remaining_service_bytes"]) != int(item["JSON_WIRE_BYTES"]):
+                raise ValueError("C5 observer not before first byte")
+            key = self._packet_key(item["packet_id"])
+            if key in self.observed:
+                raise ValueError("duplicate C5 first-service observation")
+            snapshot = context_provider(item["packet_id"], int(item["service_start_frame"]))
+            if not isinstance(snapshot, _C5ShadowReceiverSnapshot):
+                raise ValueError("invalid C5 receiver snapshot")
+            result = _classify_whole_packet_currently_non_applicable(item["wire"], snapshot)
+            self.observed.add(key)
+            remap_keys = [(int(row["view_id"]), int(row["source_track_id"]))
+                          for row in item["wire"]["payload"].get("remap_events", [])]
+            applied = {(view, source): target for view, source, target in snapshot.applied_id_map}
+            record = {
+                "schema_version": self.SCHEMA_VERSION, "integrity_version": self.SCHEMA_VERSION,
+                "packet_id": copy.deepcopy(item["packet_id"]), "frame": int(snapshot.frame), "channel": "id_state",
+                "source_state_version": int(item["wire"]["source_state_version"]),
+                "last_id_packet_version": int(snapshot.last_id_packet_version),
+                "remap_events": copy.deepcopy(item["wire"]["payload"].get("remap_events", [])),
+                "confirmed_ids": [int(value) for value in item["wire"]["payload"].get("confirmed_ids", [])],
+                "live_source_track_ids": {"1": sorted(int(row[0]) for row in snapshot.live_rows_view1),
+                                            "2": sorted(int(row[0]) for row in snapshot.live_rows_view2)},
+                "current_confirmed_ids": sorted(int(value) for value in snapshot.confirmed_ids),
+                "relevant_applied_id_map": [
+                    {"view_id": view, "source_track_id": source, "present": (view, source) in applied,
+                     "target_track_id": applied.get((view, source))}
+                    for view, source in sorted(set(remap_keys))],
+                "whole_packet_currently_non_applicable": result.whole_packet_currently_non_applicable,
+                "packet_reason_flags": list(result.packet_reason_flags),
+                "remap_effect_results": [dict(row) for row in result.remap_effect_results],
+                "confirmed_effect_results": [dict(row) for row in result.confirmed_effect_results],
+                "JSON_WIRE_BYTES": int(item["JSON_WIRE_BYTES"]),
+            }
+            self.records.append(record)
+        except Exception as exc:
+            self._failure("first_service_observer", exc)
+
+    def summary(self):
+        checked = len(self.records)
+        opportunities = [row for row in self.records if row["whole_packet_currently_non_applicable"]]
+        version = [row for row in self.records if "VERSION_REJECT" in row["packet_reason_flags"]]
+        evaluated = [row for row in self.records if "VERSION_REJECT" not in row["packet_reason_flags"]]
+        remaps = [effect for row in evaluated for effect in row["remap_effect_results"]]
+        confirmed = [effect for row in evaluated for effect in row["confirmed_effect_results"]]
+        bytes_checked = sum(row["JSON_WIRE_BYTES"] for row in self.records)
+        bytes_opportunity = sum(row["JSON_WIRE_BYTES"] for row in opportunities)
+        ratio = lambda part, whole: None if not whole else float(part) / float(whole)
+        return {"checked_id_packet_count": checked,
+                "whole_packet_non_applicable_count": len(opportunities),
+                "whole_packet_non_applicable_ratio": ratio(len(opportunities), checked),
+                "checked_id_packet_wire_bytes": bytes_checked,
+                "whole_packet_non_applicable_wire_bytes": bytes_opportunity,
+                "whole_packet_non_applicable_wire_bytes_ratio": ratio(bytes_opportunity, bytes_checked),
+                "version_reject_packet_count": len(version),
+                "empty_task_effect_packet_count": sum("EMPTY_TASK_EFFECT_PACKET" in row["packet_reason_flags"] for row in evaluated),
+                "mixed_effect_packet_count": sum("MIXED_EFFECT_PACKET" in row["packet_reason_flags"] for row in evaluated),
+                "remap_total": len(remaps), "remap_applicable_count": sum(not x["currently_non_applicable"] for x in remaps),
+                "remap_source_absent_count": sum(x["reason"] == "REMAP_SOURCE_ABSENT" for x in remaps),
+                "remap_conflict_count": sum(x["reason"] == "REMAP_CONFLICT" for x in remaps),
+                "confirmed_total": len(confirmed), "confirmed_new_count": sum(not x["currently_non_applicable"] for x in confirmed),
+                "confirmed_already_present_count": sum(x["currently_non_applicable"] for x in confirmed),
+                "INTEGRITY_ONLY_DENOMINATOR_ZERO": bool(checked == 0),
+                "INTEGRITY_ONLY": True, "NON_SCIENTIFIC": True,
+                "shadow_validity": self.validity, "integrity_failure_count": len(self.failures)}
+
+    def finalize(self):
+        try:
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            records_path = self.output_dir / ("c5_shadow_records_" + self.sequence_name + ".jsonl")
+            with records_path.open("x", encoding="utf-8") as handle:
+                for row in self.records:
+                    handle.write(_canonical_json(row) + "\n")
+            seal = {"schema_version": self.SCHEMA_VERSION, "sequence_name": self.sequence_name,
+                    "run_id": self.run_id, "shadow_validity": self.validity,
+                    "summary": self.summary(), "integrity_failures": self.failures,
+                    "record_count": len(self.records)}
+            seal_path = self.output_dir / ("c5_shadow_seal_" + self.sequence_name + ".json")
+            with seal_path.open("x", encoding="utf-8") as handle:
+                handle.write(json.dumps(seal, indent=2, sort_keys=True) + "\n")
+            return seal
+        except Exception as exc:
+            self._failure("finalize", exc)
+            return {"shadow_validity": self.validity, "summary": self.summary(), "integrity_failures": self.failures}
 
 
 def _row_key(row):
@@ -673,7 +881,7 @@ class _C4SharedLogicalServer(object):
         self._event("frame_summary", bytes_served=int(self._frame_served),
                     frame_unused_budget=self._frame_service_budget)
 
-    def begin_frame(self, frame_id):
+    def begin_frame(self, frame_id, shadow_observer=None, shadow_context_provider=None):
         frame_id = int(frame_id)
         if frame_id <= self._current_frame:
             raise ValueError("C4 service frames must be strictly increasing")
@@ -684,11 +892,12 @@ class _C4SharedLogicalServer(object):
         self._frame_service_budget = None if self.mode == "unlimited" else int(self.rate)
         self._frame_served = 0
         self._event("frame_open")
-        self._serve()
+        self._serve(shadow_observer, shadow_context_provider)
         return self.take_completed()
 
     def admit(self, channel, frame_id, wire, encoded, wire_digest,
-              census_emission=None, semantic_array_raw_bytes=0):
+              census_emission=None, semantic_array_raw_bytes=0,
+              shadow_observer=None, shadow_context_provider=None):
         channel = str(channel)
         frame_id = int(frame_id)
         if channel not in C4_CONSTRAINED_CHANNELS:
@@ -728,18 +937,28 @@ class _C4SharedLogicalServer(object):
         self._items.append(item)
         self._queue.append(item)
         self._event("enqueue", item, bytes_offered=cost)
-        self._serve()
+        self._serve(shadow_observer, shadow_context_provider)
         for index, completed in enumerate(self._completed):
             if int(completed["packet_sequence"]) == int(item["packet_sequence"]):
                 return self._completed.pop(index)
         return None
 
-    def _start_next(self):
+    def _start_next(self, shadow_observer=None, shadow_context_provider=None):
         if self._in_service is not None or not self._queue:
             return
         self._in_service = self._queue.popleft()
         self._in_service["service_start_frame"] = int(self._current_frame)
         self._event("service_start", self._in_service)
+        # This is intentionally after FIFO selection and before the first byte.
+        # Catch only the supplied Shadow observer, never baseline service code.
+        if shadow_observer is not None:
+            try:
+                shadow_observer.observe_first_service(self._in_service, shadow_context_provider)
+            except Exception as exc:
+                try:
+                    shadow_observer._failure("server_observer_boundary", exc)
+                except Exception:
+                    pass
 
     def _complete_current(self):
         item = self._in_service
@@ -749,11 +968,11 @@ class _C4SharedLogicalServer(object):
         self._completed.append(item)
         self._in_service = None
 
-    def _serve(self):
+    def _serve(self, shadow_observer=None, shadow_context_provider=None):
         while self._in_service is not None or self._queue:
             if self.mode == "fifo" and int(self._frame_service_budget) <= 0:
                 return
-            self._start_next()
+            self._start_next(shadow_observer, shadow_context_provider)
             item = self._in_service
             if int(item["remaining_service_bytes"]) == 0:
                 self._complete_current()
@@ -941,8 +1160,11 @@ class PacketRuntime(object):
         self.sequence_name = str(sequence_name)
         self.delays = _parse_delays(os.environ.get("MIA_ASYNC_CHANNEL_DELAYS", ""))
         self.c4_service_config = _parse_c4_service_config(os.environ.get("MIA_C4_SERVICE_CONFIG", ""))
+        self.c5_shadow_config = _parse_c5_shadow_config(os.environ.get("MIA_C5_SHADOW_CONFIG", ""))
         if self.c4_service_config["mode"] != "disabled" and any(self.delays.values()):
             raise ValueError("Unlimited/FIFO requires zero exogenous delay for all channels")
+        if self.c5_shadow_config["enabled"] and self.c4_service_config["mode"] == "disabled":
+            raise ValueError("C5 Shadow requires the C4 shared logical server")
         self._census = _PacketCensusSidecar(
             self.output_dir, self.sequence_name, os.environ.get("MIA_PACKET_CENSUS_RUN_ID", ""),
         )
@@ -958,6 +1180,11 @@ class PacketRuntime(object):
                 self.c4_service_config["pair_id"],
                 self.c4_service_config["ledger_enabled"],
             )
+        self._c5_shadow = None
+        if self.c5_shadow_config["enabled"]:
+            self._c5_shadow = _C5ShadowOpportunitySidecar(
+                self.output_dir, self.sequence_name, self.c5_shadow_config["run_id"],
+                self.c5_shadow_config["output_dir"])
         self.events = []
         self.state_version = 0
         self._packet_version = 0
@@ -1014,12 +1241,21 @@ class PacketRuntime(object):
         wire_digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
         return decoded, encoded, wire_digest, self._census.emission(decoded, encoded, wire_digest, census_arrays)
 
-    def _send(self, channel, capture_frame, payload, census_arrays):
+    def _c5_context_provider(self, rows1, rows2, confirmed_ids):
+        """Return invocation-scoped snapshot construction, never a global cache."""
+        def provider(packet_id, service_start_frame):
+            return _snapshot_c5_receiver_state(
+                service_start_frame, packet_id, rows1, rows2, confirmed_ids,
+                self._applied_id_map, self._last_id_packet_version)
+        return provider
+
+    def _send(self, channel, capture_frame, payload, census_arrays, shadow_context_provider=None):
         wire, encoded, wire_digest, census_emission = self._wire(channel, capture_frame, payload, census_arrays)
         if self._c4_service is not None and channel in C4_CONSTRAINED_CHANNELS:
             completed = self._c4_service.admit(
                 channel, capture_frame, wire, encoded, wire_digest, census_emission,
                 sum(int(np.ascontiguousarray(value).nbytes) for value in census_arrays),
+                self._c5_shadow, shadow_context_provider,
             )
             if completed is None:
                 self._record(channel, capture_frame, capture_frame, packet_action="service_queued",
@@ -1132,7 +1368,8 @@ class PacketRuntime(object):
     def begin_frame(self, frame_id, rows1, rows2, matched_ids, confirmed_ids):
         self._current_frame = int(frame_id)
         if self._c4_service is not None:
-            for item in self._c4_service.begin_frame(frame_id):
+            context_provider = self._c5_context_provider(rows1, rows2, confirmed_ids)
+            for item in self._c4_service.begin_frame(frame_id, self._c5_shadow, context_provider):
                 self._queue_sequence += 1
                 queued = (int(frame_id), self._queue_sequence, item["wire"], item["encoded"])
                 if self._census.enabled:
@@ -1229,7 +1466,10 @@ class PacketRuntime(object):
             "remap_events": remaps,
             "post_state_digest": _digest_arrays(track_rows_view1, track_rows_view2),
         }
-        wire = self._send("id_state", capture_frame, payload, (track_rows_view1, track_rows_view2))
+        wire = self._send(
+            "id_state", capture_frame, payload, (track_rows_view1, track_rows_view2),
+            self._c5_context_provider(track_rows_view1, track_rows_view2, confirmed_ids_after),
+        )
         if wire is not None:
             decoded = wire["payload"]
             return (_decode_array(decoded["track_rows_view1"]), _decode_array(decoded["track_rows_view2"]),
@@ -1251,8 +1491,11 @@ class PacketRuntime(object):
             "low_score": int(stage == "low_score"),
             "post_state_digest": _digest_arrays(track_rows_view1, track_rows_view2),
         }
-        wire = self._send("supplement", capture_frame, payload,
-                          (track_rows_view1, track_rows_view2, supplement_view1, supplement_view2))
+        wire = self._send(
+            "supplement", capture_frame, payload,
+            (track_rows_view1, track_rows_view2, supplement_view1, supplement_view2),
+            self._c5_context_provider(track_rows_view1, track_rows_view2, confirmed_ids_after),
+        )
         if wire is not None:
             decoded = wire["payload"]
             return (_decode_array(decoded["track_rows_view1"]), _decode_array(decoded["track_rows_view2"]),
@@ -1344,4 +1587,8 @@ class PacketRuntime(object):
             manifest["c4_service_summary"] = str(self._c4_service.summary_path)
         manifest_path = self.output_dir / ("async_packet_manifest_" + self.sequence_name + ".json")
         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        # C5 writes only after frozen C4 trace/manifest/seal work is complete.
+        # Its failure is deliberately not reflected into C4 acceptance fields.
+        if self._c5_shadow is not None:
+            self._c5_shadow.finalize()
         return trace_path, manifest_path
