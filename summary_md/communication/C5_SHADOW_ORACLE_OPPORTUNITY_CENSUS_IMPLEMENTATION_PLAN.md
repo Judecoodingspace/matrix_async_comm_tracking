@@ -131,7 +131,43 @@ first subsequent byte event for packet_id is its first service_slice
 ```
 
 These assertions do not enter queue ordering or service decisions. Any failure
-invalidates qualification; it must not be converted into a scheduling action.
+invalidates Shadow qualification; it must not be converted into a scheduling
+action or a baseline-service failure.
+
+The observer invocation must be enclosed by a narrowly scoped Shadow-only
+failure-isolation boundary. Its normative behavior is:
+
+```text
+Shadow observation begins
+-> snapshot / predicate / Shadow integrity checks
+
+success:
+    append one valid Shadow record
+    continue the baseline service transition
+
+ANY Shadow-only exception, assertion, or integrity failure:
+    capture bounded Shadow failure information
+    mark the Shadow cell/run evidence INVALID or INCOMPLETE
+    do not mutate queue, service, packet, receiver, or tracker state
+    do not suppress, retry, reorder, or reclassify the packet
+    continue the exact baseline service transition
+```
+
+The failure boundary must not catch or relabel an independent baseline runtime
+failure. It catches only Shadow callback/snapshot/predicate/recorder failures.
+It prescribes neither packet-service rollback nor queue rollback because the
+baseline transition continues normally.
+
+```text
+SHADOW_FAILURE_SCOPE = C5_EVIDENCE_VALIDITY_ONLY
+SHADOW_FAILURE_MUST_NOT_ABORT_BASELINE_SERVICE = YES
+SHADOW_FAILURE_MUST_NOT_CHANGE_FIFO_TRAJECTORY = YES
+SHADOW_FAILURE_MUST_NOT_DROP_SKIP_CANCEL_PACKET = YES
+
+fail-close for Shadow scientific validity
+!=
+fail-close for baseline packet service
+```
 
 ## 5. Event-context transport
 
@@ -179,9 +215,9 @@ derive per-view ID sets only from those copies.
 
 The snapshot contains no GT identity, future state, lifecycle epoch, TTL,
 supersession metadata, predicted outcome, or persistent confirmation history.
-Full rows need not be written into final Shadow evidence; canonical snapshot
-digests plus the approved reason evidence are sufficient if independent review
-accepts that artifact representation.
+The in-memory snapshot may retain full copied rows for direct qualification,
+but persisted evidence needs only the canonical replay projection defined in
+Section 12. A digest may accompany that projection but cannot replace it.
 
 ## 7. Pure predicate
 
@@ -225,10 +261,27 @@ It is an implementation-relative reject, not a stale-value theory and not a
 semantic-dominance rule. A version-rejected packet requires no remap or
 confirmed-effect result to decide the whole-packet label.
 
-For descriptive accounting, payload effect totals may still be recorded as
-content totals, but their applicability subcounters must be marked
-`NOT_EVALUATED_VERSION_REJECT` and excluded from remap/confirmed applicability
-subcounts. This preserves the frozen consumer's short-circuit order.
+Scientific effect counters follow the frozen consumer's short-circuit order:
+
+```text
+SCIENTIFIC_APPLICABILITY_EFFECT_COUNTERS =
+ONLY_EFFECTS_EVALUATED_AFTER_VERSION_GATE_SURVIVAL
+
+remap_total =
+total remap effects entering applicability evaluation after version-gate survival
+
+confirmed_total =
+total confirmed effects entering applicability evaluation after version-gate survival
+```
+
+Thus `remap_total`, `confirmed_total`, and every approved applicability/reason
+subcounter exclude version-rejected packets. If raw payload content from a
+version-rejected packet is retained for audit, it must use separately named
+fields such as
+`INTEGRITY_ONLY_VERSION_REJECT_REMAP_PAYLOAD_COUNT` and
+`INTEGRITY_ONLY_VERSION_REJECT_CONFIRMED_PAYLOAD_COUNT`. Those fields must be
+labeled `INTEGRITY_ONLY` and `NON_SCIENTIFIC`; they are not approved scientific
+secondary metrics.
 
 ## 9. Literal remap effects
 
@@ -303,6 +356,43 @@ as a scientific result.
 The Shadow result must never be stored in the canonical wire, service item cost,
 FIFO key, completion logic, runtime receiver state, or feedback.
 
+Every persisted first-service record must contain a minimal canonical replay
+projection sufficient for an independent implementation to recompute the
+predicate without future state or trust in the recorded classification:
+
+```text
+packet_id
+frame
+channel
+source_state_version
+snapshot.last_id_packet_version
+packet.remap_events
+packet.confirmed_ids
+per-view live source-track-ID sets
+current confirmed-ID set
+relevant applied_id_map entries for every packet remap key
+whole-packet classification
+packet reason flags
+per-effect remap classification and reasons
+per-effect confirmed classification and reasons
+JSON_WIRE_BYTES
+integrity/schema version
+```
+
+The applied-map projection must include presence/absence and target value for
+every remap key in the packet. Canonical ordering is required for maps, sets,
+and effect lists. Full bbox geometry is excluded because the predicate does not
+use it. GT, MDA, IDSW, future association, and future packet fields are
+forbidden.
+
+```text
+INDEPENDENT_PREDICATE_REPLAY = YES
+DIGEST_ONLY_EVIDENCE = NOT_SUFFICIENT
+```
+
+Canonical hashes may be added as integrity fields, but replay evidence may not
+be replaced by a hash.
+
 ## 13. Approved metrics
 
 ### Primary packet/byte metrics
@@ -355,6 +445,12 @@ sum to `checked_id_packet_count`. Integrity-only counters may cover duplicate
 IDs, unsupported channel/view, missing event context, duplicate observation,
 schema failure, and incomplete seal, but must carry both `INTEGRITY_ONLY` and
 `NON_SCIENTIFIC` labels.
+
+`remap_total` and `confirmed_total` are scientific evaluated-effect totals:
+they count only effects that enter applicability evaluation after the packet
+survives the version gate. The corresponding applicable/reason subcounters use
+the same population. Version-rejected raw payload totals, if recorded at all,
+remain separate integrity-only metadata as defined in Section 8.
 
 ## 14. Frozen four-cell matrix
 
@@ -415,7 +511,10 @@ silently dropping unknown differences.
 
 Q1 fails closed on any unexplained pre-existing field difference, packet count
 or ordering change, service difference, prediction difference, feedback
-difference, or missing counterpart.
+difference, or missing counterpart. Synthetic Shadow failures—including
+snapshot exception, predicate exception, duplicate observation, unsupported
+view, missing context, and recorder failure—must still produce exact baseline
+service parity while marking Shadow evidence `INVALID` or `INCOMPLETE`.
 
 ## 17. Event-local snapshot qualification — Q2
 
@@ -440,14 +539,63 @@ packet starts. Required findings:
 - event-local state differs from deliberately mutated later-frame/stage state;
 - post-snapshot mutations cannot alter the stored result.
 
+The same fixtures must inject snapshot exception, predicate exception,
+duplicate observation, unsupported view, missing context, and Shadow recorder
+failure. In every case the packet follows the unchanged baseline service path,
+while the Shadow validity state becomes `INVALID` or `INCOMPLETE` and no retry
+or second classification occurs.
+
 Evidence must be emitted from the event itself, not inferred solely from final
 ledgers.
 
 ## 18. Predicate-versus-consumer consistency — Q3
 
 A standalone suite uses only isolated/copied/synthetic state. It invokes the
-pure predicate and a frozen `_apply_pending_id` reference on independent copies,
-then compares the mechanically relevant accept/reject/apply outcomes.
+pure predicate and a frozen `_apply_pending_id` reference on independent copies.
+Its exact comparison target is:
+
+```text
+Q3_COMPARISON_TARGET = FROZEN_AUDITED_TASK_EFFECT_PROJECTION
+WHOLE_RECEIVER_STATE_EQUIVALENCE_REQUIRED = NO
+```
+
+Q3 never defines opportunity as whole receiver-state non-mutation. It compares
+only the frozen audited delayed task effects `{remap_events, confirmed_ids}`:
+
+```text
+VERSION_REJECT
+-> frozen consumer whole-packet short-circuit
+
+REMAP_CONFLICT
+-> corresponding remap creates no audited remap application
+
+REMAP_SOURCE_ABSENT
+-> corresponding remap creates no audited remap application
+
+SAME_KEY_SAME_TARGET + live source
+-> remains on the potentially applicable audited remap path
+
+CONFIRMED_ALREADY_PRESENT
+-> creates no new audited confirmed effect
+
+CONFIRMED_NEW
+-> potentially creates an audited confirmed effect
+
+MATCHED_ONLY
+-> may mechanically affect the matched container but produces no effect in
+   the frozen audited delayed-effect set
+
+EMPTY_TASK_EFFECT
+-> produces no audited remap/confirmed task effect
+```
+
+```text
+MATCHED_IDS_MECHANICAL_MUTATION
+DOES_NOT_INVALIDATE
+MATCHED_ONLY_OPPORTUNITY_CLASSIFICATION
+```
+
+This holds only when no frozen audited remap or confirmed effect is produced.
 
 Required cases:
 
@@ -482,6 +630,10 @@ Synthetic packet/event fixtures must prove:
 - ratios reconcile exactly when denominators are non-zero;
 - packet-level and effect-level counters remain disjointly named and typed;
 - effect reason accounting follows the frozen consumer short-circuit/order;
+- `remap_total`, `confirmed_total`, and their scientific subcounters exclude
+  version-rejected payloads;
+- any version-rejected raw payload counts are separately labeled
+  `INTEGRITY_ONLY` and `NON_SCIENTIFIC`;
 - per-record sums reconcile with cell-level summaries and the final seal.
 
 No scientific threshold, significance test, or outcome gate is introduced.
@@ -512,7 +664,7 @@ it cannot be treated as an invisible refactor.
 | --- | --- | --- | --- |
 | P0 future leakage | Snapshot only in `_start_next`; pass explicit current context; prohibit later reconstruction | Q2 event chain and later-state mutation fixtures | Any field originates after first slice/start event |
 | P0 wrong observation timing | Sole observer call after selection and before decrement | Assert zero served bytes and next event is first slice | Observer at admission, completion, frame end, or continuation |
-| P0 instrumentation changes service trajectory | Result never enters FIFO/budget/return paths; evidence buffered separately | Q1 canonical Shadow-off/on parity | Any queue, slice, completion, prediction, or feedback delta |
+| P0 instrumentation changes service trajectory | Result never enters FIFO/budget/return paths; Shadow-only failures are isolated and baseline service always continues | Q1 canonical Shadow-off/on parity plus injected callback/recorder failures | Any queue, slice, completion, prediction, or feedback delta |
 | P1 mutable snapshot aliasing | Deep-copy rows/list/map; freeze representations | Mutate live inputs after observation and compare stored result/hash | Stored snapshot/result changes |
 | P1 repeat classification | `_start_next` only plus unique packet-ID set | Multi-frame continuation test | Duplicate first-service record |
 | P1 packet/effect counter confusion | Separate schemas/namespaces and reconciliation | Q4 typed counter tests | Effect count presented as packet count |
@@ -520,7 +672,7 @@ it cannot be treated as an invisible refactor.
 | P1 Supplement included | Channel guard before snapshot/classification | Supplement-start fixture | Supplement changes any scientific counter |
 | P1 `matched_ids` treated as effect | Predicate reads only remap/confirmed task effects | Matched-only fixture | Matched membership makes packet applicable |
 | P1 same-key supersession introduced | Same-target/live-source stays applicable; no time ordering input | Explicit Q3 fixture | Same key/time automatically removes effect |
-| P2 logging/output coupling | Buffer separate records; write after C4 sealing; no shared ledger fields | I/O failure and output isolation tests | Shadow I/O changes service or yields accepted incomplete result |
+| P2 logging/output coupling | Buffer separate records; isolate recorder failures; write after C4 sealing; no shared ledger fields | I/O failure and output isolation tests | Shadow I/O changes service or yields accepted incomplete result |
 | P2 incomplete evidence sealing | Required start/end status and per-cell seal | Interrupted/failure fixtures | Summary produced from unsealed cell |
 | P2 duplicate counting | Unique existing packet ID plus exact first-start cardinality | Q2/Q4 duplicate fixtures | Duplicate or missing checked record |
 
@@ -549,7 +701,9 @@ No stage below is authorized by this draft.
 
 - File: runtime module only.
 - Delta: in-memory detached records and separate finalize-time evidence/seal.
-- Tests: output isolation, schema failure, duplicate, interrupted finalization.
+- Tests: output isolation, schema failure, duplicate, snapshot/predicate/recorder
+  exception, missing context, unsupported view, and interrupted finalization;
+  every Shadow failure preserves baseline service.
 - Stop: evidence affects service/control flow or incomplete data is accepted.
 
 ### I4 — metric aggregation and runner
@@ -621,7 +775,16 @@ RESEARCH_DECISION_REQUIRED = YES
 
 No such conflict is present in this draft.
 
-## 25. Plan status
+## 25. Team B corrective mapping
+
+| Team B item | Revised section | Resolution |
+| --- | --- | --- |
+| `C5-PLAN-FAIL-01` | Sections 4, 16, 17, 21, 22 | Normative Shadow-only failure boundary continues baseline service and marks only Shadow evidence invalid/incomplete; injected failure parity is mandatory. |
+| `C5-PLAN-Q3-02` | Section 18 | Q3 now targets the frozen audited `{remap_events, confirmed_ids}` projection, not whole receiver-state equality, and explicitly preserves matched-only opportunity semantics. |
+| `C5-PLAN-COUNT-03` | Sections 8, 13, 19 | Approved scientific effect totals and subcounters include only effects evaluated after version-gate survival; rejected-payload content is optional integrity-only metadata. |
+| `C5-PLAN-AUDIT-04` | Sections 6 and 12 | Every first-service record must persist a canonical minimal replay projection; digest-only evidence is forbidden. |
+
+## 26. Plan status
 
 ```text
 C5_IMPLEMENTATION_PLAN_DRAFT_STATUS = COMPLETE
@@ -647,6 +810,18 @@ CLOSED_LOOP_LOGIC_ADDED = NO
 
 IMPLEMENTATION_BLOCKERS = NONE
 RESEARCH_DECISION_REQUIRED = NO
+
+SHADOW_FAILURE_SCOPE = C5_EVIDENCE_VALIDITY_ONLY
+SHADOW_FAILURE_MUST_NOT_ABORT_BASELINE_SERVICE = YES
+SHADOW_FAILURE_MUST_NOT_CHANGE_FIFO_TRAJECTORY = YES
+SHADOW_FAILURE_MUST_NOT_DROP_SKIP_CANCEL_PACKET = YES
+
+Q3_COMPARISON_TARGET = FROZEN_AUDITED_TASK_EFFECT_PROJECTION
+WHOLE_RECEIVER_STATE_EQUIVALENCE_REQUIRED = NO
+
+VERSION_REJECT_SCIENTIFIC_EFFECT_COUNTERS_EXCLUDE_REJECTED_PAYLOADS = YES
+INDEPENDENT_PREDICATE_REPLAY = YES
+DIGEST_ONLY_EVIDENCE_ALLOWED = NO
 
 IMPLEMENTATION_AUTHORIZED = NO
 SHADOW_EXECUTION_AUTHORIZED = NO
