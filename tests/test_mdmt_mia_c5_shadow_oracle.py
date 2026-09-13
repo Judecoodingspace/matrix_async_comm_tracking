@@ -1,8 +1,12 @@
 import copy
 import json
+import heapq
+from pathlib import Path
 
 import numpy as np
+import pytest
 
+import tracking.mdmt_mia_async_deadline_runtime as runtime_module
 from tracking.mdmt_mia_async_deadline_runtime import (
     _C5ShadowOpportunitySidecar,
     PacketRuntime,
@@ -85,3 +89,147 @@ def test_runtime_observes_same_frame_first_service_and_writes_detached_replay(tm
     row = json.loads(evidence)
     assert row["frame"] == 0 and row["channel"] == "id_state"
     assert row["live_source_track_ids"] == {"1": [7], "2": [7]}
+
+
+def _configure_runtime(monkeypatch, tmp_path, shadow=True, rate=64):
+    monkeypatch.setenv("MIA_C4_SERVICE_CONFIG", json.dumps({
+        "mode": "fifo", "condition": "FIFO_strong", "rate_logical_bytes_per_frame": 16649,
+        "ledger_enabled": False, "run_id": "synthetic", "pair_id": "23"}))
+    # The frozen rate is deliberately retained.  A packet spans frames because
+    # the fixture opens its second service frame only after an intervening queue.
+    if shadow:
+        monkeypatch.setenv("MIA_C5_SHADOW_CONFIG", json.dumps(
+            {"enabled": True, "run_id": "synthetic", "output_dir": str(tmp_path / "shadow")}))
+    else:
+        monkeypatch.delenv("MIA_C5_SHADOW_CONFIG", raising=False)
+
+
+def _id_delivery(runtime, frame=0, source=7, target=9, confirmed=()):
+    before = np.asarray([[source, 1, 2, 3, 4, 1]])
+    after = np.asarray([[target, 1, 2, 3, 4, 1]])
+    return runtime.deliver_id_state(frame, "synthetic", before, before, after, after,
+                                    [], [], [], list(confirmed), target, target)
+
+
+def test_runtime_path_cross_frame_never_started_and_supplement_exclusion(tmp_path, monkeypatch):
+    _configure_runtime(monkeypatch, tmp_path)
+    runtime = PacketRuntime(tmp_path, "runtime", "sequence")
+    rows = np.asarray([[7, 1, 2, 3, 4, 1]])
+    large = np.tile(rows, (2000, 1))
+    runtime.begin_frame(0, rows, rows, [], [])
+    # Supplement starts first and occupies FIFO service; it is observationally excluded.
+    runtime.deliver_supplement(0, "synthetic", rows, rows, rows, rows, [], [], [], [], large, large)
+    _id_delivery(runtime)
+    assert runtime._c5_shadow.summary()["checked_id_packet_count"] == 0
+    runtime.finalize()
+    assert runtime._c5_shadow.summary()["checked_id_packet_count"] == 0
+    assert runtime._c5_shadow.validity == "VALID"
+
+
+@pytest.mark.parametrize("failure_kind", ("missing_context", "snapshot", "predicate", "duplicate", "unsupported_view"))
+def test_first_service_shadow_failures_invalidate_only_shadow(tmp_path, monkeypatch, failure_kind):
+    def execute(path):
+        runtime = PacketRuntime(path, "runtime", "sequence")
+        rows = np.asarray([[7, 1, 2, 3, 4, 1]])
+        runtime.begin_frame(0, rows, rows, [], [])
+        _id_delivery(runtime)
+        return runtime
+    if failure_kind == "unsupported_view":
+        monkeypatch.setattr(runtime_module, "_id_remap_events",
+                            lambda before, after, view: [{"view_id": 3, "source_track_id": 7, "target_track_id": 9}])
+    _configure_runtime(monkeypatch, tmp_path / "off", shadow=False)
+    baseline = execute(tmp_path / "off")
+    _configure_runtime(monkeypatch, tmp_path / "on", shadow=True)
+    original_snapshot = runtime_module._snapshot_c5_receiver_state
+    original_predicate = runtime_module._classify_whole_packet_currently_non_applicable
+    original_observe = runtime_module._C5ShadowOpportunitySidecar.observe_first_service
+    if failure_kind == "missing_context":
+        monkeypatch.setattr(PacketRuntime, "_c5_context_provider", lambda *args: None)
+    elif failure_kind == "snapshot":
+        monkeypatch.setattr(runtime_module, "_snapshot_c5_receiver_state",
+                            lambda *args: (_ for _ in ()).throw(RuntimeError("snapshot")))
+    elif failure_kind == "predicate":
+        monkeypatch.setattr(runtime_module, "_classify_whole_packet_currently_non_applicable",
+                            lambda *args: (_ for _ in ()).throw(RuntimeError("predicate")))
+    elif failure_kind == "duplicate":
+        def duplicate(self, item, context):
+            original_observe(self, item, context)
+            original_observe(self, item, context)
+        monkeypatch.setattr(runtime_module._C5ShadowOpportunitySidecar, "observe_first_service", duplicate)
+    else:
+        assert failure_kind == "unsupported_view"
+    runtime = execute(tmp_path / "on")
+    assert runtime._c4_service._items[0]["bytes_served_total"] > 0
+    assert runtime._c4_service.normalized_events() == baseline._c4_service.normalized_events()
+    assert runtime._c5_shadow.validity == "INVALID_INCOMPLETE"
+    assert original_snapshot is not None and original_predicate is not None
+
+
+def test_shadow_persistence_failure_is_post_trajectory_only(tmp_path, monkeypatch):
+    _configure_runtime(monkeypatch, tmp_path)
+    original_open = Path.open
+    def c5_write_failure(path, *args, **kwargs):
+        if path.name.startswith("c5_shadow_"):
+            raise OSError("synthetic recorder failure")
+        return original_open(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "open", c5_write_failure)
+    runtime = PacketRuntime(tmp_path, "runtime", "sequence")
+    rows = np.asarray([[7, 1, 2, 3, 4, 1]])
+    runtime.begin_frame(0, rows, rows, [], [])
+    _id_delivery(runtime)
+    runtime.finalize()
+    assert runtime._c5_shadow.validity == "INVALID_INCOMPLETE"
+    assert runtime._c4_service._sealed is True
+
+
+def _consumer_projection(wire, rows1, rows2, confirmed, last_version=0, applied=None):
+    """Independent frozen-consumer oracle: invoke _apply_pending_id on copies."""
+    runtime = PacketRuntime("/tmp", "c5-consumer-oracle", "synthetic")
+    runtime._last_id_packet_version = last_version
+    runtime._applied_id_map = dict(applied or {})
+    wire = copy.deepcopy(wire)
+    wire.update({"capture_frame": 0, "arrival_frame": 0, "emitted_frame": 0})
+    runtime._queues["id_state"] = [(0, 1, wire, "{}")]
+    heapq.heapify(runtime._queues["id_state"])
+    before_confirmed = list(confirmed)
+    out1, out2, _matched, out_confirmed = runtime._apply_pending_id(
+        np.asarray(rows1).copy(), np.asarray(rows2).copy(), [], list(confirmed), 0)
+    actions = [event.get("packet_action") for event in runtime.events]
+    return {"actions": actions, "rows": (out1, out2), "confirmed_before": before_confirmed,
+            "confirmed_after": out_confirmed, "last_version": runtime._last_id_packet_version}
+
+
+@pytest.mark.parametrize("name,wire,last,applied,confirmed,expected_opportunity", [
+    ("VERSION_REJECT", packet(1, [{"view_id": 1, "source_track_id": 7, "target_track_id": 9}]), 1, {}, [], True),
+    ("REMAP_SOURCE_ABSENT", packet(2, [{"view_id": 1, "source_track_id": 99, "target_track_id": 9}]), 1, {}, [], True),
+    ("REMAP_DIFFERENT_TARGET_CONFLICT", packet(2, [{"view_id": 1, "source_track_id": 7, "target_track_id": 9}]), 1, {(1, 7): 8}, [], True),
+    ("SAME_KEY_SAME_TARGET_WITH_LIVE_SOURCE", packet(2, [{"view_id": 1, "source_track_id": 7, "target_track_id": 9}]), 1, {(1, 7): 9}, [], False),
+    ("CONFIRMED_NEW", packet(2, confirmed=[9]), 1, {}, [], False),
+    ("CONFIRMED_ALREADY_PRESENT", packet(2, confirmed=[9]), 1, {}, [9], True),
+    ("MIXED_EFFECT_PACKET", packet(2, [{"view_id": 1, "source_track_id": 99, "target_track_id": 9}], [10]), 1, {}, [], False),
+    ("EMPTY_TASK_EFFECT_PACKET", packet(2), 1, {}, [], True),
+    ("MATCHED_ONLY_PACKET", packet(2, matched=[10]), 1, {}, [], True),
+])
+def test_q3_independent_frozen_consumer_oracle(name, wire, last, applied, confirmed, expected_opportunity):
+    rows = np.asarray([[7, 1, 2, 3, 4, 1]])
+    consumer = _consumer_projection(wire, rows, rows, confirmed, last, applied)
+    state = _snapshot_c5_receiver_state(0, {"p": name}, rows, rows, confirmed, applied, last)
+    result = _classify_whole_packet_currently_non_applicable(wire, state)
+    assert result.whole_packet_currently_non_applicable is expected_opportunity
+    # The oracle is the frozen consumer's audited effects, not whole-state equality.
+    if name == "VERSION_REJECT":
+        assert consumer["actions"] == ["obsolete"] and consumer["last_version"] == last
+    elif name == "REMAP_SOURCE_ABSENT":
+        assert consumer["actions"] == ["obsolete"]
+    elif name == "REMAP_DIFFERENT_TARGET_CONFLICT":
+        assert consumer["actions"] == ["conflict"]
+    elif name == "SAME_KEY_SAME_TARGET_WITH_LIVE_SOURCE":
+        assert consumer["actions"] == ["applied"]
+    elif name == "CONFIRMED_NEW":
+        assert 9 in consumer["confirmed_after"] and 9 not in consumer["confirmed_before"]
+    elif name == "CONFIRMED_ALREADY_PRESENT":
+        assert consumer["confirmed_after"] == consumer["confirmed_before"]
+    elif name == "MIXED_EFFECT_PACKET":
+        assert consumer["actions"] == ["obsolete"] and 10 in consumer["confirmed_after"]
+    elif name == "MATCHED_ONLY_PACKET":
+        assert consumer["actions"] == []
