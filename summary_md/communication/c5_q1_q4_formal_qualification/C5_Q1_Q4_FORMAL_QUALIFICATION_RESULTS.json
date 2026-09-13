@@ -1,0 +1,20 @@
+{
+  "qualification_kind": "FORMAL_C5_Q1_Q4_MECHANICAL_QUALIFICATION",
+  "candidate_sha": "8f9b48df3a9c716408d4d083ccaf894c2966a7ae",
+  "pytest": {"result": "PASS", "passed": 42, "serial": true},
+  "dry_run": {"result": "PASS", "four_cell_scientific_execution_authorized": false, "scientific_data_accessed": false},
+  "Q1_FORMAL_TRAJECTORY_PARITY": "PASS",
+  "Q1_SHADOW_FAILURE_BASELINE_PARITY": "PASS",
+  "Q2_TRUE_FIRST_SERVICE_TIMING": "PASS",
+  "Q3_CONSUMER_CONSISTENCY": "PASS",
+  "Q3_ORACLE_INDEPENDENT": true,
+  "Q3_TEST_NON_TAUTOLOGICAL": true,
+  "Q4_METRIC_ACCOUNTING": "PASS",
+  "SYNTHETIC_QUALIFICATION_FIXTURE": true,
+  "NON_SCIENTIFIC": true,
+  "scientific_data_accessed": false,
+  "c5_scientific_outcome_read": false,
+  "tracking_evaluation_executed": false,
+  "four_cell_c5_scientific_run_executed": false,
+  "closed_loop_intervention_executed": false
+}

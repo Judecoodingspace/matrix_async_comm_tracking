@@ -1,0 +1,28 @@
+{
+  "candidate_sha": "8f9b48df3a9c716408d4d083ccaf894c2966a7ae",
+  "production_implementation_sha": "846350036f4169b0715e4d33caaa54c947a5e8e7",
+  "branch": "qual/20260913-c5-shadow-oracle-q1-q4",
+  "worktree": "/mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/.worktrees/c5_shadow_oracle_q1_q4_qualification",
+  "serial_execution_policy": {"pytest_parallel_execution": "FORBIDDEN", "pytest_xdist": "FORBIDDEN", "qualification_runs_serial": true},
+  "known_p2": {"id": "C5-TEST-QUALITY-01", "tmp_path": "/tmp/c5-consumer-oracle", "collision_preflight": "PATH_ABSENT_NO_COLLISION"},
+  "environment": {"python": "3.8.5", "pytest": "6.1.1", "numpy": "1.23.5"},
+  "source_sha256": {
+    "runtime": "b870c9fe4364d01cd1f8c7ce59240d6fa97d2ce65caff809afef3f1f9c6c0a66",
+    "c5_runner": "d508006b3a3ee59f248bcc6fdf43bef6ca482a10710df8de59a2c95566fd83c0",
+    "c5_oracle_test": "bb20e056a08245cafa187c3b019a669ff22c7013a8d54a24756291d66eda23fe",
+    "c5_parity_test": "f99057f605e403542c3e285d8159442039543aaae7bce01b0692003e91f3d097",
+    "c4_service_test": "da16801582ca472197a721fe44abc53b37c1c9b5a520ad790601375fecdce50b",
+    "contract": "7595cf1973ded33e1f9046be00556f8a9b87c6613853bff45ec81f79927d4e25",
+    "implementation_plan": "a0b3be385d40212314084c3797d2bcfac7cb74d63655f7b2bf1d2b9bddcc5662"
+  },
+  "test_inventory": {"count": 42, "sha256": "b22821469dd93a908f773b998f8e092293de8bef76d56d4c2e27eb182f5bdf38", "targets": ["tests/test_mdmt_mia_c5_shadow_oracle.py", "tests/test_mdmt_mia_c5_shadow_trajectory_parity.py", "tests/test_mdmt_mia_c4_service_runtime.py"]},
+  "commands": {
+    "collect": "PYTHONPATH=src python -m pytest --collect-only -q tests/test_mdmt_mia_c5_shadow_oracle.py tests/test_mdmt_mia_c5_shadow_trajectory_parity.py tests/test_mdmt_mia_c4_service_runtime.py",
+    "pytest": "PYTHONPATH=src python -m pytest -q tests/test_mdmt_mia_c5_shadow_oracle.py tests/test_mdmt_mia_c5_shadow_trajectory_parity.py tests/test_mdmt_mia_c4_service_runtime.py",
+    "dry_run": "python scripts/run_mdmt_mia_c5_shadow_oracle_opportunity_census.py --dry-run --run-id formal-q1-q4-dry-run"
+  },
+  "qualification_start_status": "FROZEN_READY",
+  "SCIENTIFIC_DATA_ACCESS_AUTHORIZED": false,
+  "C5_SCIENTIFIC_OUTCOME_READ_AUTHORIZED": false,
+  "TRACKING_EVALUATION_AUTHORIZED": false
+}
