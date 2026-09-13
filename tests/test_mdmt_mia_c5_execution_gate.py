@@ -15,8 +15,10 @@ def valid(tmp_path,monkeypatch):
  monkeypatch.setattr(runner,"ROOT",tmp_path); monkeypatch.setattr(runner,"_ancestor",lambda value:True); return _auth(tmp_path)
 @pytest.fixture
 def evidence(valid):
- source=runner.ROOT/"source.txt"; source.write_text("source"); digest=hashlib.sha256(source.read_bytes()).hexdigest()
- return lambda q,path: json.dumps({"execution_enabled_candidate_sha":"c" if q=="q" else "wrong","source_fingerprints":{"source.txt":digest}})
+ fingerprints={}
+ for relative in runner.FROZEN_GOVERNED_FINGERPRINT_PATHS:
+  source=runner.ROOT/relative; source.parent.mkdir(parents=True,exist_ok=True); source.write_text(relative); fingerprints[relative]=hashlib.sha256(source.read_bytes()).hexdigest()
+ return lambda q,path: json.dumps({"execution_enabled_candidate_sha":"c" if q=="q" else "wrong","source_fingerprints":fingerprints})
 @pytest.mark.parametrize("key,value",[("execution_enabled_candidate_sha","bad"),("superseding_qualification_evidence_sha","bad"),("previous_qualification_evidence_sha","bad"),("production_implementation_sha","bad"),("contract_authority","bad"),("implementation_plan_authority","bad"),("execution_path_plan_authority","bad"),("tracking_evaluation_authorized",True),("closed_loop_intervention_authorized",True),("issued_for_exact_run",False),("authorization_role","bad"),("schema_version","bad"),("run_id","candidate"),("run_id","tmp"),("run_id","temporary"),("run_id","."),("run_id",".."),("run_id","bad/id"),("run_id","bad id")])
 def test_e2_scalar_denials(valid,evidence,key,value):
  bad=copy.deepcopy(valid); bad[key]=value
@@ -32,6 +34,16 @@ def test_duplicate_key_and_binding_and_ancestry_denied(valid,evidence,monkeypatc
  with pytest.raises(runner.GateError): runner.validate(valid,evidence)
  monkeypatch.setattr(runner,"_ancestor",lambda value:True)
  with pytest.raises(runner.GateError): runner.validate(valid,lambda q,p:'{"execution_enabled_candidate_sha":"other","source_fingerprints":{}}')
+def test_wrong_r_and_fingerprint_value_denials_never_launch(valid,evidence,monkeypatch):
+ calls=[]
+ wrong_r=copy.deepcopy(valid); wrong_r["cells"][0]["rate_logical_bytes_per_frame"]=1
+ monkeypatch.setattr(runner,"_git_show",evidence)
+ with pytest.raises(runner.GateError): runner.launch_cells(wrong_r,lambda *args,**kwargs:calls.append(args))
+ assert calls==[]
+ payload=json.loads(evidence("q","ignored")); path=next(iter(payload["source_fingerprints"])); payload["source_fingerprints"][path]="0"*64
+ monkeypatch.setattr(runner,"_git_show",lambda q,p:json.dumps(payload))
+ with pytest.raises(runner.GateError,match="BLOCK_SOURCE_IDENTITY_MISMATCH"): runner.launch_cells(valid,lambda *args,**kwargs:calls.append(args))
+ assert calls==[]
 def test_output_namespace_symlink_collision_and_fingerprint_denied(valid,evidence):
  bad=copy.deepcopy(valid); bad["output_root"]="/tmp/escape"
  with pytest.raises(runner.GateError): runner.validate(bad,evidence)
