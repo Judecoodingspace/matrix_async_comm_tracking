@@ -16,7 +16,7 @@ def valid(tmp_path, monkeypatch):
     monkeypatch.setattr(runner,"ROOT",tmp_path); monkeypatch.setattr(runner,"_ancestor",lambda value:True)
     return _auth(tmp_path)
 
-def _evidence(q,path): return '{"execution_enabled_candidate_sha":"c"}'
+def _evidence(q,path): return '{"execution_enabled_candidate_sha":"c","source_fingerprints":{}}'
 
 def test_e1_default_deny(valid):
     with pytest.raises(runner.GateError): runner.validate({},_evidence)
