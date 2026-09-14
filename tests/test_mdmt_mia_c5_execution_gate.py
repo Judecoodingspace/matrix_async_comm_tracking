@@ -56,11 +56,11 @@ def test_output_namespace_symlink_collision_and_fingerprint_denied(valid,evidenc
  with pytest.raises(runner.GateError): runner.validate(valid,evidence)
  path.unlink(); path.mkdir()
  with pytest.raises(runner.GateError): runner.validate(valid,evidence)
-def _outputs(cell,pair):
+def _outputs(cell,pair,shadow=None):
  results=cell/"mia"/f"train_{pair}"/"results"/f"mia_train_{pair}"; results.mkdir(parents=True)
  for view in (1,2):(results/f"{pair}-{view}.json").write_text("{}")
  (results/f"async_packet_manifest_{pair}-1.json").write_text(json.dumps({"sequence_name":f"{pair}-1"}))
- shadow=cell.parents[2]/"shadow"/cell.name; shadow.mkdir(parents=True)
+ shadow=shadow or cell.parents[1]/"shadow"/cell.name; shadow.mkdir(parents=True)
  (shadow/f"c5_shadow_records_{pair}-1.jsonl").write_text("")
  (shadow/f"c5_shadow_seal_{pair}-1.json").write_text(json.dumps({"schema_version":"C5_SHADOW_REPLAY_V1","sequence_name":f"{pair}-1","shadow_validity":"VALID","integrity_failures":[],"record_count":0,"summary":{"shadow_validity":"VALID","integrity_failure_count":0}}))
 def test_valid_launch_and_contaminated_environment(valid,monkeypatch):
@@ -83,13 +83,22 @@ def test_generated_source_binding_real_producer_geometry(valid,evidence,monkeypa
  assert len(seen)==4 and all(env["MIA_ROOT"]==str(runner.GOVERNED_MIA_ROOT.resolve()) and env["MIA_SOURCE_ROOT"]==str(runner.GOVERNED_MIA_SOURCE_ROOT.resolve()) for env in seen)
  entry=runner.GOVERNED_MIA_SOURCE_ROOT/"demo/supplement_MIA.py"; entry.write_text("from utils.async_deadline_runtime import PacketRuntime\n")
  with pytest.raises(runner.GateError,match="BLOCK_GENERATED_AUTHOR_SOURCE_BINDING"): runner._generated_author_source_binding()
+def test_real_controlled_shadow_path_completes_all_cells(valid,evidence,monkeypatch):
+ monkeypatch.setattr(runner,"_git_show",evidence); seen=[]
+ def launch(cmd,**kwargs):
+  env=kwargs["env"]; cell=Path(env["MIA_OUTPUT_ROOT"]); shadow=Path(json.loads(env["MIA_C5_SHADOW_CONFIG"])["output_dir"]); seen.append((cell,shadow)); _outputs(cell,cmd[-1],shadow); return type("R",(),{"returncode":0})()
+ runner.launch_cells(valid,launch)
+ root=Path(valid["output_root"])
+ assert len(seen)==4 and all(shadow==cell.parents[1]/"shadow"/cell.name for cell,shadow in seen)
+ assert json.loads((root/"RUN_END.json").read_text())["status"]=="COMPLETE"
+ assert all((root/"shadow"/cell.name/f"c5_shadow_seal_{pair}-1.json").is_file() for cell,pair in ((root/"runtime"/"pair_23__FIFO_mild","23"),(root/"runtime"/"pair_23__FIFO_strong","23"),(root/"runtime"/"pair_44__FIFO_moderate","44"),(root/"runtime"/"pair_66__FIFO_mild","66")))
 @pytest.mark.parametrize("failure",["missing_result","malformed_result","missing_manifest","malformed_manifest","missing_shadow","invalid_shadow","nonzero"])
 def test_output_failures_write_evidence_and_stop(valid,monkeypatch,failure):
  monkeypatch.setattr(runner,"validate",lambda auth:Path(valid["output_root"])); calls=[]
  def launch(cmd,**kwargs):
   calls.append(cmd); cell=Path(kwargs["env"]["MIA_OUTPUT_ROOT"]); pair=cmd[-1]
   if failure=="nonzero": return type("R",(),{"returncode":9})()
-  _outputs(cell,pair); results=cell/"mia"/f"train_{pair}"/"results"/f"mia_train_{pair}"; shadow=cell.parents[2]/"shadow"/cell.name
+  _outputs(cell,pair); results=cell/"mia"/f"train_{pair}"/"results"/f"mia_train_{pair}"; shadow=cell.parents[1]/"shadow"/cell.name
   if failure=="missing_result":(results/f"{pair}-2.json").unlink()
   elif failure=="malformed_result":(results/f"{pair}-2.json").write_text("{")
   elif failure=="missing_manifest":(results/f"async_packet_manifest_{pair}-1.json").unlink()

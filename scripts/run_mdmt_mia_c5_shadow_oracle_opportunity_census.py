@@ -19,7 +19,7 @@ IMPLEMENTATION_PLAN = "0e18e0871d2e37207f54a1bf90c5129ef9896901"
 METRICS = ("checked_id_packet_count","whole_packet_non_applicable_count","whole_packet_non_applicable_ratio","checked_id_packet_wire_bytes","whole_packet_non_applicable_wire_bytes","whole_packet_non_applicable_wire_bytes_ratio","version_reject_packet_count","empty_task_effect_packet_count","mixed_effect_packet_count","remap_total","remap_applicable_count","remap_source_absent_count","remap_conflict_count","confirmed_total","confirmed_new_count","confirmed_already_present_count")
 CELLS = (("CONTROL","23","FIFO_mild",31987),("FRONTIER","23","FIFO_strong",16649),("FRONTIER","44","FIFO_moderate",26148),("FRONTIER","66","FIFO_mild",31987))
 REQUIRED = {"schema_version","authorization_role","execution_enabled_candidate_sha","superseding_qualification_evidence_sha","previous_qualification_evidence_sha","production_implementation_sha","contract_authority","implementation_plan_authority","execution_path_plan_authority","cells","run_id","output_root","allowed_scientific_metrics","tracking_evaluation_authorized","closed_loop_intervention_authorized","issued_for_exact_run"}
-QUALIFICATION_CONTEXT_PATH = "summary_md/communication/c5_execution_path_superseding_qualification_v4/C5_EXECUTION_PATH_QUALIFICATION_CONTEXT.json"
+QUALIFICATION_CONTEXT_PATH = "summary_md/communication/c5_execution_path_superseding_qualification_v5/C5_EXECUTION_PATH_QUALIFICATION_CONTEXT.json"
 FROZEN_GOVERNED_FINGERPRINT_PATHS = frozenset(("src/tracking/mdmt_mia_async_deadline_runtime.py", "scripts/run_mdmt_mia_c5_shadow_oracle_opportunity_census.py", "tests/test_mdmt_mia_c5_execution_gate.py", "tests/test_mdmt_mia_c5_shadow_oracle.py", "tests/test_mdmt_mia_c5_shadow_trajectory_parity.py", "tests/test_mdmt_mia_c4_service_runtime.py"))
 RUN_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{2,127}\Z")
 GOVERNED_MIA_ROOT = Path("/mnt/data/yzm/experiments/mdmt_mia_official")
@@ -96,7 +96,7 @@ def _validate_cell_outputs(cell_root,pair_id,condition):
  expected=result_root/f"async_packet_manifest_{pair_id}-1.json"; manifests=sorted(cell_root.rglob("async_packet_manifest_*.json"))
  if manifests != [expected]: raise GateError("missing or ambiguous PacketRuntime manifest")
  if _load(expected,"PacketRuntime manifest").get("sequence_name") != f"{pair_id}-1": raise GateError("PacketRuntime manifest does not bind pair")
- shadow=cell_root.parents[2]/"shadow"/cell_root.name; sequence=f"{pair_id}-1"; records=shadow/f"c5_shadow_records_{sequence}.jsonl"; seal=shadow/f"c5_shadow_seal_{sequence}.json"
+ shadow=cell_root.parents[1]/"shadow"/cell_root.name; sequence=f"{pair_id}-1"; records=shadow/f"c5_shadow_records_{sequence}.jsonl"; seal=shadow/f"c5_shadow_seal_{sequence}.json"
  if not records.is_file() or not seal.is_file(): raise GateError("missing Shadow evidence")
  try: rows=[json.loads(line,object_pairs_hook=_object) for line in records.read_text(encoding="utf-8").splitlines() if line.strip()]
  except (OSError,ValueError,GateError) as error: raise GateError("malformed Shadow evidence") from error
