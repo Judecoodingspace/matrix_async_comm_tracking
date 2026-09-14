@@ -19,9 +19,12 @@ IMPLEMENTATION_PLAN = "0e18e0871d2e37207f54a1bf90c5129ef9896901"
 METRICS = ("checked_id_packet_count","whole_packet_non_applicable_count","whole_packet_non_applicable_ratio","checked_id_packet_wire_bytes","whole_packet_non_applicable_wire_bytes","whole_packet_non_applicable_wire_bytes_ratio","version_reject_packet_count","empty_task_effect_packet_count","mixed_effect_packet_count","remap_total","remap_applicable_count","remap_source_absent_count","remap_conflict_count","confirmed_total","confirmed_new_count","confirmed_already_present_count")
 CELLS = (("CONTROL","23","FIFO_mild",31987),("FRONTIER","23","FIFO_strong",16649),("FRONTIER","44","FIFO_moderate",26148),("FRONTIER","66","FIFO_mild",31987))
 REQUIRED = {"schema_version","authorization_role","execution_enabled_candidate_sha","superseding_qualification_evidence_sha","previous_qualification_evidence_sha","production_implementation_sha","contract_authority","implementation_plan_authority","execution_path_plan_authority","cells","run_id","output_root","allowed_scientific_metrics","tracking_evaluation_authorized","closed_loop_intervention_authorized","issued_for_exact_run"}
-QUALIFICATION_CONTEXT_PATH = "summary_md/communication/c5_execution_path_superseding_qualification_v3/C5_EXECUTION_PATH_QUALIFICATION_CONTEXT.json"
+QUALIFICATION_CONTEXT_PATH = "summary_md/communication/c5_execution_path_superseding_qualification_v4/C5_EXECUTION_PATH_QUALIFICATION_CONTEXT.json"
 FROZEN_GOVERNED_FINGERPRINT_PATHS = frozenset(("src/tracking/mdmt_mia_async_deadline_runtime.py", "scripts/run_mdmt_mia_c5_shadow_oracle_opportunity_census.py", "tests/test_mdmt_mia_c5_execution_gate.py", "tests/test_mdmt_mia_c5_shadow_oracle.py", "tests/test_mdmt_mia_c5_shadow_trajectory_parity.py", "tests/test_mdmt_mia_c4_service_runtime.py"))
 RUN_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{2,127}\Z")
+GOVERNED_MIA_ROOT = Path("/mnt/data/yzm/experiments/mdmt_mia_official")
+GOVERNED_MIA_SOURCE_ROOT = GOVERNED_MIA_ROOT / "variants/c5_generated_author_source_binding_001"
+GENERATED_RUNTIME_RELATIVE = Path("demo/utils/async_deadline_runtime.py")
 
 class GateError(RuntimeError): pass
 def canonical_cells(): return [{"role":a,"pair_id":b,"condition":c,"rate_logical_bytes_per_frame":d} for a,b,c,d in CELLS]
@@ -54,6 +57,14 @@ def _output_root(auth):
  if not supplied.is_absolute() or supplied!=expected or supplied.resolve()!=expected or not _within(expected,base): raise GateError("invalid output namespace")
  if expected.exists() or expected.is_symlink(): raise GateError("invalid or colliding output root")
  return expected
+def _generated_author_source_binding():
+ mia_root=GOVERNED_MIA_ROOT.resolve(); source_root=GOVERNED_MIA_SOURCE_ROOT.resolve(); runtime=source_root/GENERATED_RUNTIME_RELATIVE; repository_runtime=ROOT/"src/tracking/mdmt_mia_async_deadline_runtime.py"; entry=source_root/"demo/supplement_MIA.py"
+ if not mia_root.is_dir() or not source_root.is_dir() or not runtime.is_file() or not repository_runtime.is_file() or not entry.is_file(): raise GateError("BLOCK_GENERATED_AUTHOR_SOURCE_BINDING")
+ if hashlib.sha256(runtime.read_bytes()).hexdigest()!=hashlib.sha256(repository_runtime.read_bytes()).hexdigest(): raise GateError("BLOCK_GENERATED_AUTHOR_SOURCE_BINDING")
+ try: source=entry.read_text(encoding="utf-8")
+ except OSError as error: raise GateError("BLOCK_GENERATED_AUTHOR_SOURCE_BINDING") from error
+ if "from utils.async_deadline_runtime import PacketRuntime" not in source or "packet_runtime = PacketRuntime(" not in source or "packet_runtime.finalize()" not in source: raise GateError("BLOCK_GENERATED_AUTHOR_SOURCE_BINDING")
+ return mia_root,source_root,runtime
 def validate(auth,evidence_loader=None):
  if not isinstance(auth,dict) or set(auth)!=REQUIRED: raise GateError("authorization schema mismatch")
  if auth["authorization_role"]!="C5_SHADOW_CENSUS_EXECUTION_AUTHORIZATION" or auth["schema_version"]!="C5_EXECUTION_AUTHORIZATION_V1": raise GateError("authorization role/schema mismatch")
@@ -73,6 +84,7 @@ def validate(auth,evidence_loader=None):
  for relative,expected in fingerprints.items():
   path=ROOT/str(relative)
   if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest()!=expected: raise GateError("BLOCK_SOURCE_IDENTITY_MISMATCH")
+ _generated_author_source_binding()
  return root
 def _utc_now(): return datetime.now(timezone.utc).isoformat()
 def _write_exclusive_json(path,payload):
@@ -95,7 +107,8 @@ def _controlled_environment(root,auth,row,cell_root):
  for key in tuple(env):
   if key.startswith("MIA_") or key in {"DEVICE","PYTHONHASHSEED","PYTHONNOUSERSITE","PYTHONPATH","MPLCONFIGDIR","CUDA_VISIBLE_DEVICES"}: env.pop(key,None)
  service={"mode":"fifo","condition":row["condition"],"rate_logical_bytes_per_frame":row["rate_logical_bytes_per_frame"],"ledger_enabled":True,"run_id":auth["run_id"],"pair_id":row["pair_id"]}
- env.update({"MIA_C4_SERVICE_CONFIG":json.dumps(service,sort_keys=True,separators=(",",":")),"MIA_C5_SHADOW_CONFIG":json.dumps({"enabled":True,"run_id":auth["run_id"],"output_dir":str(root/"shadow"/cell_root.name)},sort_keys=True,separators=(",",":")),"MIA_OUTPUT_ROOT":str(cell_root),"MIA_ASYNC_CHANNEL_DELAYS":json.dumps({"local":0,"homography":0,"id_state":0,"supplement":0},sort_keys=True,separators=(",",":")),"MIA_RUN_INPUT_ROOT":str(root/"run_input"/cell_root.name),"MIA_PACKET_CENSUS_RUN_ID":auth["run_id"],"MIA_ACTIVE_PACKET_STAGES":"all","PYTHONHASHSEED":"0","PYTHONNOUSERSITE":"1","PYTHONDONTWRITEBYTECODE":"1","MPLCONFIGDIR":str(root/"_runtime_cache"/"matplotlib")})
+ mia_root,source_root,_=_generated_author_source_binding()
+ env.update({"MIA_ROOT":str(mia_root),"MIA_SOURCE_ROOT":str(source_root),"MIA_C4_SERVICE_CONFIG":json.dumps(service,sort_keys=True,separators=(",",":")),"MIA_C5_SHADOW_CONFIG":json.dumps({"enabled":True,"run_id":auth["run_id"],"output_dir":str(root/"shadow"/cell_root.name)},sort_keys=True,separators=(",",":")),"MIA_OUTPUT_ROOT":str(cell_root),"MIA_ASYNC_CHANNEL_DELAYS":json.dumps({"local":0,"homography":0,"id_state":0,"supplement":0},sort_keys=True,separators=(",",":")),"MIA_RUN_INPUT_ROOT":str(root/"run_input"/cell_root.name),"MIA_PACKET_CENSUS_RUN_ID":auth["run_id"],"MIA_ACTIVE_PACKET_STAGES":"all","PYTHONHASHSEED":"0","PYTHONNOUSERSITE":"1","PYTHONDONTWRITEBYTECODE":"1","MPLCONFIGDIR":str(root/"_runtime_cache"/"matplotlib")})
  return env
 def launch_cells(auth,launcher=subprocess.run,output_validator=_validate_cell_outputs):
  root=validate(auth); root.mkdir(parents=True,exist_ok=False); start={"run_id":auth["run_id"],"status":"RUNNING","started_at_utc":_utc_now(),"scientific_cell_count":len(CELLS)}; _write_exclusive_json(root/"RUN_START.json",start); run_end={**start,"status":"FAILED_MECHANICAL","finished_at_utc":None,"failure_reason":"","exit_code":None}
