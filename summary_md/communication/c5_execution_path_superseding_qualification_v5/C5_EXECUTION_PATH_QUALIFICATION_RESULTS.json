@@ -1,0 +1,11 @@
+{
+  "candidate_sha": "9a511c3ce300b5dedb1f2e970f131ddd2522b0c0",
+  "combined_test_inventory": ["tests/test_mdmt_mia_c5_execution_gate.py", "tests/test_mdmt_mia_c5_shadow_oracle.py", "tests/test_mdmt_mia_c5_shadow_trajectory_parity.py", "tests/test_mdmt_mia_c4_service_runtime.py"],
+  "combined_test_result": "82 passed",
+  "execution_gate_test_inventory": ["E1_DEFAULT_DENY", "E2_INVALID_AUTHORIZATION_DENY", "E3_VALID_SYNTHETIC_ROUTING", "E4_EXACT_FROZEN_MATRIX", "E5_OUTPUT_COLLISION_DENY", "generated_source_binding", "real_controlled_shadow_path_completes_all_cells"],
+  "execution_gate_test_result": "40 passed",
+  "qualification_results": {"E1_DEFAULT_DENY": "PASS", "E2_INVALID_AUTHORIZATION_DENY": "PASS", "E3_VALID_SYNTHETIC_ROUTING": "PASS", "E4_EXACT_FROZEN_MATRIX": "PASS", "E5_OUTPUT_COLLISION_DENY": "PASS", "Q1_Q4_REPLAY": "PASS", "RUN_003_ROOT_CAUSE_REGRESSION": "PASS", "SYNTHETIC_FOUR_CELL_END_TO_END": "PASS"},
+  "q1_q4_replay_inventory": ["tests/test_mdmt_mia_c5_shadow_oracle.py", "tests/test_mdmt_mia_c5_shadow_trajectory_parity.py", "tests/test_mdmt_mia_c4_service_runtime.py"],
+  "q1_q4_replay_result": "42 passed",
+  "replay_kind": "synthetic_mechanical_only"
+}
