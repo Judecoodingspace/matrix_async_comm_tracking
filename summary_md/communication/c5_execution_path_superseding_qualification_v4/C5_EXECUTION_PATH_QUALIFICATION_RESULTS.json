@@ -1,0 +1,12 @@
+{
+  "candidate_sha": "c6bb295758e343251730137b376d179c3e90e37d",
+  "combined_test_inventory": ["tests/test_mdmt_mia_c5_execution_gate.py", "tests/test_mdmt_mia_c5_shadow_oracle.py", "tests/test_mdmt_mia_c5_shadow_trajectory_parity.py", "tests/test_mdmt_mia_c4_service_runtime.py"],
+  "combined_test_result": "81 passed",
+  "execution_gate_test_inventory": ["E1_DEFAULT_DENY", "E2_INVALID_AUTHORIZATION_DENY", "E3_VALID_SYNTHETIC_ROUTING", "E4_EXACT_FROZEN_MATRIX", "E5_OUTPUT_COLLISION_DENY", "wrong_R_deny", "fingerprint_value_mismatch_deny", "generated_source_binding_deny", "generated_source_real_producer_geometry"],
+  "execution_gate_test_result": "39 passed",
+  "generated_author_source_binding_self_check": {"cuda_visible_devices_set": false, "generated_runtime_sha256": "b870c9fe4364d01cd1f8c7ce59240d6fa97d2ce65caff809afef3f1f9c6c0a66", "gpu_device_count": 2, "result": "PASS", "scientific_data_accessed": false, "torch_cuda_available": true},
+  "qualification_results": {"E1_DEFAULT_DENY": "PASS", "E2_INVALID_AUTHORIZATION_DENY": "PASS", "E3_VALID_SYNTHETIC_ROUTING": "PASS", "E4_EXACT_FROZEN_MATRIX": "PASS", "E5_OUTPUT_COLLISION_DENY": "PASS", "GENERATED_AUTHOR_SOURCE_BINDING_SELF_CHECK": "PASS", "Q1_Q4_REPLAY": "PASS", "generated_source_binding_deny": "PASS", "generated_source_real_producer_geometry": "PASS", "stale_parent_source_binding_override": "PASS"},
+  "q1_q4_replay_inventory": ["tests/test_mdmt_mia_c5_shadow_oracle.py", "tests/test_mdmt_mia_c5_shadow_trajectory_parity.py", "tests/test_mdmt_mia_c4_service_runtime.py"],
+  "q1_q4_replay_result": "42 passed",
+  "replay_kind": "synthetic_mechanical_only"
+}
