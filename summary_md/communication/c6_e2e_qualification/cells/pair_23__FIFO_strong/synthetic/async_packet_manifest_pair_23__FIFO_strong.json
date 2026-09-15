@@ -11,7 +11,7 @@
   "c4_service_status": "COMPLETE",
   "c4_service_summary": "/mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/.worktrees/c5_shadow_validator_path_corrective/summary_md/communication/c6_e2e_qualification/cells/pair_23__FIFO_strong/synthetic/c4_service_summary_pair_23__FIFO_strong.json",
   "c4_service_validation": {
-    "JSON_WIRE_BYTES_offered": 1286,
+    "JSON_WIRE_BYTES_offered": 1453,
     "R": 16649,
     "byte_conservation": 1,
     "completed_packet_count": 2,
@@ -19,7 +19,7 @@
     "frame_budget_conservation": 1,
     "in_service_empty_after_finalization": 1,
     "ledger_io_failure": "",
-    "logical_bytes_served": 888,
+    "logical_bytes_served": 1000,
     "mode": "fifo",
     "packet_count": 3,
     "packet_identity_authoritative": 1,
@@ -31,7 +31,7 @@
     "remaining_service_bytes": 0,
     "run_id": "c6-e2e-synthetic",
     "sequence_name": "pair_23__FIFO_strong",
-    "suppressed_service_obligation_bytes": 398,
+    "suppressed_service_obligation_bytes": 453,
     "terminal_conservation": 1,
     "work_conserving": 1
   },
