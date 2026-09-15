@@ -26,7 +26,7 @@ import numpy as np
 RUNTIME_FORBIDDEN_FIELDS = ("person_id", "xml_id", "official_id", "ground_truth", "gt_")
 CHANNELS = ("local", "homography", "id_state", "supplement")
 CENSUS_TERMINAL_CLASSES = (
-    "TIMELY_DELIVERED", "ARRIVED_ACCEPTED", "ARRIVED_REJECTED", "EXPIRED", "PENDING_AT_END",
+    "TIMELY_DELIVERED", "ARRIVED_ACCEPTED", "ARRIVED_REJECTED", "EXPIRED", "PENDING_AT_END", "SUPPRESSED",
 )
 CENSUS_NOT_EXPLICIT = "NOT_EXPLICIT"
 C4_CONSTRAINED_CHANNELS = ("id_state", "supplement")
@@ -172,6 +172,27 @@ def _parse_c5_shadow_config(raw):
             "output_dir": str(parsed.get("output_dir", ""))}
 
 
+def _parse_c6_suppression_config(raw):
+    """Parse the fail-closed C6 gate; absent/disabled is behaviorally inert."""
+    if not raw:
+        return {"enabled": False, "run_id": "", "output_dir": ""}
+    try:
+        parsed = json.loads(str(raw))
+    except ValueError as exc:
+        raise ValueError("MIA_C6_SUPPRESSION_CONFIG must be JSON") from exc
+    if not isinstance(parsed, dict) or set(parsed) - {"enabled", "run_id", "output_dir"}:
+        raise ValueError("MIA_C6_SUPPRESSION_CONFIG has unsupported fields")
+    enabled = parsed.get("enabled", False)
+    if not isinstance(enabled, bool):
+        raise ValueError("C6 enabled must be boolean")
+    if not enabled and set(parsed) != {"enabled"}:
+        raise ValueError("disabled C6 config accepts only enabled=false")
+    if enabled and (not parsed.get("run_id") or not parsed.get("output_dir")):
+        raise ValueError("enabled C6 requires run_id and output_dir")
+    return {"enabled": enabled, "run_id": str(parsed.get("run_id", "")),
+            "output_dir": str(parsed.get("output_dir", ""))}
+
+
 class _C5ShadowReceiverSnapshot(object):
     """Immutable, event-local receiver state used by the C5 pure predicate."""
 
@@ -195,6 +216,41 @@ class _C5ShadowPacketResult(object):
         self.packet_reason_flags = tuple(reason_flags)
         self.remap_effect_results = tuple(MappingProxyType(dict(row)) for row in remaps)
         self.confirmed_effect_results = tuple(MappingProxyType(dict(row)) for row in confirmed)
+
+
+class _C6SuppressionSidecar(object):
+    """Fail-closed treatment decision buffer; unlike C5 it controls no fallback."""
+    SCHEMA_VERSION = "C6_TRUE_FIRST_SERVICE_SUPPRESSION_V1"
+
+    def __init__(self, output_dir, sequence_name, run_id):
+        self.output_dir, self.sequence_name, self.run_id = Path(output_dir), str(sequence_name), str(run_id)
+        self.records, self.observed = [], set()
+
+    def classify(self, item, context_provider, current_frame):
+        if item["channel"] != "id_state":
+            return False
+        if item["bytes_served_total"] != 0 or item["remaining_service_bytes"] != item["JSON_WIRE_BYTES"]:
+            raise ValueError("C6 decision is not at true first service")
+        key = _canonical_json(item["packet_id"])
+        if key in self.observed:
+            raise ValueError("duplicate C6 first-service decision")
+        snapshot = context_provider(item["packet_id"], int(current_frame))
+        if not isinstance(snapshot, _C5ShadowReceiverSnapshot) or snapshot.frame != int(current_frame):
+            raise ValueError("invalid C6 treatment receiver snapshot")
+        result = _classify_whole_packet_currently_non_applicable(item["wire"], snapshot)
+        self.observed.add(key)
+        self.records.append({"schema_version": self.SCHEMA_VERSION, "packet_id": copy.deepcopy(item["packet_id"]),
+                             "frame": int(current_frame), "channel": "id_state", "JSON_WIRE_BYTES": int(item["JSON_WIRE_BYTES"]),
+                             "whole_packet_currently_non_applicable": result.whole_packet_currently_non_applicable,
+                             "packet_reason_flags": list(result.packet_reason_flags)})
+        return result.whole_packet_currently_non_applicable
+
+    def finalize(self):
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        path = self.output_dir / ("c6_first_service_decisions_" + self.sequence_name + ".jsonl")
+        with path.open("x", encoding="utf-8") as handle:
+            for row in self.records:
+                handle.write(_canonical_json(row) + "\n")
 
 
 def _snapshot_c5_receiver_state(frame, packet_id, rows1, rows2, confirmed_ids, applied_id_map, last_version):
@@ -881,7 +937,8 @@ class _C4SharedLogicalServer(object):
         self._event("frame_summary", bytes_served=int(self._frame_served),
                     frame_unused_budget=self._frame_service_budget)
 
-    def begin_frame(self, frame_id, shadow_observer=None, shadow_context_provider=None):
+    def begin_frame(self, frame_id, shadow_observer=None, shadow_context_provider=None,
+                    suppression_gate=None, suppression_context_provider=None):
         frame_id = int(frame_id)
         if frame_id <= self._current_frame:
             raise ValueError("C4 service frames must be strictly increasing")
@@ -892,12 +949,13 @@ class _C4SharedLogicalServer(object):
         self._frame_service_budget = None if self.mode == "unlimited" else int(self.rate)
         self._frame_served = 0
         self._event("frame_open")
-        self._serve(shadow_observer, shadow_context_provider)
+        self._serve(shadow_observer, shadow_context_provider, suppression_gate, suppression_context_provider)
         return self.take_completed()
 
     def admit(self, channel, frame_id, wire, encoded, wire_digest,
               census_emission=None, semantic_array_raw_bytes=0,
-              shadow_observer=None, shadow_context_provider=None):
+              shadow_observer=None, shadow_context_provider=None,
+              suppression_gate=None, suppression_context_provider=None):
         channel = str(channel)
         frame_id = int(frame_id)
         if channel not in C4_CONSTRAINED_CHANNELS:
@@ -937,16 +995,31 @@ class _C4SharedLogicalServer(object):
         self._items.append(item)
         self._queue.append(item)
         self._event("enqueue", item, bytes_offered=cost)
-        self._serve(shadow_observer, shadow_context_provider)
+        self._serve(shadow_observer, shadow_context_provider, suppression_gate, suppression_context_provider)
+        if item["terminal_disposition"] == "suppressed":
+            return item
         for index, completed in enumerate(self._completed):
             if int(completed["packet_sequence"]) == int(item["packet_sequence"]):
                 return self._completed.pop(index)
         return None
 
-    def _start_next(self, shadow_observer=None, shadow_context_provider=None):
+    def _start_next(self, shadow_observer=None, shadow_context_provider=None,
+                    suppression_gate=None, suppression_context_provider=None):
         if self._in_service is not None or not self._queue:
-            return
+            return False
         self._in_service = self._queue.popleft()
+        if suppression_gate is not None and self._in_service["channel"] == "id_state":
+            if suppression_gate.classify(self._in_service, suppression_context_provider, self._current_frame):
+                item = self._in_service
+                item["terminal_disposition"] = "suppressed"
+                item["terminal_reason"] = "c6_whole_packet_non_applicable"
+                item["terminal_location"] = "selected_pre_service"
+                item["suppressed_service_obligation_bytes"] = int(item["JSON_WIRE_BYTES"])
+                item["remaining_service_bytes"] = 0
+                self._event("suppression", item, terminal_disposition="suppressed",
+                            terminal_reason=item["terminal_reason"], bytes_served=0)
+                self._in_service = None
+                return False
         self._in_service["service_start_frame"] = int(self._current_frame)
         self._event("service_start", self._in_service)
         # This is intentionally after FIFO selection and before the first byte.
@@ -959,6 +1032,7 @@ class _C4SharedLogicalServer(object):
                     shadow_observer._failure("server_observer_boundary", exc)
                 except Exception:
                     pass
+        return True
 
     def _complete_current(self):
         item = self._in_service
@@ -968,11 +1042,16 @@ class _C4SharedLogicalServer(object):
         self._completed.append(item)
         self._in_service = None
 
-    def _serve(self, shadow_observer=None, shadow_context_provider=None):
+    def _serve(self, shadow_observer=None, shadow_context_provider=None,
+               suppression_gate=None, suppression_context_provider=None):
         while self._in_service is not None or self._queue:
             if self.mode == "fifo" and int(self._frame_service_budget) <= 0:
                 return
-            self._start_next(shadow_observer, shadow_context_provider)
+            if self._in_service is None:
+                started = self._start_next(shadow_observer, shadow_context_provider,
+                                           suppression_gate, suppression_context_provider)
+                if not started:
+                    continue
             item = self._in_service
             if int(item["remaining_service_bytes"]) == 0:
                 self._complete_current()
@@ -1062,8 +1141,7 @@ class _C4SharedLogicalServer(object):
                 item["terminal_reason"] = "census_disabled"
                 item["terminal_location"] = "completed"
             consequence = item["terminal_reason"]
-            self._event(
-                "packet_summary", item,
+            updates = dict(
                 bytes_offered=int(item["JSON_WIRE_BYTES"]),
                 bytes_served=int(item["bytes_served_total"]),
                 terminal_disposition=item["terminal_disposition"],
@@ -1075,9 +1153,13 @@ class _C4SharedLogicalServer(object):
                 supplement_terminal_consequence=consequence if item["channel"] == "supplement" else "",
                 terminal_location=item["terminal_location"],
             )
+            if "suppressed_service_obligation_bytes" in item:
+                updates["suppressed_service_obligation_bytes"] = int(item["suppressed_service_obligation_bytes"])
+            self._event("packet_summary", item, **updates)
         byte_conservation = all(
             int(item["JSON_WIRE_BYTES"]) == int(item["bytes_served_total"]) +
-            int(item["remaining_service_bytes"]) for item in self._items)
+            int(item["remaining_service_bytes"]) + int(item.get("suppressed_service_obligation_bytes", 0))
+            for item in self._items)
         frame_conservation = self.mode == "unlimited" or all(
             int(row["R"]) == int(row["bytes_served"]) + int(row["unused_budget"])
             for row in self._frame_summaries)
@@ -1085,7 +1167,7 @@ class _C4SharedLogicalServer(object):
             int(row["unused_budget"]) == 0 or int(row["queue_backlog_bytes"]) == 0
             for row in self._frame_summaries)
         terminal_conservation = all(item["terminal_disposition"] in (
-            "completed_delivered", "completed_expired_or_rejected", "pending_at_end")
+            "completed_delivered", "completed_expired_or_rejected", "pending_at_end", "suppressed")
             for item in self._items)
         packet_identity_authoritative = not self.ledger_enabled or all(
             item["census_emission"] is not None for item in self._items)
@@ -1114,6 +1196,8 @@ class _C4SharedLogicalServer(object):
             "in_service_empty_after_finalization": int(self._in_service is None),
             "ledger_io_failure": self.io_failure,
         }
+        if any("suppressed_service_obligation_bytes" in item for item in self._items):
+            summary["suppressed_service_obligation_bytes"] = sum(int(item.get("suppressed_service_obligation_bytes", 0)) for item in self._items)
         summary["passed"] = int(
             byte_conservation and frame_conservation and work_conserving and
             terminal_conservation and packet_identity_authoritative and not self.io_failure)
@@ -1161,10 +1245,13 @@ class PacketRuntime(object):
         self.delays = _parse_delays(os.environ.get("MIA_ASYNC_CHANNEL_DELAYS", ""))
         self.c4_service_config = _parse_c4_service_config(os.environ.get("MIA_C4_SERVICE_CONFIG", ""))
         self.c5_shadow_config = _parse_c5_shadow_config(os.environ.get("MIA_C5_SHADOW_CONFIG", ""))
+        self.c6_suppression_config = _parse_c6_suppression_config(os.environ.get("MIA_C6_SUPPRESSION_CONFIG", ""))
         if self.c4_service_config["mode"] != "disabled" and any(self.delays.values()):
             raise ValueError("Unlimited/FIFO requires zero exogenous delay for all channels")
         if self.c5_shadow_config["enabled"] and self.c4_service_config["mode"] == "disabled":
             raise ValueError("C5 Shadow requires the C4 shared logical server")
+        if self.c6_suppression_config["enabled"] and self.c4_service_config["mode"] != "fifo":
+            raise ValueError("C6 suppression requires finite C4 FIFO service")
         self._census = _PacketCensusSidecar(
             self.output_dir, self.sequence_name, os.environ.get("MIA_PACKET_CENSUS_RUN_ID", ""),
         )
@@ -1185,6 +1272,11 @@ class PacketRuntime(object):
             self._c5_shadow = _C5ShadowOpportunitySidecar(
                 self.output_dir, self.sequence_name, self.c5_shadow_config["run_id"],
                 self.c5_shadow_config["output_dir"])
+        self._c6_suppression = None
+        if self.c6_suppression_config["enabled"]:
+            self._c6_suppression = _C6SuppressionSidecar(
+                self.c6_suppression_config["output_dir"], self.sequence_name,
+                self.c6_suppression_config["run_id"])
         self.events = []
         self.state_version = 0
         self._packet_version = 0
@@ -1256,7 +1348,13 @@ class PacketRuntime(object):
                 channel, capture_frame, wire, encoded, wire_digest, census_emission,
                 sum(int(np.ascontiguousarray(value).nbytes) for value in census_arrays),
                 self._c5_shadow, shadow_context_provider,
+                self._c6_suppression, shadow_context_provider,
             )
+            if completed is not None and completed["terminal_disposition"] == "suppressed":
+                self._census.terminal(census_emission, "SUPPRESSED", "c6_whole_packet_non_applicable", capture_frame)
+                self._record(channel, capture_frame, capture_frame, packet_action="suppressed",
+                             wire_digest=wire_digest, source_state_version=int(wire["source_state_version"]))
+                return None
             if completed is None:
                 self._record(channel, capture_frame, capture_frame, packet_action="service_queued",
                              delay_frames=0, wire_digest=wire_digest,
@@ -1369,7 +1467,8 @@ class PacketRuntime(object):
         self._current_frame = int(frame_id)
         if self._c4_service is not None:
             context_provider = self._c5_context_provider(rows1, rows2, confirmed_ids)
-            for item in self._c4_service.begin_frame(frame_id, self._c5_shadow, context_provider):
+            for item in self._c4_service.begin_frame(frame_id, self._c5_shadow, context_provider,
+                                                      self._c6_suppression, context_provider):
                 self._queue_sequence += 1
                 queued = (int(frame_id), self._queue_sequence, item["wire"], item["encoded"])
                 if self._census.enabled:
@@ -1591,4 +1690,6 @@ class PacketRuntime(object):
         # Its failure is deliberately not reflected into C4 acceptance fields.
         if self._c5_shadow is not None:
             self._c5_shadow.finalize()
+        if self._c6_suppression is not None:
+            self._c6_suppression.finalize()
         return trace_path, manifest_path
