@@ -120,6 +120,8 @@ def test_run004_shaped_baseline_cli_contract_and_corruptions(tmp_path):
     def dump(path, value):
         path.parent.mkdir(parents=True, exist_ok=True); path.write_text(json.dumps(value, sort_keys=True) + "\n", encoding="utf-8")
     dump(auth, {"run_id": run_id, "issued_for_exact_run": True})
+    auth_hash = hashlib.sha256(auth.read_bytes()).hexdigest()
+    dump(root / "RUN_START.json", {"run_id": run_id, "status": "STARTED", "scientific_cell_count": 4})
     dump(root / "RUN_END.json", {"run_id": run_id, "status": "COMPLETE", "scientific_cell_count": 4})
     end_hash = hashlib.sha256((root / "RUN_END.json").read_bytes()).hexdigest()
     for ordinal, cell in enumerate(module.CELL_ORDER, 1):
@@ -131,18 +133,21 @@ def test_run004_shaped_baseline_cli_contract_and_corruptions(tmp_path):
         seals[cell] = hashlib.sha256(seal.read_bytes()).hexdigest()
         runtime = root / "runtime" / cell / "mia" / "results"
         dump(runtime / "c4_service_ledger_test.jsonl", {"event_type": "service_slice", "channel": "id_state", "packet_id": pid, "bytes_served": 7, "JSON_WIRE_BYTES": 7, "wire_digest": "d"})
+        dump(runtime / "c4_service_summary_test.json", {"passed": True})
         dump(runtime / "packet_census_emissions_test.jsonl", {"record_type": "PACKET_EMISSION", "channel": "id_state", "packet_id": pid, "JSON_WIRE_BYTES": 7, "wire_digest": "d"})
         dump(runtime / "packet_census_terminals_test.jsonl", {"record_type": "PACKET_TERMINAL", "channel": "id_state", "packet_id": pid, "terminal_class": "ARRIVED_ACCEPTED"})
-    first = module.derive_run004(root, tmp_path / "out1", "contract", "plan", auth, run_id, seals, end_hash)
-    second = module.derive_run004(root, tmp_path / "out2", "contract", "plan", auth, run_id, seals, end_hash)
-    assert first["seal"] == second["seal"] and (tmp_path / "out1" / "C6_RUN004_BASELINE_REPORT.md").is_file()
-    with pytest.raises(module.BaselineError): module.derive_run004(root, root / "inside", "contract", "plan", auth, run_id, seals, end_hash)
-    with pytest.raises(module.BaselineError): module.derive_run004(root, tmp_path / "out1", "contract", "plan", auth, run_id, seals, end_hash)
-    with pytest.raises(module.BaselineError): module.derive_run004(root, tmp_path / "bad", "contract", "plan", auth, run_id, {**seals, module.CELL_ORDER[0]: "bad"}, end_hash)
+        dump(runtime / "packet_census_validation_test.json", {"passed": True, "census_status": "CENSUS_COMPLETE"})
+        dump(runtime / "async_packet_manifest_test.json", {"sequence_name": str(ordinal)})
+    first = module.derive_run004(root, tmp_path / "out1", "contract", "plan", auth, run_id, seals, end_hash, auth_hash)
+    second = module.derive_run004(root, tmp_path / "out2", "contract", "plan", auth, run_id, seals, end_hash, auth_hash)
+    assert first["seal"] == second["seal"] and (tmp_path / "out1" / "C6_RUN004_BASELINE_DERIVATION_REPORT.md").is_file()
+    with pytest.raises(module.BaselineError): module.derive_run004(root, root / "inside", "contract", "plan", auth, run_id, seals, end_hash, auth_hash)
+    with pytest.raises(module.BaselineError): module.derive_run004(root, tmp_path / "out1", "contract", "plan", auth, run_id, seals, end_hash, auth_hash)
+    with pytest.raises(module.BaselineError): module.derive_run004(root, tmp_path / "bad", "contract", "plan", auth, run_id, {**seals, module.CELL_ORDER[0]: "bad"}, end_hash, auth_hash)
     def corrupt(name, change):
         clone = tmp_path / name; shutil.copytree(root, clone); clone_auth = tmp_path / (name + ".auth"); shutil.copy2(auth, clone_auth)
         change(clone, clone_auth)
-        with pytest.raises(module.BaselineError): module.derive_run004(clone, tmp_path / (name + ".out"), "contract", "plan", clone_auth, run_id, seals, end_hash)
+        with pytest.raises(module.BaselineError): module.derive_run004(clone, tmp_path / (name + ".out"), "contract", "plan", clone_auth, run_id, seals, end_hash, auth_hash)
     cell = module.CELL_ORDER[0]
     corrupt("missing-shadow", lambda r, a: next((r / "shadow" / cell).glob("c5_shadow_records_*")).unlink())
     corrupt("duplicate-shadow", lambda r, a: shutil.copy2(next((r / "shadow" / cell).glob("c5_shadow_records_*")), r / "shadow" / cell / "c5_shadow_records_duplicate.jsonl"))

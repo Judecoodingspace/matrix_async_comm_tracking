@@ -17,7 +17,9 @@ CELL_ORDER = ("pair_23__FIFO_mild", "pair_23__FIFO_strong", "pair_44__FIFO_moder
 RUN_ID = "c5_shadow_census_20260914_004"
 CONTRACT_AUTHORITY = "989ee15285866b119a643f1f1ccdf52d2d02009f"
 PLAN_AUTHORITY = "93f44de70c4540afa0f3044aa066a0ed894648e9"
+IMPLEMENTATION_SHA = "1e440166554e04d219291b1c3c6a8a1f5f6b88ff"
 RUN_END_SHA256 = "d0941f0c487c0e63324f999d9cdb2101f7013fa15b229459b09f272bdd3f9a05"
+AUTHORIZATION_SHA256 = "5406ae61a69b049f51b8ba6a48687e3c68041459ca22f1474891a0530672f10a"
 SHADOW_SEAL_SHA256 = {"pair_23__FIFO_mild": "d46e0a910ecb2cbe0cce5cb5131ee6dea010fdd34d8194a2dbab562dca0688b9", "pair_23__FIFO_strong": "bd53485bcdd93b7b276426900360d7341333bf960ad714f8776831473c098226", "pair_44__FIFO_moderate": "ec530381f35090812dd60130246c367e2873b72c337a849fd10c3b63e407deab", "pair_66__FIFO_mild": "063ba60e148d04b90bf9fbc60353e685d0caf2d38fc45ec10e28b633e9d435a9"}
 
 
@@ -116,8 +118,12 @@ def derive_cell(shadow_rows, ledger_rows, emissions, census_rows):
         if key in terminals:
             raise BaselineError("duplicate id-state census terminal")
         terminals[key] = row
-    emitted = {packet_key(row.get("packet_id")): row for row in emissions
-               if row.get("record_type") == "PACKET_EMISSION" and row.get("channel") == "id_state"}
+    emitted = {}
+    for row in emissions:
+        if row.get("record_type") != "PACKET_EMISSION" or row.get("channel") != "id_state": continue
+        key = packet_key(row.get("packet_id"))
+        if key in emitted: raise BaselineError("duplicate census emission packet identity")
+        emitted[key] = row
     # Started/classified packets are a subset: horizon-pending emissions need
     # not have reached TRUE first service and therefore need no Shadow row.
     if not set(classes) <= set(emitted) or not set(classes) <= set(terminals):
@@ -142,13 +148,14 @@ def _raw_sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def _verify_authority(source, authorization_path, expected_run_id=RUN_ID, expected_seals=SHADOW_SEAL_SHA256, expected_run_end=RUN_END_SHA256):
+def _verify_authority(source, authorization_path, expected_run_id=RUN_ID, expected_seals=SHADOW_SEAL_SHA256, expected_run_end=RUN_END_SHA256, expected_authorization=AUTHORIZATION_SHA256):
     run_end = source / "RUN_END.json"
     if not run_end.is_file() or _raw_sha256(run_end) != expected_run_end:
         raise BaselineError("RUN_END authority mismatch")
     end = _strict_json(run_end.read_text(encoding="utf-8"))
     if end.get("run_id") != expected_run_id or end.get("status") != "COMPLETE" or end.get("scientific_cell_count") != 4:
         raise BaselineError("RUN_END status mismatch")
+    if _raw_sha256(authorization_path) != expected_authorization: raise BaselineError("Run004 authorization hash mismatch")
     auth = _strict_json(Path(authorization_path).read_text(encoding="utf-8"))
     if auth.get("run_id") != expected_run_id or not auth.get("issued_for_exact_run"):
         raise BaselineError("Run004 authorization mismatch")
@@ -158,8 +165,17 @@ def _verify_authority(source, authorization_path, expected_run_id=RUN_ID, expect
             raise BaselineError("Shadow seal authority mismatch: " + cell)
 
 
+def _inventory(path, role, cell=""):
+    path = Path(path)
+    try: relative = str(path.resolve().relative_to(Path.cwd().resolve()))
+    except ValueError: relative = "external/" + path.name
+    return {"cell": str(cell), "artifact_role": str(role), "relative_path": relative,
+            "raw_sha256": _raw_sha256(path), "byte_size": path.stat().st_size}
+
+
 def derive_run004(run004_root, output_dir, contract_sha, plan_sha, authorization_path=None,
-                  expected_run_id=RUN_ID, expected_seals=SHADOW_SEAL_SHA256, expected_run_end=RUN_END_SHA256):
+                  expected_run_id=RUN_ID, expected_seals=SHADOW_SEAL_SHA256, expected_run_end=RUN_END_SHA256,
+                  expected_authorization=AUTHORIZATION_SHA256):
     source, target = Path(run004_root).resolve(), Path(output_dir).resolve()
     if not source.is_dir():
         raise BaselineError("Run004 evidence root does not exist")
@@ -171,26 +187,28 @@ def derive_run004(run004_root, output_dir, contract_sha, plan_sha, authorization
         raise BaselineError("Contract/Plan authority mismatch")
     if authorization_path is None:
         authorization_path = Path(__file__).resolve().parents[1] / "summary_md/communication/c5_shadow_census_formal_execution_authorization/C5_SHADOW_CENSUS_EXECUTION_AUTHORIZATION_RUN_004.json"
-    _verify_authority(source, authorization_path, expected_run_id, expected_seals, expected_run_end)
+    _verify_authority(source, authorization_path, expected_run_id, expected_seals, expected_run_end, expected_authorization)
+    inventory = [_inventory(authorization_path, "run004_authorization"), _inventory(source / "RUN_START.json", "run_start"), _inventory(source / "RUN_END.json", "run_end")]
     cells = []
     for cell in CELL_ORDER:
         shadow_root, runtime_root = source / "shadow" / cell, source / "runtime" / cell
         if not shadow_root.is_dir() or not runtime_root.is_dir(): raise BaselineError("missing required cell: {}".format(cell))
-        cells.append({"cell": cell, **derive_cell(
-            _jsonl(_find_one(shadow_root, "c5_shadow_records_*.jsonl")),
-            _jsonl(_find_one(runtime_root, "**/c4_service_ledger_*.jsonl")),
-            _jsonl(_find_one(runtime_root, "**/packet_census_emissions_*.jsonl")),
-            _jsonl(_find_one(runtime_root, "**/packet_census_terminals_*.jsonl")))})
-    context = {"schema_version": "C6_RUN004_BASELINE_CONTEXT_V1", "contract_sha": str(contract_sha),
-               "plan_sha": str(plan_sha), "cell_order": list(CELL_ORDER), "source_evidence_root_name": source.name}
+        files = {"shadow_records": _find_one(shadow_root, "c5_shadow_records_*.jsonl"), "shadow_seal": _find_one(shadow_root, "c5_shadow_seal_*.json"), "service_ledger": _find_one(runtime_root, "**/c4_service_ledger_*.jsonl"), "service_summary": _find_one(runtime_root, "**/c4_service_summary_*.json"), "census_emissions": _find_one(runtime_root, "**/packet_census_emissions_*.jsonl"), "census_terminals": _find_one(runtime_root, "**/packet_census_terminals_*.jsonl"), "census_validation": _find_one(runtime_root, "**/packet_census_validation_*.json"), "runtime_manifest": _find_one(runtime_root, "**/async_packet_manifest_*.json")}
+        summary, validation = _strict_json(files["service_summary"].read_text()), _strict_json(files["census_validation"].read_text())
+        if not summary.get("passed") or validation.get("census_status") != "CENSUS_COMPLETE" or not validation.get("passed"):
+            raise BaselineError("frozen service/census validation failure")
+        inventory.extend(_inventory(path, role, cell) for role, path in files.items())
+        cells.append({"cell": cell, **derive_cell(_jsonl(files["shadow_records"]), _jsonl(files["service_ledger"]), _jsonl(files["census_emissions"]), _jsonl(files["census_terminals"]))})
+    context = {"schema_version": "C6_RUN004_BASELINE_CONTEXT_V1", "implementation_sha": IMPLEMENTATION_SHA, "contract_sha": str(contract_sha),
+               "plan_sha": str(plan_sha), "run004_authorization_raw_sha256": _raw_sha256(authorization_path), "cell_order": list(CELL_ORDER), "consumed_files": sorted(inventory, key=lambda x: (x["cell"], x["artifact_role"], x["relative_path"]))}
     results = {"schema_version": "C6_RUN004_BASELINE_RESULTS_V1", "cells": cells,
                "total_serviceable_id_state_serviced_bytes": sum(x["serviceable_id_state_serviced_bytes"] for x in cells), "status": "PASS"}
-    payload = {"context_sha256": _sha(context), "results_sha256": _sha(results), "cell_order": list(CELL_ORDER), "status": "PASS"}
+    payload = {"context_sha256": _sha(context), "results_sha256": _sha(results), "cell_result_digests": [_sha(row) for row in cells], "consumed_file_inventory_sha256": _sha(context["consumed_files"]), "status": "PASS"}
     seal = {"schema_version": "C6_RUN004_BASELINE_SEAL_V1", "sealed_payload": payload, "seal_sha256": _sha(payload)}
     target.mkdir(parents=True, exist_ok=False)
-    for name, value in (("C6_RUN004_BASELINE_CONTEXT.json", context), ("C6_RUN004_BASELINE_RESULTS.json", results), ("C6_RUN004_BASELINE_SEAL.json", seal)):
+    for name, value in (("C6_RUN004_BASELINE_DERIVATION_CONTEXT.json", context), ("C6_RUN004_BASELINE_DERIVATION_RESULTS.json", results), ("C6_RUN004_BASELINE_DERIVATION_SEAL.json", seal)):
         (target / name).write_text(_canonical(value) + "\n", encoding="utf-8")
-    (target / "C6_RUN004_BASELINE_REPORT.md").write_text("# C6 Run004 Serviceable Baseline\n\nMechanical derivation status: PASS.\n", encoding="utf-8")
+    (target / "C6_RUN004_BASELINE_DERIVATION_REPORT.md").write_text("# C6 Run004 Serviceable Baseline Derivation\n\nMechanical derivation status: PASS.\n", encoding="utf-8")
     return {"context": context, "results": results, "seal": seal}
 
 
