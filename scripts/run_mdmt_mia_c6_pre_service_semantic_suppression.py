@@ -196,6 +196,42 @@ def validate_suppression_consequences(decisions, ledger, terminals):
     return {"suppressed_packets": len(suppressed), "status": "PASS"}
 
 
+def validate_cell_artifacts(cell, emissions, terminals, decisions, ledger):
+    """Per-cell mechanical gate; inputs are already parsed evidence records."""
+    if str(cell) not in CELL_ORDER:
+        raise GateError("unknown C6 cell")
+    census = validate_packet_census(emissions, terminals)
+    suppression = validate_suppression_consequences(decisions, ledger, terminals)
+    return {"cell": str(cell), "packet_census": census, "suppression": suppression,
+            "status": "PASS"}
+
+
+def aggregate_cells(cell_reports):
+    if not isinstance(cell_reports, (list, tuple)) or tuple(row.get("cell") for row in cell_reports) != CELL_ORDER:
+        raise GateError("cell completeness/order mismatch")
+    if any(row.get("status") != "PASS" for row in cell_reports):
+        raise GateError("cell validation failure")
+    return {"schema_version": "C6_RUN_AGGREGATE_V1", "cell_order": list(CELL_ORDER),
+            "suppressed_packets": sum(int(row["suppression"]["suppressed_packets"]) for row in cell_reports), "status": "PASS"}
+
+
+def controlled_environment():
+    """Minimal explicit runtime environment capture for a later authorized launcher."""
+    return {"PYTHONHASHSEED": os.environ.get("PYTHONHASHSEED", ""), "python": platform.python_version(),
+            "numpy": np.__version__}
+
+
+def write_terminal_record(output_root, run_id, state, detail=""):
+    if state not in ("RUN_END", "RUN_FAILED") or not isinstance(run_id, str) or not run_id:
+        raise GateError("terminal record schema mismatch")
+    path = Path(output_root) / "C6_RUN_TERMINAL.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = {"schema_version": "C6_RUN_TERMINAL_V1", "run_id": run_id, "state": state, "detail": str(detail)}
+    with path.open("x", encoding="utf-8") as handle:
+        handle.write(_canonical(record) + "\n")
+    return record
+
+
 def validate_authorization(authorization):
     value = _strict_object(authorization)
     required = {"contract_sha", "plan_sha", "implementation_sha", "generated_variant_manifest_sha", "baseline_derivation_seal_sha", "cells", "output_root"}

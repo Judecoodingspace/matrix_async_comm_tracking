@@ -212,3 +212,18 @@ def test_suppression_consequence_matrix_rejects_all_normal_lifecycle(tmp_path):
         runner.validate_suppression_consequences(decision, [], [{"packet_id": pid, "terminal_class": "PENDING_AT_END"}])
     with pytest.raises(runner.GateError):
         runner.validate_packet_census([{"packet_id": pid}], terminal + terminal)
+
+
+def test_runner_cell_aggregation_and_exclusive_terminal_record(tmp_path):
+    runner = _load("run_mdmt_mia_c6_pre_service_semantic_suppression.py")
+    pid = {"census_run_id": "r", "sequence_name": "s", "runtime_instance_id": "i", "emission_ordinal": 1}
+    emissions, terminals = [{"packet_id": pid}], [{"packet_id": pid, "terminal_class": "SUPPRESSED"}]
+    decisions = [{"packet_id": pid, "whole_packet_currently_non_applicable": True}]
+    report = runner.validate_cell_artifacts(runner.CELL_ORDER[0], emissions, terminals, decisions, [])
+    aggregate = runner.aggregate_cells([report, *[
+        {"cell": cell, "suppression": {"suppressed_packets": 0}, "status": "PASS"}
+        for cell in runner.CELL_ORDER[1:]]])
+    assert aggregate["status"] == "PASS"
+    assert runner.write_terminal_record(tmp_path, "r", "RUN_END")["state"] == "RUN_END"
+    with pytest.raises(FileExistsError):
+        runner.write_terminal_record(tmp_path, "r", "RUN_END")
