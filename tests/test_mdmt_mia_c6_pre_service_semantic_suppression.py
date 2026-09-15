@@ -2,6 +2,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 
 import numpy as np
 import pytest
@@ -78,11 +79,20 @@ def test_t12_synthetic_baseline_fixture_only():
 
 
 def test_t13_disabled_reference_is_base_style_and_has_no_c6_keys(tmp_path):
-    one, _ = _server(tmp_path / "one", False)
+    base_source = subprocess.check_output(
+        ["git", "show", "9a511c3ce300b5dedb1f2e970f131ddd2522b0c0:src/tracking/mdmt_mia_async_deadline_runtime.py"],
+        cwd=ROOT, text=True)
+    base_path = tmp_path / "frozen_base_runtime.py"
+    base_path.write_text(base_source, encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("frozen_c6_base", base_path)
+    base = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(base)
+    one = base._C4SharedLogicalServer("fifo", 10000, tmp_path / "one", "s", "r", "FIFO_strong", "23")
+    one.begin_frame(0)
     two, _ = _server(tmp_path / "two", False)
     wire = _wire(1, confirmed=(1,))
-    for server in (one, two):
-        server.admit("id_state", 0, wire, json.dumps(wire), "z")
+    one.admit("id_state", 0, wire, json.dumps(wire), "z")
+    two.admit("id_state", 0, wire, json.dumps(wire), "z")
     assert one.normalized_events() == two.normalized_events()
     assert all("suppressed_service_obligation_bytes" not in row for row in one._events)
 
