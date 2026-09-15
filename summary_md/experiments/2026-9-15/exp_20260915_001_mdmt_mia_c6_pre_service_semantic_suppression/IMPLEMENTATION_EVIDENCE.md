@@ -25,18 +25,28 @@ evidence-path corrections in the C5 runner/test path.
 - A suppressible packet receives `suppressed` / `SUPPRESSED`, zero served and
   remaining bytes, a suppressed-obligation byte partition, no completion path,
   and unchanged same-frame budget.
+- The server owns a bounded suppressed-item drain. `PacketRuntime` drains it
+  immediately after `admit()` and once per `begin_frame()`, writing exactly one
+  packet-census `SUPPRESSED` terminal at the observed terminal transition.
 - All non-suppressed work follows the common frozen service-start path.
-- Added strict MVE-validity/Formal-control schema separation; Formal builder
-  has no science-artifact argument or scientific result field.
-- Added bounded G2 dependency-manifest writer and synthetic baseline fixture
-  helper. Neither accesses Run004.
+- Added a read-only baseline-derivation CLI with canonical packet joins,
+  reconciliation, exclusive output creation, and context/results/seal/report.
+  It has not been pointed at Run004.
+- Added strict authorization, packet-census and suppression-consequence gates,
+  MVE validity/science schemas, Formal dry-run input separation, and run seal
+  helpers. The Formal builder has no science-artifact argument.
+- Added the deterministic tiny runtime fixture and the versioned suppression
+  decision JSONL/seal writer.
 
 ## G2 and generated-source binding preparation
 
-G2 runtime code calls the existing `_c5_context_provider` with the current
-`_current_frame`; it therefore binds current treatment rows, confirmed IDs,
-`_applied_id_map`, and `_last_id_packet_version` rather than a hand-built
-snapshot. Qualification-facing manifest schema has strict region/replay keys.
+G2 independently loads candidate runtime source, hashes the bounded semantic
+regions (including `_c5_context_provider`), compares them to the frozen base,
+then executes the real provider plus predicate synthetic replay before it can
+write `C6_G2_DEPENDENCY_MANIFEST_V2`. Caller-supplied hashes or PASS status are
+not accepted. The manifest is a caller-selected exclusive path; MVE artifacts
+are strictly `mve/C6_MVE_VALIDITY.json` and `mve/C6_MVE_SCIENCE.json` under an
+authorized output root.
 
 The identified future generated-source base root is:
 
@@ -52,11 +62,14 @@ E2E, baseline derivation, MVE, and Formal remain separately unauthorized.
 ## Test evidence
 
 ```text
-C6_FOCUSED = 9 passed (T1–T17 assertions)
-C4_SERVICE_REGRESSION = 20 passed
-C5_SHADOW_ORACLE_AND_PARITY = 22 passed
-C5_EXECUTION_GATE = 40 passed
-TOTAL = 91 passed
+C6 focused tests cover immediate and queued/cross-frame census terminals,
+current-state/decoy independence, true-first-service queue timing, sticky
+service classification, byte reconciliation failures, G2 negative failures,
+role metadata independence, disabled-path base parity, and suppression
+consequence rejection. They do not claim an end-to-end qualification.
+
+The exact corrective test counts are recorded only after this revision's
+authorized test commands complete.
 ```
 
 No real dataset, GPU scientific execution, Run004 output, tracking metric, or

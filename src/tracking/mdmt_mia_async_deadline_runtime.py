@@ -251,6 +251,34 @@ class _C6SuppressionSidecar(object):
         with path.open("x", encoding="utf-8") as handle:
             for row in self.records:
                 handle.write(_canonical_json(row) + "\n")
+        packet_keys = [_canonical_json(row["packet_id"]) for row in self.records]
+        if len(packet_keys) != len(set(packet_keys)):
+            raise ValueError("duplicate C6 decision packet identity at seal")
+        suppressed = [row for row in self.records if row["whole_packet_currently_non_applicable"]]
+        payload = {
+            "schema_version": "C6_SUPPRESSION_DECISION_SEAL_V1",
+            "run_id": self.run_id,
+            "sequence_name": self.sequence_name,
+            "runtime_instance_ids": sorted({str(row["packet_id"].get("runtime_instance_id", "not_explicit"))
+                                             for row in self.records}),
+            "decision_record_count": len(self.records),
+            "unique_packet_id_count": len(set(packet_keys)),
+            "ordered_decision_records_sha256": hashlib.sha256(
+                "\n".join(_canonical_json(row) for row in self.records).encode("utf-8")).hexdigest(),
+            "predicate_authority": "_classify_whole_packet_currently_non_applicable",
+            "g2_authority": "C6_G2_DEPENDENCY_MANIFEST_V2",
+            "suppressed_packet_count": len(suppressed),
+            "serviceable_packet_count": len(self.records) - len(suppressed),
+            "suppressed_wire_bytes": sum(int(row["JSON_WIRE_BYTES"]) for row in suppressed),
+            "serviceable_wire_bytes": sum(int(row["JSON_WIRE_BYTES"]) for row in self.records if row not in suppressed),
+            "status": "PASS",
+        }
+        seal = {"schema_version": "C6_SUPPRESSION_DECISION_SEAL_V1", "sealed_payload": payload,
+                "seal_sha256": hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()}
+        seal_path = self.output_dir / ("c6_suppression_seal_" + self.sequence_name + ".json")
+        with seal_path.open("x", encoding="utf-8") as handle:
+            handle.write(_canonical_json(seal) + "\n")
+        return seal
 
 
 def _snapshot_c5_receiver_state(frame, packet_id, rows1, rows2, confirmed_ids, applied_id_map, last_version):
@@ -843,6 +871,7 @@ class _C4SharedLogicalServer(object):
         self._queue = deque()
         self._in_service = None
         self._completed = []
+        self._suppressed = []
         self._items = []
         self._events = []
         self._frame_summaries = []
@@ -1018,6 +1047,7 @@ class _C4SharedLogicalServer(object):
                 item["remaining_service_bytes"] = 0
                 self._event("suppression", item, terminal_disposition="suppressed",
                             terminal_reason=item["terminal_reason"], bytes_served=0)
+                self._suppressed.append(item)
                 self._in_service = None
                 return False
         self._in_service["service_start_frame"] = int(self._current_frame)
@@ -1074,6 +1104,11 @@ class _C4SharedLogicalServer(object):
         completed = list(self._completed)
         self._completed = []
         return completed
+
+    def take_suppressed(self):
+        suppressed = list(self._suppressed)
+        self._suppressed = []
+        return suppressed
 
     def mark_terminal(self, item, disposition, reason, semantic_consequence=""):
         if item["terminal_disposition"]:
@@ -1350,10 +1385,13 @@ class PacketRuntime(object):
                 self._c5_shadow, shadow_context_provider,
                 self._c6_suppression, shadow_context_provider,
             )
+            for suppressed in self._c4_service.take_suppressed():
+                self._census.terminal(suppressed["census_emission"], "SUPPRESSED",
+                                      "c6_whole_packet_non_applicable", capture_frame)
+                self._record("id_state", suppressed["emission_frame"], capture_frame,
+                             packet_action="suppressed", wire_digest=suppressed["wire_digest"],
+                             source_state_version=int(suppressed["wire"]["source_state_version"]))
             if completed is not None and completed["terminal_disposition"] == "suppressed":
-                self._census.terminal(census_emission, "SUPPRESSED", "c6_whole_packet_non_applicable", capture_frame)
-                self._record(channel, capture_frame, capture_frame, packet_action="suppressed",
-                             wire_digest=wire_digest, source_state_version=int(wire["source_state_version"]))
                 return None
             if completed is None:
                 self._record(channel, capture_frame, capture_frame, packet_action="service_queued",
@@ -1474,6 +1512,12 @@ class PacketRuntime(object):
                 if self._census.enabled:
                     queued += (item["census_emission"],)
                 heapq.heappush(self._queues[item["channel"]], queued)
+            for suppressed in self._c4_service.take_suppressed():
+                self._census.terminal(suppressed["census_emission"], "SUPPRESSED",
+                                      "c6_whole_packet_non_applicable", frame_id)
+                self._record("id_state", suppressed["emission_frame"], frame_id,
+                             packet_action="suppressed", wire_digest=suppressed["wire_digest"],
+                             source_state_version=int(suppressed["wire"]["source_state_version"]))
         self._current_local_ready = {1: int(self.delays["local"]) == 0, 2: int(self.delays["local"]) == 0}
         for wire, census_emission in self._drain("local", frame_id):
             self.expired_count += 1
