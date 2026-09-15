@@ -1,3 +1,3 @@
-# C6 Base Source Authority Closure
+# C6 Base Source Authority Closure Corrective
 
-Status: PASS. The base tree is unversioned and content-addressed by the attached canonical inventories.
+Status: PASS. Literal full-tree authority covers all 490 included base-tree files.
