@@ -2,6 +2,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import shutil
 import subprocess
 
 import numpy as np
@@ -136,6 +137,16 @@ def test_run004_shaped_baseline_cli_contract_and_corruptions(tmp_path):
     with pytest.raises(module.BaselineError): module.derive_run004(root, root / "inside", "contract", "plan", auth, run_id, seals, end_hash)
     with pytest.raises(module.BaselineError): module.derive_run004(root, tmp_path / "out1", "contract", "plan", auth, run_id, seals, end_hash)
     with pytest.raises(module.BaselineError): module.derive_run004(root, tmp_path / "bad", "contract", "plan", auth, run_id, {**seals, module.CELL_ORDER[0]: "bad"}, end_hash)
+    def corrupt(name, change):
+        clone = tmp_path / name; shutil.copytree(root, clone); clone_auth = tmp_path / (name + ".auth"); shutil.copy2(auth, clone_auth)
+        change(clone, clone_auth)
+        with pytest.raises(module.BaselineError): module.derive_run004(clone, tmp_path / (name + ".out"), "contract", "plan", clone_auth, run_id, seals, end_hash)
+    cell = module.CELL_ORDER[0]
+    corrupt("missing-shadow", lambda r, a: next((r / "shadow" / cell).glob("c5_shadow_records_*")).unlink())
+    corrupt("duplicate-shadow", lambda r, a: shutil.copy2(next((r / "shadow" / cell).glob("c5_shadow_records_*")), r / "shadow" / cell / "c5_shadow_records_duplicate.jsonl"))
+    corrupt("missing-ledger", lambda r, a: next((r / "runtime" / cell).glob("**/c4_service_ledger_*")).unlink())
+    corrupt("wrong-run-end", lambda r, a: dump(r / "RUN_END.json", {"run_id": run_id, "status": "FAILED", "scientific_cell_count": 4}))
+    corrupt("wrong-authorization", lambda r, a: dump(a, {"run_id": "wrong", "issued_for_exact_run": True}))
 
 
 def test_t13_disabled_reference_is_base_style_and_has_no_c6_keys(tmp_path):
