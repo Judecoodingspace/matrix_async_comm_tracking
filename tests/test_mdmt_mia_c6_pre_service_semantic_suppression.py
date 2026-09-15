@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from tracking.mdmt_mia_async_deadline_runtime import (
-    _C4SharedLogicalServer, _C6SuppressionSidecar, _snapshot_c5_receiver_state,
+    PacketRuntime, _C4SharedLogicalServer, _C6SuppressionSidecar, _snapshot_c5_receiver_state,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -114,4 +114,8 @@ def test_t17_dependency_manifest_and_real_provider(tmp_path):
     digest = hashlib.sha256(b"fixture").hexdigest()
     out = runner.write_dependency_manifest(tmp_path / "g2.json", [{"region_id": "_c5_context_provider", "source_span": "1244", "sha256": digest}],
                                            {"fixture_id": "real_provider", "expected_digest": digest, "actual_digest": digest, "status": "PASS"})
-    assert out["status"] == "PASS" and (tmp_path / "g2.json").is_file()
+    runtime = PacketRuntime(tmp_path, "m", "s")
+    runtime._current_frame = 7
+    rows = np.empty((0, 6), dtype=np.float32)
+    snapshot = runtime._c5_context_provider(rows, rows, [3])({"packet": "p"}, runtime._current_frame)
+    assert out["status"] == "PASS" and (tmp_path / "g2.json").is_file() and snapshot.frame == 7
