@@ -32,7 +32,7 @@ C5_RUN004_AUTHORITY_SHA = 09747e7de973b8a08f0cd08c97e3649fc2b8496b
 C5_APPLICABILITY_PREDICATE_PATH = src/tracking/mdmt_mia_async_deadline_runtime.py
 C5_APPLICABILITY_PREDICATE_FUNCTION = _classify_whole_packet_currently_non_applicable
 C5_APPLICABILITY_PREDICATE_SHA256 = b870c9fe4364d01cd1f8c7ce59240d6fa97d2ce65caff809afef3f1f9c6c0a66
-C5_PREDICATE_EXACT_SOURCE_SPAN_SHA256 = 7736b2efed023056ae215e2d7ea6ef13f54cd80d18f0dbe500b317a4ceff9e39
+C5_PREDICATE_EXACT_SOURCE_SPAN_SHA256 = 2d8197cae9678286160c1a4e7a6e04fc4d6852800c13f3de001fd2509cee77ce
 
 TRUE_FIRST_SERVICE_PATH = src/tracking/mdmt_mia_async_deadline_runtime.py
 TRUE_FIRST_SERVICE_FUNCTION = _C4SharedLogicalServer._start_next
@@ -41,12 +41,44 @@ SERVICE_LEDGER_PATH = <PacketRuntime.output_dir>/c4_service_ledger_<sequence_nam
 PACKET_LIFECYCLE_REPRESENTATION = _C4SharedLogicalServer item dict plus C4 ledger and packet-census terminal records
 ```
 
-The contract's predicate fingerprint is the raw SHA-256 of the entire frozen
-C5 runtime file. Because C6 must change that file, implementation qualification
-must additionally compare the exact source span of the predicate at lines
-204–246 against `C5_PREDICATE_EXACT_SOURCE_SPAN_SHA256`; a changed whole-file
-hash alone is expected and must not be mistaken for permission to alter the
-predicate.
+`846350036f4169b0715e4d33caaa54c947a5e8e7` is the frozen C5 production
+implementation provenance commit: it introduced the runtime bytes that carry
+the C5 predicate and service behavior. `9a511c3ce300b5dedb1f2e970f131ddd2522b0c0`
+is its descendant execution-enabled candidate. Between them, it adds the
+generated-source qualification evidence and later cell-local Shadow
+evidence-path validation changes to the C5 runner and its execution-gate test.
+Git comparison confirms that
+`src/tracking/mdmt_mia_async_deadline_runtime.py` is byte-identical at those
+two commits. Thus `9a511c3...` is the actual C6 implementation base authority:
+it is the exact Run004-capable, validator-corrected execution path from which
+C6 must branch. `8463500...` remains the production-byte provenance authority
+for the frozen runtime and predicate. Binding the implementation to `9a511c3...`
+does not change the predicate, runtime bytes, or production semantics; it
+retains the later validated execution-path corrections.
+
+The Contract's predicate fingerprint is the raw SHA-256 of the entire frozen
+C5 runtime file. Since C6 will legitimately change that file, qualification
+must bind a deliberately small transitive semantic dependency manifest, not the
+predicate text alone. The reviewed source regions and current raw hashes are:
+
+| Dependency | Reviewed source range | Raw SHA-256 |
+| --- | --- | --- |
+| `_array` | lines 40–41 | `4d12871b8640c596b848ce750d65b594876a7ae4768c5db11e1699717a831308` |
+| `_C5ShadowReceiverSnapshot` | lines 175–189 | `4b141bab2b64e095aeae9045f3f9d17afd49eba87b96dd73af9f19d1cc66e939` |
+| `_C5ShadowPacketResult` | lines 192–197 | `d0b8d60ec4df316cc8e1c96de9f954644dd65b83faf8177b98d6dc098cbf8415` |
+| `_snapshot_c5_receiver_state` | lines 200–201 | `381485c5dfaffb1c6814c66af58963140ebb6bd43dd810d93e870f332fed82b8` |
+| `_classify_whole_packet_currently_non_applicable` | lines 204–245 | `2d8197cae9678286160c1a4e7a6e04fc4d6852800c13f3de001fd2509cee77ce` |
+
+The predicate source range is exactly lines 204–245; the digest includes the
+terminating newline of line 245 and no blank separator line. The predicate has
+no repository-level constants or enums beyond its own exact literal channel and
+reason symbols; this absence is part of the dependency manifest. The manifest
+also records the standard-library `copy.deepcopy` and `types.MappingProxyType`
+resolution plus the pinned NumPy/Python environment used by `_array`. It is a
+fixed five-region map plus environment provenance, not a generalized
+dependency-tracking framework. Qualification requires both exact hashes and an
+independent frozen-fixture behavioral replay. A changed whole-file hash alone
+is expected and never permits dependency drift or predicate substitution.
 
 ### 1.2 Frozen Run004 baseline authority
 
@@ -72,6 +104,70 @@ Its runtime, entry, and manifest fingerprints are respectively
 `b870c9fe...c0a66`, `f7113f3d...d5316`, and `02f2f001...e224` as recorded by
 Q5. C6 must create a new immutable generated-author variant; it must never
 overwrite that C5 directory.
+
+### 1.2.1 C6 generated-author variant binding
+
+C6 materializes its generated-author source with the existing
+`scripts/prepare_mdmt_mia_async_packet_variant.py:patch_variant()` builder.
+The builder copies the approved, pinned packetized-active-sync source tree and
+materializes these exact files in the exclusive C6 destination:
+
+```text
+demo/supplement_MIA.py
+demo/utils/async_deadline_runtime.py     # copied from the qualified C6 repository runtime
+demo/utils/common.py
+demo/utils/supplement.py
+mmtrack/models/mot/byte_track.py
+mmtrack/models/__init__.py
+mmtrack/apis/__init__.py
+async_deadline_manifest.json             # generated last, exclusive creation
+```
+
+The planned invocation shape, after a C6 implementation candidate exists, is:
+
+```bash
+python scripts/prepare_mdmt_mia_async_packet_variant.py \
+  --copy-source \
+  --source-root <pinned-approved-packetized-active-sync-source-root> \
+  --variant-root /mnt/data/yzm/experiments/mdmt_mia_official/variants/c6_pre_service_semantic_suppression_<candidate-sha> \
+  --runtime-source src/tracking/mdmt_mia_async_deadline_runtime.py
+```
+
+`<candidate-sha>` is the full or unambiguous short C6 implementation SHA;
+the runner accepts exactly one resolved absolute root under the `variants/`
+parent. Existing destination, symlink, missing source, altered builder patch
+geometry, source-tree hash mismatch, runtime hash mismatch, manifest omission,
+or manifest/file-hash mismatch is a collision/integrity failure. No overwrite,
+repair-in-place, or reuse of a C5 path is permitted.
+
+The existing builder's `async_deadline_manifest.json` records `variant_root`,
+`base_variant`, `delivery`, its complete `changed_files` list, and raw hashes
+for `demo/supplement_MIA.py`, `demo/utils/async_deadline_runtime.py`,
+`mmtrack/models/mot/byte_track.py`, `mmtrack/models/__init__.py`, and
+`mmtrack/apis/__init__.py`. The C6 generated-source context supplements this
+native manifest—without changing the builder—by binding the approved
+base-source identity/hash, builder script hash, C6 repository runtime hash,
+and raw hashes for every materialized file listed above, including
+`demo/utils/common.py` and `demo/utils/supplement.py`. A C6 generated-source
+context and seal are then exclusively written as:
+
+```text
+summary_md/communication/c6_generated_author_source_binding/
+  C6_GENERATED_AUTHOR_SOURCE_CONTEXT.json
+  C6_GENERATED_AUTHOR_SOURCE_RESULTS.json
+  C6_GENERATED_AUTHOR_SOURCE_SEAL.json
+  C6_GENERATED_AUTHOR_SOURCE_REPORT.md
+```
+
+E2E, MVE, and Formal each receive the same sealed absolute variant root and
+the same manifest/runtime/entry hashes through their authorization validation;
+their controlled environment rejects another root. The frozen C5 directory
+`.../variants/c5_generated_author_source_binding_001` is read-only provenance:
+its pre-existing manifest and hashes are checked before C6 generation and must
+remain unchanged afterward. Any repository runtime, builder, base-source,
+entry, or materialized-file change requires a new exclusive C6 variant name,
+fresh generated-source qualification, E2E qualification, and downstream
+reauthorization. No generation is performed by this Plan revision.
 
 ### 1.3 Frozen external execution inputs
 
@@ -234,7 +330,7 @@ WHY_NO_SMALLER_LOCATION = embedding derivation in the treatment runner risks lat
 FILE = scripts/run_mdmt_mia_c6_pre_service_semantic_suppression.py
 CHANGE_CATEGORY = VALIDATION_GATE / RUNNER_CONFIG / EVIDENCE_ACCOUNTING
 CURRENT_BEHAVIOR = the C5 runner authorizes an observational Shadow census and validates C5-specific outputs
-PROPOSED_MINIMAL_CHANGE = new C6-only authority schema, exact cells/order, generated-source binding, preexisting baseline-seal verification before output creation, controlled gate environment, per-cell independent validator, run aggregation, and reproducible result seal
+PROPOSED_MINIMAL_CHANGE = new C6-only authority schema, exact cells/order, generated-source binding, preexisting baseline-seal verification before output creation, controlled gate environment, per-cell independent validator, run aggregation, reproducible result seal, and disjoint MVE-validity/Formal-control schemas
 CONTRACT_CLAUSE_SERVED = Sections 3.4–3.7, 5.4–5.7, 6, G0–G13
 RD_SERVED = RD3, RD4, RD7, RD8, RD12–RD17
 WHY_THIS_FILE = intervention authorization and evidence meanings differ from C5; modifying the frozen C5 runner would corrupt its authority
@@ -245,13 +341,35 @@ The C6 runtime config must contain only enablement, run identity, and output
 location. Scientific cell `role` must not be passed to or read by runtime
 control flow.
 
+For the MVE-to-Formal boundary, the C6 runner will define two disjoint sealed
+artifact schemas:
+
+```text
+MVE_VALIDITY_ARTIFACT
+  run identity; authorization/seal identities; mechanical PASS/FAIL;
+  invariant/gate status; required source/runtime/generated-variant bindings
+
+MVE_SCIENTIFIC_RESULT_ARTIFACT
+  B_avoided; serviceable-ID-State baseline/treatment/delta; effect magnitudes;
+  other scientific result fields
+```
+
+The Formal authorization/config builder accepts only a validated
+`MVE_VALIDITY_ARTIFACT` reference plus frozen Formal authorities/configuration.
+Its strict schema neither defines nor accepts a science-artifact path,
+`B_avoided`, redistribution delta, or any MVE result field. The science artifact
+is sealed for later interpretation but is structurally unreachable from the
+Formal control interface. An unexpected scientific field is rejected, rather
+than silently normalized away. This is the primary enforcement mechanism;
+mutation of scientific result values is optional hardening and is not required.
+
 ### 6.4 Focused tests
 
 ```text
 FILE = tests/test_mdmt_mia_c6_pre_service_semantic_suppression.py
 CHANGE_CATEGORY = TEST_ONLY
 CURRENT_BEHAVIOR = C4/C5 cover observation but not service-controlling suppression
-PROPOSED_MINIMAL_CHANGE = T1–T15 unit/integration cases, independent evidence recomputation, baseline-derivation corruption cases, and opaque disabled-gate parity
+PROPOSED_MINIMAL_CHANGE = T1–T16 unit/integration cases, independent evidence recomputation, baseline-derivation corruption cases, opaque disabled-gate parity, and Formal-control schema isolation
 CONTRACT_CLAUSE_SERVED = all intervention and measurement gates
 RD_SERVED = RD1–RD16 plus the non-adaptive mechanics of RD17
 WHY_THIS_FILE = keeps C6 assertions separate while reusing public/runtime test fixtures
@@ -297,15 +415,15 @@ scientific result files.
 | RD16 | result schema/decision evaluator | Report mechanism and redistribution separately | evaluator table test | separate `B_avoided`, treatment/baseline/delta fields | decision invalid |
 | RD17 | post-run decision evaluator only | Apply frozen graded gate; never authorize C7 | evaluator table test | sealed decision enum | governance violation |
 | G1 | baseline derivation CLI | Unique, reproducible, reconciled baseline sealed first | T12 | baseline context/result/seal timestamps and hashes | block treatment launch |
-| G2 | predicate direct import + fingerprints | Exact source and behavior | C5 replay + mutation denial | predicate authority fields | block qualification |
-| G3 | `_start_next()` assertions | Decision after selection with served=0 and remaining=original | T1, T15 | decision boundary fields | measurement invalid |
+| G2 | predicate direct import + five-region dependency manifest | Exact predicate, snapshot/result helpers, `_array`, literal symbols, and frozen behavior | C5 frozen-fixture replay + dependency-hash mutation denial | dependency manifest, environment provenance, behavioral-replay seal | block qualification |
+| G3 | `_start_next()` assertions | Decision after `popleft()` and before any normal `service_start` side effect, with served=0 and remaining=original | T1, T15 | selection/decision ordering fields; absent start fields for suppression | measurement invalid |
 | G5 | suppression branch and validators | No positive slice/completion/delivery/update/feedback | T1, T10, T15 | joined ledger/census/runtime events | measurement invalid |
 | G6 | `_serve()` loop | Immediate unchanged-budget reuse | T2 | frame budget reconciliation | measurement invalid |
 | G7 | deque head selection | Treatment-internal FIFO only | T3, T7 | packet sequence/selection ordinals | measurement invalid |
 | G10 | runtime invariants + runner forbidden-field checks | No future/GT/outcome/source-bypass reads | leakage/corruption cases | zero invariant counters; no forbidden keys | measurement invalid |
-| G11 | extended service/census validators | Byte, frame, lifecycle, denominator, aggregate conservation | T10, T11, T15 | validation table and recomputed totals | measurement invalid |
-| G13 | disabled conditional path + existing opaque digests | Frozen packet/service/consumer/feedback integrity when gate off | T13 | canonical ledger/event digests and pre-existing feedback digests only | block qualification |
-| MVE non-adaptation | C6 runner authorization schema | MVE validity may block; scientific values cannot alter Formal config/code | T14 + authorization mutation denials | separate validity and sealed-result fields | governance failure |
+| G11 | extended service/census validators | Byte/frame conservation includes suppressed partition; terminal classes are exclusive; zero remaining is never inferred as completion | T10, T11, T15 | validation table, mutually exclusive lifecycle records, recomputed totals | measurement invalid |
+| G13 | disabled conditional path + exact normalization contract | With gate absent/disabled, no C6 keys/events/classes or order changes exist and canonical opaque digests equal reference | T13 | unredacted canonical C4/C5 packet/service/completion/consumer/feedback digests and key-set/order comparison | block qualification |
+| MVE non-adaptation | C6 runner Formal authorization/config builder | Formal control consumes only validity schema and rejects all MVE science fields/paths | T16 minimal schema/interface isolation; mutation equivalence optional only | separate validity/science seals; Formal dry-run input manifest | governance failure |
 
 Every frozen requirement therefore has an executable code boundary, test, and
 evidence source; none relies only on prose.
@@ -376,6 +494,7 @@ non-unique identity, hash mismatch, or reconciliation failure blocks treatment
 with `NEEDS_RESEARCH_DECISION` where the Contract requires it.
 
 ```text
+BASELINE_DERIVATION_STATUS = VALID_IF_MECHANICAL_PRECHECK_PASSES
 SAME_SEALED_RUN004_EVIDENCE_UNIVERSE = REQUIRED
 BASELINE_RERUN = NO
 NEW_MATCHED_WORK_INFRASTRUCTURE = NO
@@ -402,15 +521,20 @@ while budget permits and (_in_service exists or queue nonempty):
                 item.terminal_disposition = "suppressed"
                 item.suppressed_service_obligation_bytes = item.JSON_WIRE_BYTES
                 item.remaining_service_bytes = 0
+                assert item.service_start_frame is unset
+                assert item.service_completion_frame is unset
+                assert item.availability_frame is unset
                 emit SUPPRESSED lifecycle/census evidence
-                assert no service/completion/delivery/consumer/feedback action
+                assert no normal service_start event or service/completion/delivery/consumer/feedback action
                 _in_service = None
                 continue                       # same budget, next FIFO head
 
             item.c6_first_service_class = "serviceable"
             # mixed is serviceable as a whole; decision is now sticky
+            item.service_start_frame = current_frame
+            emit normal service_start event
 
-        execute frozen service_start and baseline _serve path
+        execute frozen baseline _serve path
     else:
         continue frozen partial service        # never re-check
 ```
@@ -430,9 +554,10 @@ semantic priority.
 The existing item dict and paired service-ledger/census records remain the
 authoritative lifecycle representation. Add only:
 
-- item `c6_first_service_class`: empty, `serviceable`, or `suppressed`;
-- item `suppressed_service_obligation_bytes`: zero normally, original
-  `JSON_WIRE_BYTES` only when suppressed;
+- gate-enabled item `c6_first_service_class`: empty, `serviceable`, or
+  `suppressed` (absent in disabled mode);
+- gate-enabled item `suppressed_service_obligation_bytes`: zero normally,
+  original `JSON_WIRE_BYTES` only when suppressed (absent in disabled mode);
 - terminal disposition/class `SUPPRESSED` with location
   `selected_pre_service` and frozen predicate reason flags;
 - one `suppression` service event, never a `completion` event;
@@ -452,8 +577,11 @@ Suppressed packets remain in `_items` for audit but not in `_queue`,
 `_in_service`, `_completed`, or runtime arrival heaps. They have no
 `service_start_frame`, `service_completion_frame`, or `availability_frame`,
 zero `bytes_served_total`, zero `remaining_service_bytes`, and suppressed bytes
-equal to original wire bytes. Passing packets set their sticky class before
-the pre-existing `service_start` event and otherwise use the frozen lifecycle.
+equal to original wire bytes. A suppressed packet is never completed,
+delivered, pending-at-end, in-service, or available to a consumer. Passing
+packets set their sticky class, then set `service_start_frame` and emit the
+pre-existing normal `service_start` event; they otherwise use the frozen
+lifecycle.
 
 The extended byte equation is:
 
@@ -465,7 +593,23 @@ JSON_WIRE_BYTES
 ```
 
 Disabled-gate output must omit C6-only evidence and reproduce the prior
-normalized event/ledger digests. No broader lifecycle refactor is allowed.
+normalized event/ledger digests. The exact disabled-mode rule is:
+
+```text
+NO_C6_ITEM_KEYS_ADDED = YES
+NO_SUPPRESSION_EVENT_EMITTED = YES
+NO_C6_ONLY_LEDGER_FIELDS = YES
+NO_C6_ONLY_TERMINAL_CLASS = YES
+NO_EVENT_ORDER_CHANGE = YES
+NO_CANONICAL_DIGEST_CHANGE = YES
+```
+
+C6 config parsing is behaviorally inert when absent/disabled. The disabled
+path must not emit a decision sidecar or add C6 fields to internal items, C4
+ledger records, packet-census records, summaries, manifests, or seals.
+Normalization compares the complete frozen canonical records and their order;
+it must not discard new/changed keys to manufacture parity. No broader
+lifecycle refactor is allowed.
 
 ## 11. Evidence/accounting plan
 
@@ -512,13 +656,24 @@ only `supplement_serviced_bytes`, never useful/serviceable bytes.
 
 Mandatory invariants are:
 
-- every suppressed packet has zero positive service slices, no completion,
-  availability, delivery, consumer application, or feedback consequence;
+- every terminally suppressed packet has `bytes_served_total = 0`,
+  `remaining_service_bytes = 0`, and
+  `suppressed_service_obligation_bytes = JSON_WIRE_BYTES`;
+- every suppressed packet has unset/absent `service_start_frame`,
+  `service_completion_frame`, and `availability_frame`; zero positive service
+  slices; and no normal start, completion, delivery, consumer application, or
+  feedback consequence;
 - per-packet extended byte conservation and per-frame
   `R = served + unused`;
 - unused budget implies no remaining treatment backlog at frame close;
+- `seal_evidence()` applies the extended byte equation and exactly one mutually
+  exclusive terminal class; zero `remaining_service_bytes` is never interpreted
+  as completed without checking that terminal class;
+- a suppressed item cannot be classified as completed, delivered,
+  pending-at-end, in-service, or available-to-consumer; any such combination
+  fails the validator before results/seal creation;
 - exactly one lifecycle terminal per emitted packet and exactly one C6
-  decision per started ID-State packet;
+  decision per selected ID-State packet;
 - all serviceable bytes belong to a sticky first-service classification;
 - aggregate values reproduce from raw decision/ledger/census records;
 - complete/exclusive run and cell seals bind all raw-file hashes.
@@ -547,7 +702,7 @@ This is a bounded extension of existing evidence, not a trace platform.
 
 | ID | Deterministic setup | Required assertion |
 | --- | --- | --- |
-| T1 | Selected ID-State is wholly non-applicable | One `SUPPRESSED`; zero slices; no start/completion/delivery/application/feedback; distinct census terminal. |
+| T1 | Selected ID-State is wholly non-applicable | One `SUPPRESSED`; no normal `service_start` event or start frame; zero slices; no completion/delivery/application/feedback; unset completion/availability; distinct census terminal. |
 | T2 | Suppressible head plus work smaller than remaining frame budget | Budget before/after suppression identical and the next packet receives service in the same frame. |
 | T3 | ID-State and Supplement interleaved in known admission order | Selection order is exactly treatment `popleft()` order after removing suppressed heads; capacity is not reserved by channel. |
 | T4 | Same wire evaluated against two different current treatment snapshots; decoy C5 label file exists | Decisions follow only current snapshots; opening the decoy is denied/detected. |
@@ -559,9 +714,10 @@ This is a bounded extension of existing evidence, not a trace platform.
 | T10 | Multiple known suppressed wire sizes | Recomputed `B_avoided` equals exact original-byte sum; tampered byte/slice fails closed. |
 | T11 | Serviceable packet spans frames alongside suppressed work | Every positive slice is counted under its one sticky class; treatment aggregate reproduces exactly. |
 | T12 | Tiny duplicate/missing/corrupt Run004-shaped fixtures and two clean derivations | Unique many-slice-to-one-class join, reconciliation, and deterministic seal; corruptions deny before treatment launch. |
-| T13 | Same synthetic input with C6 config absent/disabled | Canonical packet/service/completion/consumer/feedback integrity digests equal frozen reference; only opaque pre-existing digests are compared and no tracking values are opened or printed. |
+| T13 | Same synthetic input with C6 config absent/disabled | Complete canonical key sets, event order, packet/service/completion/consumer/feedback integrity digests equal frozen reference; no C6 item keys, fields, event, terminal class, sidecar, or manifest/seal evidence exists; comparison drops nothing and opens/prints no tracking value. |
 | T14 | Identical runtime config under different runner cell-role labels | Runtime decision/service evidence is identical; role affects metadata/aggregation only. |
-| T15 | Predicate exception, duplicate decision, positive suppressed slice, completion of suppressed item, bad lifecycle, bad seal | Every case fails closed and yields no valid scientific result. |
+| T15 | Predicate/helper dependency exception, duplicate decision, positive suppressed slice, any start/completion/availability/pending consequence for suppressed item, bad lifecycle, bad seal | Every case fails closed and yields no valid scientific result. |
+| T16 | Formal authorization/config builder receives a valid MVE validity artifact plus an unexpected science field/path | Formal schema defines and consumes validity-only fields, rejects scientific MVE fields/paths, and renders its dry-run matrix solely from frozen Formal authorities/config plus validity PASS; `B_avoided` and redistribution delta are absent from the Formal control path. |
 
 Before C6 tests pass, run syntax/import checks only. After focused tests pass,
 replay the unchanged C4/C5 suites named in Section 3. Test failures may trigger
@@ -628,6 +784,14 @@ MVE_SCIENTIFIC_RESULT = SEALED_NOT_ADAPTIVE
 SCIENCE_ADAPTATION_ALLOWED = NO
 ```
 
+The MVE emits two disjoint sealed artifacts defined in Section 6.3. Formal
+preparation may read only the validity artifact's identity, validity status,
+gate/invariant results, and required binding hashes. The Formal builder has no
+input field or filesystem reference for the scientific-result artifact. T16 is
+the mandatory direct schema/interface test for this rule. A test that mutates
+scientific result magnitudes and compares Formal output is optional hardening,
+not required by this Plan.
+
 It uses the actual governed author entry, C6 generated runtime, frozen input,
 checkpoint, horizon, environment, and rate. Authority, causality, lifecycle,
 accounting, completion, isolation, or seal failure blocks Formal. If validity
@@ -645,8 +809,13 @@ Team B receives a read-only packet containing:
 - source-span and behavioral predicate identity;
 - focused and unchanged C4/C5 regression results;
 - clean E2E positive/negative evidence and reproducible seals;
-- real-path MVE validity status with scientific result still
-  `SEALED_NOT_ADAPTIVE`;
+- real-path MVE validity artifact and its proof that Formal control receives no
+  MVE scientific-result path/field; the separate scientific-result artifact
+  remains `SEALED_NOT_ADAPTIVE`;
+- T16 evidence that the Formal schema rejects unexpected science fields and
+  its dry-run matrix has only frozen Formal and MVE-validity inputs;
+- one C6 generated-author variant context/seal whose absolute root and source
+  hashes match E2E, MVE, and proposed Formal authorization;
 - formal runner dry-run matrix, isolated destination, storage/GPU checks, and
   no-launch proof;
 - an explicit first-use inventory for gate, lifecycle, ledger, baseline join,
@@ -699,8 +868,9 @@ C7, C8, scheduler/RL work, pushing, or publication claims.
 
 | Risk | Trigger | Prevention | Detection | Severity |
 | --- | --- | --- | --- | --- |
+| Normal start side effect precedes suppression decision | `service_start_frame` or normal event emitted before classification | classify immediately after `popleft()`; set/emit normal start only on pass | T1/G3 order records and code audit | Critical |
 | Wrong first-service insertion point | decision before `popleft()` or after a slice | only call from `_start_next()` after selected head, before normal start/decrement | T1/G3 boundary fields and code audit | Critical |
-| Predicate duplication/drift | copied/reimplemented predicate or changed source span | direct call; frozen runtime and exact-span hashes | G2 fingerprint plus independent behavioral replay | Critical |
+| Predicate/helper dependency drift | copied/reimplemented predicate, unchanged predicate text with altered helper, or source span change | direct call; five-region fixed dependency manifest and frozen runtime provenance | G2 per-region hashes plus independent behavioral replay | Critical |
 | `SUPPRESSED` still triggers completion | item enters `_completed`/arrival heap | suppression clears `_in_service` and bypasses `_complete_current()` | T1/T15 joined event absence | Critical |
 | C5 label replay | runtime/runner opens Shadow decisions | treatment interface accepts no baseline path/label | file-open denial test and source audit | Critical |
 | FIFO look-ahead | queue scan chooses later semantic item | only `popleft()`; no iterator/priority structure | T3/T7 selection ledger | Critical |
@@ -708,12 +878,14 @@ C7, C8, scheduler/RL work, pushing, or publication claims.
 | Non-unique baseline join | duplicate/missing packet identity | canonical four-field key and fail-closed cardinality checks | T12 plus derivation report | Critical |
 | Mixed packet overclaim | mixed effect pruned or bytes called individually useful | exact whole-packet predicate; serviceable terminology | T5 and result-schema audit | High |
 | Supplement mislabeled useful | Supplement bytes included in serviceable metric | separate neutral Supplement field | aggregator unit tests | High |
-| MVE outcome accidentally gates Formal | code/config reads sealed scientific field | authorization validates only MVE validity, not value | T14 and pre-Formal diff/audit | Critical |
+| Formal authorization gains MVE science access | Formal builder accepts a science field/path or imports scientific artifact | disjoint validity/science schemas; Formal interface accepts validity only | T16 schema rejection, dry-run input manifest, pre-Formal audit | Critical |
 | Opaque parity opens tracking values | test serializes result arrays or metrics | compare existing integrity/feedback digests only | test source audit and forbidden-key scan | Critical |
 | Formal is first integration test | real runner/path/seal skipped earlier | E2E plus real-path MVE and first-use inventory | pre-Formal audit | Critical |
 | Failure-isolated C5 observer reused for control | predicate exception silently allows service | separate fail-closed C6 sidecar | injected exception T15 | Critical |
-| Suppressed bytes counted pending | original remaining bytes left in pending aggregate | explicit suppressed byte partition and zero remaining | conservation tests | High |
+| Zero remaining is mistaken for completed | generic completion code treats `remaining_service_bytes == 0` as serviced | terminal-class check before completion inference; suppressed branch bypasses completion | T1/T15 lifecycle/census/ledger validator | Critical |
+| Disabled gate leaks C6 shape | absent/disabled config adds C6 key, event, class, or reordered record | disabled parser/integration is inert and emits no C6 evidence | T13 complete key-set/order/digest comparison without field dropping | Critical |
 | Runtime behavior depends on role | role passed into gate | omit role from runtime config | T14 environment/config comparison | High |
+| C6 generated variants diverge across stages | E2E, MVE, or Formal accepts a different root/hash | one sealed absolute C6 root and manifest/runtime/entry hashes required in every authorization | cross-stage binding comparison in source qualification and pre-Formal audit | Critical |
 | Generated C5 source overwritten | C6 copies into existing variant path | exclusive new variant root and hash binding | collision denial/source audit | Critical |
 
 ## 18. Explicit non-goals
@@ -764,7 +936,7 @@ independent Team B delta review of this document against the frozen Contract
 and actual architecture.
 
 ```text
-C6_IMPLEMENTATION_PLAN_STATUS = COMPLETE
+C6_IMPLEMENTATION_PLAN_STATUS = COMPLETE_AFTER_CORRECTIVE_REVISION
 TRUE_FIRST_SERVICE_HOOK_FOUND = YES
 BASELINE_DERIVATION_PATH_FOUND = YES
 MINIMAL_IMPLEMENTATION_PATH_FOUND = YES
@@ -775,12 +947,23 @@ NEW_GENERAL_TRACE_INFRASTRUCTURE_REQUIRED = NO
 E2E_QUALIFICATION_DESIGNED = YES
 REAL_PATH_MVE_DESIGNED = YES
 PRE_FORMAL_AUDIT_DESIGNED = YES
+CR1_MVE_STRUCTURAL_ISOLATION_SPECIFIED = YES
+CR1_MVE_MINIMAL_TEST_ADDED = YES
+CR1_FULL_MUTATION_TEST_REQUIRED = NO
+CR2_BASE_IMPLEMENTATION_BINDING_EXPLAINED = YES
+CR3_PREDICATE_DEPENDENCY_BINDING_STRENGTHENED = YES
+CR4_SUPPRESSED_ACCOUNTING_GUARDS_ADDED = YES
+CR5_DISABLED_PARITY_NORMALIZATION_ADDED = YES
+CR6_GENERATED_SOURCE_BINDING_SPECIFIED = YES
+CR7_SERVICE_START_ORDERING_CLARIFIED = YES
+BASELINE_DERIVATION_REMAINS_CONDITIONAL = YES
+CONTRACT_REOPEN_REQUIRED = NO
 RD1_RD17_CHANGED = NO
 CONTRACT_CHANGED = NO
 PRODUCTION_CODE_MODIFIED = NO
 TEST_CODE_MODIFIED = NO
 SCIENTIFIC_EXECUTION_PERFORMED = NO
 TRACKING_OUTCOME_READ = NO
-NEXT_AUTHORIZED_STAGE = TEAM_B_C6_IMPLEMENTATION_PLAN_REVIEW
-BLOCKERS = NONE AT PLAN GENERATION; ALL SECTION 19 CONDITIONS REMAIN FAIL-CLOSED
+NEXT_AUTHORIZED_STAGE = TEAM_B_C6_IMPLEMENTATION_PLAN_DELTA_REVIEW
+BLOCKERS = NONE AT PLAN CORRECTIVE REVISION; ALL SECTION 19 CONDITIONS REMAIN FAIL-CLOSED
 ```
