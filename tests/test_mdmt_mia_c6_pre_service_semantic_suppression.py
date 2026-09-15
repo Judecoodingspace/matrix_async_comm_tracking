@@ -100,7 +100,7 @@ def test_t12_synthetic_baseline_fixture_only():
     module = _load("derive_mdmt_mia_c6_run004_serviceable_baseline.py")
     pid = {"census_run_id": "r", "sequence_name": "s", "runtime_instance_id": "i", "emission_ordinal": 1}
     shadow = [{"packet_id": pid, "channel": "id_state", "whole_packet_currently_non_applicable": False,
-               "JSON_WIRE_BYTES": 7, "wire_digest": "d"}]
+               "JSON_WIRE_BYTES": 7, "frame": 0, "schema_version": "C5_SHADOW_REPLAY_V1"}]
     ledger = [{"event_type": "service_slice", "channel": "id_state", "packet_id": pid, "bytes_served": 7,
                "JSON_WIRE_BYTES": 7, "wire_digest": "d"}]
     assert module.derive_serviceable_bytes(shadow, ledger) == 7
@@ -108,6 +108,34 @@ def test_t12_synthetic_baseline_fixture_only():
         module.derive_serviceable_bytes(shadow + shadow, ledger)
     with pytest.raises(module.BaselineError):
         module.derive_serviceable_bytes(shadow, ledger + [{**ledger[0], "wire_digest": "bad"}])
+
+
+def test_run004_shaped_baseline_cli_contract_and_corruptions(tmp_path):
+    module = _load("derive_mdmt_mia_c6_run004_serviceable_baseline.py")
+    root, auth = tmp_path / "fake_run004", tmp_path / "authorization.json"
+    run_id, seals = "synthetic-run", {}
+    def dump(path, value):
+        path.parent.mkdir(parents=True, exist_ok=True); path.write_text(json.dumps(value, sort_keys=True) + "\n", encoding="utf-8")
+    dump(auth, {"run_id": run_id, "issued_for_exact_run": True})
+    dump(root / "RUN_END.json", {"run_id": run_id, "status": "COMPLETE", "scientific_cell_count": 4})
+    end_hash = hashlib.sha256((root / "RUN_END.json").read_bytes()).hexdigest()
+    for ordinal, cell in enumerate(module.CELL_ORDER, 1):
+        pid = {"census_run_id": run_id, "sequence_name": str(ordinal), "runtime_instance_id": "runtime", "emission_ordinal": 1}
+        shadow = {"packet_id": pid, "channel": "id_state", "JSON_WIRE_BYTES": 7, "frame": 0,
+                  "schema_version": "C5_SHADOW_REPLAY_V1", "whole_packet_currently_non_applicable": False}
+        dump(root / "shadow" / cell / "c5_shadow_records_test.jsonl", shadow)
+        seal = root / "shadow" / cell / "c5_shadow_seal_test.json"; dump(seal, {"schema_version": "C5", "run_id": run_id})
+        seals[cell] = hashlib.sha256(seal.read_bytes()).hexdigest()
+        runtime = root / "runtime" / cell / "mia" / "results"
+        dump(runtime / "c4_service_ledger_test.jsonl", {"event_type": "service_slice", "channel": "id_state", "packet_id": pid, "bytes_served": 7, "JSON_WIRE_BYTES": 7, "wire_digest": "d"})
+        dump(runtime / "packet_census_emissions_test.jsonl", {"record_type": "PACKET_EMISSION", "channel": "id_state", "packet_id": pid, "JSON_WIRE_BYTES": 7, "wire_digest": "d"})
+        dump(runtime / "packet_census_terminals_test.jsonl", {"record_type": "PACKET_TERMINAL", "channel": "id_state", "packet_id": pid, "terminal_class": "ARRIVED_ACCEPTED"})
+    first = module.derive_run004(root, tmp_path / "out1", "contract", "plan", auth, run_id, seals, end_hash)
+    second = module.derive_run004(root, tmp_path / "out2", "contract", "plan", auth, run_id, seals, end_hash)
+    assert first["seal"] == second["seal"] and (tmp_path / "out1" / "C6_RUN004_BASELINE_REPORT.md").is_file()
+    with pytest.raises(module.BaselineError): module.derive_run004(root, root / "inside", "contract", "plan", auth, run_id, seals, end_hash)
+    with pytest.raises(module.BaselineError): module.derive_run004(root, tmp_path / "out1", "contract", "plan", auth, run_id, seals, end_hash)
+    with pytest.raises(module.BaselineError): module.derive_run004(root, tmp_path / "bad", "contract", "plan", auth, run_id, {**seals, module.CELL_ORDER[0]: "bad"}, end_hash)
 
 
 def test_t13_disabled_reference_is_base_style_and_has_no_c6_keys(tmp_path):

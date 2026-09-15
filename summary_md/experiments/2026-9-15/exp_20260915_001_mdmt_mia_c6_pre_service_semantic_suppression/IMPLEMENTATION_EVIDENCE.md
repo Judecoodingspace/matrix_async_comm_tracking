@@ -19,6 +19,13 @@ evidence-path corrections in the C5 runner/test path.
 
 ## Bounded implementation
 
+TB-C6-DELTA-01 corrective revision: the baseline CLI now reads the frozen
+Run004 filenames (`c5_shadow_records_*`, `c4_service_ledger_*`, and packet
+census emissions/terminals), treats Shadow as classification authority without
+requiring its absent `wire_digest`, and accepts classified packets as a subset
+of census terminals. A real Run004 structural-only preflight passed; no
+derivation, aggregate, or scientific result was computed.
+
 - Added fail-closed `MIA_C6_SUPPRESSION_CONFIG` parsing.
 - At `_C4SharedLogicalServer._start_next`, an enabled ID-State head is
   classified after `popleft()` and before normal `service_start` side effects.
