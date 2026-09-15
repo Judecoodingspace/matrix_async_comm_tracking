@@ -109,6 +109,8 @@ def test_t12_synthetic_baseline_fixture_only():
         module.derive_serviceable_bytes(shadow + shadow, ledger)
     with pytest.raises(module.BaselineError):
         module.derive_serviceable_bytes(shadow, ledger + [{**ledger[0], "wire_digest": "bad"}])
+    with pytest.raises(module.BaselineError):
+        module.derive_serviceable_bytes(shadow, [{**ledger[0], "packet_id": {**pid, "emission_ordinal": 2}}])
 
 
 def test_run004_shaped_baseline_cli_contract_and_corruptions(tmp_path):
