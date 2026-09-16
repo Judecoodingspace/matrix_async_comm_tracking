@@ -1,0 +1,9 @@
+/_runtime_cache/
+/run_input/
+/cells/*/mia/*/author.log
+/cells/*/mia/*/view1/
+/cells/*/mia/*/view2/
+/cells/*/mia/*/results/*/23-1.json
+/cells/*/mia/*/results/*/23-2.json
+/cells/*/mia/*/results/*/async_packet_trace_*.jsonl
+/cells/*/mia/*/results/*/time.txt
