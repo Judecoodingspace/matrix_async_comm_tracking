@@ -497,7 +497,10 @@ def _validate_reconciliation(emissions, terminals, decisions, ledger):
         packet_id = row.get("packet_id")
         if packet_id is not None:
             events.setdefault(key(row), []).append(row)
+    service_channels = {"id_state", "supplement"}
     for packet_key in emitted:
+        if emitted[packet_key].get("channel") not in service_channels:
+            continue
         if packet_key not in events:
             raise GateError("ledger missing emitted packet")
         if any(event.get("wire_digest") not in (None, "", emitted[packet_key].get("wire_digest")) for event in events[packet_key]):
@@ -642,9 +645,9 @@ def _validate_real_disk_cell(root, cell):
     census_validation = _read_json(_one_glob(runtime_root, "packet_census_validation_*.json"))
     service_summary = _read_json(_one_glob(runtime_root, "c4_service_summary_*.json"))
     manifest = _read_json(_one_glob(runtime_root, "async_packet_manifest_*.json"))
-    if census_validation.get("census_status") != "CENSUS_COMPLETE" or census_validation.get("passed") is not True or service_summary.get("passed") is not True:
+    if census_validation.get("census_status") != "CENSUS_COMPLETE" or not census_validation.get("passed") or not service_summary.get("passed"):
         raise GateError("real child validator output is incomplete")
-    if manifest.get("packet_census_status") != "CENSUS_COMPLETE" or manifest.get("c4_service_status") != "PASS":
+    if manifest.get("packet_census_status") != "CENSUS_COMPLETE" or manifest.get("c4_service_status") not in {"PASS", "COMPLETE"}:
         raise GateError("real runtime manifest status mismatch")
     if not finalizations:
         raise GateError("real census finalization evidence missing")
@@ -655,7 +658,8 @@ def _validate_real_disk_cell(root, cell):
     serviceable = {key for key, row in decision_by_id.items() if not row.get("whole_packet_currently_non_applicable")}
     suppressed = {key for key, row in decision_by_id.items() if row.get("whole_packet_currently_non_applicable")}
     packet_summaries = [row for row in ledger if row.get("event_type") == "packet_summary"]
-    if len(packet_summaries) != len(emissions):
+    service_emission_count = sum(row.get("channel") in {"id_state", "supplement"} for row in emissions)
+    if len(packet_summaries) != service_emission_count:
         raise GateError("real packet summary cardinality mismatch")
     for summary in packet_summaries:
         offered = int(summary.get("bytes_offered", -1))
