@@ -15,6 +15,7 @@ QUAL_SEAL = ROOT / "summary_md/communication/c6_generated_author_source_qualific
 BASELINE_SEAL = ROOT / "summary_md/communication/c6_run004_serviceable_baseline_derivation/C6_RUN004_BASELINE_DERIVATION_SEAL.json"
 PLATFORM_MANIFEST = ROOT / "summary_md/communication/c6_pre_formal_platform_qualification/C6_PLATFORM_QUALIFICATION_MANIFEST.json"
 FORMAL_PACKAGE = ROOT / "summary_md/communication/c6_pre_formal_platform_qualification/C6_FORMAL_EXECUTION_PACKAGE.json"
+FORMAL_OPERATOR = ROOT / "scripts/run_mdmt_mia_c6_formal.py"
 
 
 def load(path, name):
@@ -27,6 +28,7 @@ def load(path, name):
 runner = load(RUNNER_PATH, "c6_real_cell_runner")
 mve = load(MVE_PATH, "c6_real_cell_mve")
 child = load(ROOT / "scripts/run_mdmt_mia_c6_real_child.py", "c6_real_cell_child")
+formal = load(FORMAL_OPERATOR, "c6_formal_parent_fixture_source")
 
 
 def sha(path):
@@ -44,6 +46,7 @@ def authorization(cell, logical_root):
         "execution_authorized": True,
         "run_scope": "EXACTLY_ONE_C6_CELL",
         "parent_policy": "PLATFORM_QUALIFICATION",
+        "parent_authorization_path": "",
         "parent_authorization_sha256": sha(FORMAL_PACKAGE),
         "execution_mode": "SYNTHETIC_NO_DATA",
         "cell": cell["cell"],
@@ -97,6 +100,37 @@ def launch_spec(cell, output_root):
         "evidence_shape_profile": "REAL_C6_CELL",
         "expected_deterministic_core_sha256": "",
     }
+
+
+def write_formal_parent(tmp_path, parent=None, name="test-only-formal-parent.json"):
+    path = tmp_path / name
+    value = formal.candidate(True) if parent is None else parent
+    path.write_text(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+    return path
+
+
+def bind_formal_parent(spec, tmp_path, parent=None):
+    path = write_formal_parent(tmp_path, parent)
+    source = formal.candidate(True) if parent is None else parent
+    cell = next(row for row in source["cells"] if row["cell"] == spec["authorization"]["cell"])
+    auth = spec["authorization"]
+    auth["parent_policy"] = "C6_FORMAL"
+    auth["parent_authorization_path"] = str(path)
+    auth["parent_authorization_sha256"] = sha(path)
+    auth["execution_mode"] = "REAL_CHILD"
+    auth["output_root"] = cell["output_root"]
+    spec["logical_output_root"] = cell["output_root"]
+    spec["fixture_path"] = str(runner.REAL_CHILD_PATH)
+    spec["fixture_sha256"] = sha(runner.REAL_CHILD_PATH)
+    return path
+
+
+def assert_formal_parent_rejected_before_child(spec, monkeypatch):
+    monkeypatch.setattr(runner.subprocess, "run", lambda *args, **kwargs: pytest.fail("child boundary reached"))
+    output = Path(spec["output_root"])
+    with pytest.raises(runner.GateError):
+        runner.launch_c6_stage(spec)
+    assert not output.exists()
 
 
 @pytest.mark.parametrize("cell", frozen_cells(), ids=lambda row: row["cell"])
@@ -174,16 +208,118 @@ def test_mve_authorization_cannot_enter_generic_path(tmp_path, monkeypatch):
         runner.launch_c6_stage(spec)
 
 
-def test_real_mode_uses_existing_wrapper_and_rejects_synthetic_fixture(tmp_path):
+def test_real_mode_requires_bound_parent_and_uses_existing_wrapper(tmp_path):
     cell = frozen_cells()[0]
     spec = launch_spec(cell, tmp_path / "future-formal")
     spec["authorization"]["parent_policy"] = "C6_FORMAL"
     spec["authorization"]["execution_mode"] = "REAL_CHILD"
-    with pytest.raises(runner.GateError, match="child boundary mismatch"):
+    with pytest.raises(runner.GateError, match="parent authorization artifact is required"):
         runner._validate_launch_spec(spec)
+    bind_formal_parent(spec, tmp_path)
+    runner._validate_launch_spec(spec)
+
+
+def test_valid_persisted_formal_parent_passes_validation_without_launch(tmp_path, monkeypatch):
+    spec = launch_spec(frozen_cells()[0], tmp_path / "formal-positive")
+    bind_formal_parent(spec, tmp_path)
+    monkeypatch.setattr(runner.subprocess, "run", lambda *args, **kwargs: pytest.fail("child boundary reached"))
+    runner._validate_launch_spec(spec)
+    assert not Path(spec["output_root"]).exists()
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["missing", "wrong_path", "fake_sha", "modified_after_binding", "malformed", "duplicate_key"],
+)
+def test_formal_parent_artifact_failures_stop_before_child(tmp_path, monkeypatch, failure):
+    spec = launch_spec(frozen_cells()[0], tmp_path / ("formal-artifact-" + failure))
+    path = bind_formal_parent(spec, tmp_path)
+    if failure == "missing":
+        spec["authorization"]["parent_authorization_path"] = str(tmp_path / "does-not-exist.json")
+    elif failure == "wrong_path":
+        spec["authorization"]["parent_authorization_path"] = str(FORMAL_PACKAGE)
+        spec["authorization"]["parent_authorization_sha256"] = sha(FORMAL_PACKAGE)
+    elif failure == "fake_sha":
+        spec["authorization"]["parent_authorization_sha256"] = "0" * 64
+    elif failure == "modified_after_binding":
+        path.write_text(path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    elif failure == "malformed":
+        path.write_text("{\n", encoding="utf-8")
+        spec["authorization"]["parent_authorization_sha256"] = sha(path)
+    else:
+        raw = path.read_text(encoding="utf-8").replace(
+            '"stage":"C6_FORMAL"', '"stage":"C6_FORMAL","stage":"C6_FORMAL"', 1
+        )
+        path.write_text(raw, encoding="utf-8")
+        spec["authorization"]["parent_authorization_sha256"] = sha(path)
+    assert_formal_parent_rejected_before_child(spec, monkeypatch)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("schema_version", "WRONG"),
+        ("stage", "C6_WRONG"),
+        ("execution_authorized", False),
+        ("execution_authorized", 1),
+        ("execution_authorized", "true"),
+        ("formal_allowed", False),
+        ("formal_allowed", 1),
+        ("formal_allowed", "true"),
+        ("tracking_outcome_read_allowed", True),
+        ("science_adaptation_allowed", True),
+        ("platform_qualification_authority", "0" * 40),
+    ],
+)
+def test_formal_parent_semantic_gates_stop_before_child(tmp_path, monkeypatch, field, value):
+    spec = launch_spec(frozen_cells()[0], tmp_path / ("formal-semantic-" + field + "-" + str(value)))
+    parent = formal.candidate(True)
+    parent[field] = value
+    bind_formal_parent(spec, tmp_path, parent)
+    assert_formal_parent_rejected_before_child(spec, monkeypatch)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("pair", "P99"),
+        ("role", "WRONG_ROLE"),
+        ("service_condition", "FIFO_wrong"),
+        ("service_rate", 1),
+        ("serviceable_id_state_serviced_bytes_baseline", 1),
+        ("evidence_shape_profile", "TINY_SYNTHETIC"),
+    ],
+)
+def test_formal_parent_cell_mutations_stop_before_child(tmp_path, monkeypatch, field, value):
+    spec = launch_spec(frozen_cells()[0], tmp_path / ("formal-cell-" + field))
+    parent = formal.candidate(True)
+    parent["cells"][0][field] = value
+    bind_formal_parent(spec, tmp_path, parent)
+    assert_formal_parent_rejected_before_child(spec, monkeypatch)
+
+
+def test_requested_cell_absent_from_formal_parent_stops_before_child(tmp_path, monkeypatch):
+    spec = launch_spec(frozen_cells()[0], tmp_path / "formal-cell-absent")
+    parent = formal.candidate(True)
+    parent["cells"] = parent["cells"][1:]
+    path = write_formal_parent(tmp_path, parent)
+    spec["authorization"].update(
+        parent_policy="C6_FORMAL",
+        parent_authorization_path=str(path),
+        parent_authorization_sha256=sha(path),
+        execution_mode="REAL_CHILD",
+    )
     spec["fixture_path"] = str(runner.REAL_CHILD_PATH)
     spec["fixture_sha256"] = sha(runner.REAL_CHILD_PATH)
-    runner._validate_launch_spec(spec)
+    assert_formal_parent_rejected_before_child(spec, monkeypatch)
+
+
+def test_formal_parent_output_root_mismatch_stops_before_child(tmp_path, monkeypatch):
+    spec = launch_spec(frozen_cells()[0], tmp_path / "formal-root-mismatch")
+    bind_formal_parent(spec, tmp_path)
+    spec["authorization"]["output_root"] = "summary_md/communication/c6_formal/wrong/attempt1"
+    spec["logical_output_root"] = spec["authorization"]["output_root"]
+    assert_formal_parent_rejected_before_child(spec, monkeypatch)
 
 
 @pytest.mark.parametrize("cell", frozen_cells(), ids=lambda row: "wrapper-" + row["cell"])

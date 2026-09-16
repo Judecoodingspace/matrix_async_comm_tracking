@@ -5,9 +5,13 @@ Updated: 2026-09-16
 ## Latest platform-core update
 
 C6 now exposes a public, fail-closed `C6_REAL_CELL` launcher contract that
-separates the reusable one-cell child mechanism from MVE Attempt2 policy. The
-four frozen C6 cell identities pass synthetic/no-data mechanical probes through
-`launch_c6_stage(...)`; the existing MVE Attempt2 policy and full-matrix
+separates the reusable one-cell child mechanism from MVE Attempt2 policy. A
+`C6_FORMAL + REAL_CHILD` authorization must additionally name a persisted
+Formal parent artifact whose exact bytes, SHA-256, frozen Formal semantics,
+activation booleans, embargoes, cell identity, and output root are revalidated
+before the child boundary. Qualification used only temporary test artifacts;
+no live Formal authorization was created. The four frozen platform probes
+remain synthetic/no-data, and the existing MVE Attempt2 policy and full-matrix
 `aggregate_cells(...)` invariant remain unchanged. The qualified child wrapper,
 generated scientific runtime, Formal operator, rates, baselines, metrics, and
 child-process boundary were not changed.
@@ -15,15 +19,16 @@ child-process boundary were not changed.
 Verification:
 
 ```text
-focused C6 qualification -> 84 passed
-full regression suite -> 459 passed, 2 skipped
+focused real-cell launcher -> 57 passed
+relevant C6 qualification and MVE regression -> 110 passed
+full regression suite -> 485 passed, 2 skipped
 real scientific/Formal execution -> not performed
 tracking outcome read -> not performed
 ```
 
-Next gate: `TEAM_B_C6_FORMAL_LAUNCHER_INTERFACE_DELTA_REVIEW`. This result only
-qualifies the generic real-cell interface; the C6 Formal execution path remains
-unqualified pending a separate operator corrective.
+Next gate: `TEAM_B_C6_REAL_CELL_FORMAL_PARENT_BINDING_DELTA_REVIEW`. This result
+only qualifies the generic real-cell interface and its parent-authorization
+binding; the C6 Formal execution path remains unqualified.
 
 ## Latest governance closure
 

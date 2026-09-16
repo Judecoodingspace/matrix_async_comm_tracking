@@ -41,6 +41,8 @@ MVE_RATE = 16649
 CELL_ORDER = ("pair_23__FIFO_mild", "pair_23__FIFO_strong", "pair_44__FIFO_moderate", "pair_66__FIFO_mild")
 FORMAL_PACKAGE_PATH = ROOT / "summary_md/communication/c6_pre_formal_platform_qualification/C6_FORMAL_EXECUTION_PACKAGE.json"
 FORMAL_PACKAGE_SHA256 = "4a03629f989c33de970f5b74f7a683b08d521039069ffba965e893bcde1d2ae5"
+PLATFORM_MANIFEST_PATH = ROOT / "summary_md/communication/c6_pre_formal_platform_qualification/C6_PLATFORM_QUALIFICATION_MANIFEST.json"
+PLATFORM_QUALIFICATION_AUTHORITY_SHA = "16c85908246cf433ec03d7b9aebe965cc58b59c9"
 REAL_CHILD_PATH = ROOT / "scripts/run_mdmt_mia_c6_real_child.py"
 SYNTHETIC_REAL_CELL_CHILD_PATH = ROOT / "tests/fixtures/run_mdmt_mia_c6_tiny_runtime.py"
 REAL_CELL_STAGE = "C6_REAL_CELL"
@@ -336,7 +338,7 @@ def validate_mve_authorization(authorization):
 
 REAL_CELL_AUTHORIZATION_KEYS = frozenset((
     "schema_version", "stage", "execution_authorized", "run_scope",
-    "parent_policy", "parent_authorization_sha256", "execution_mode",
+    "parent_policy", "parent_authorization_path", "parent_authorization_sha256", "execution_mode",
     "cell", "pair", "role", "service_condition", "service_rate",
     "serviceable_id_state_serviced_bytes_baseline", "evidence_shape_profile",
     "output_root", "formal_package_sha256", "implementation_sha",
@@ -354,6 +356,74 @@ def _frozen_formal_cells():
     if not isinstance(cells, list) or len(cells) != 4:
         raise GateError("frozen Formal package cell schema mismatch")
     return {row["cell"]: row for row in cells}
+
+
+FORMAL_PARENT_AUTHORIZATION_KEYS = frozenset((
+    "schema_version", "stage", "execution_authorized", "formal_allowed",
+    "contract_sha", "plan_sha", "authorities", "platform_qualification_authority",
+    "metrics", "cells", "retry_policy", "storage_policy", "environment_binding",
+    "tracking_outcome_read_allowed", "science_adaptation_allowed",
+))
+
+
+def _validate_formal_parent_authorization(parent):
+    """Validate one persisted parent against the frozen Formal contract."""
+    value = _strict_object(parent)
+    if set(value) != FORMAL_PARENT_AUTHORIZATION_KEYS:
+        raise GateError("Formal parent authorization schema mismatch")
+    if value["schema_version"] != "C6_FORMAL_AUTHORIZATION_V1" or value["stage"] != "C6_FORMAL":
+        raise GateError("Formal parent authorization type mismatch")
+    if type(value["execution_authorized"]) is not bool or value["execution_authorized"] is not True:
+        raise GateError("Formal parent execution_authorized must be exact true")
+    if type(value["formal_allowed"]) is not bool or value["formal_allowed"] is not True:
+        raise GateError("Formal parent formal_allowed must be exact true")
+    if type(value["tracking_outcome_read_allowed"]) is not bool or value["tracking_outcome_read_allowed"] is not False:
+        raise GateError("Formal parent tracking embargo mismatch")
+    if type(value["science_adaptation_allowed"]) is not bool or value["science_adaptation_allowed"] is not False:
+        raise GateError("Formal parent science embargo mismatch")
+    package = _read_json(FORMAL_PACKAGE_PATH)
+    for key in ("contract_sha", "plan_sha", "authorities", "metrics", "cells", "retry_policy", "storage_policy"):
+        if value[key] != package[key]:
+            raise GateError("Formal parent frozen {} mismatch".format(key))
+    if value["platform_qualification_authority"] != PLATFORM_QUALIFICATION_AUTHORITY_SHA:
+        raise GateError("Formal parent platform authority mismatch")
+    if value["environment_binding"] != _read_json(PLATFORM_MANIFEST_PATH)["environment"]:
+        raise GateError("Formal parent environment binding mismatch")
+    return value
+
+
+def _validate_formal_parent_binding(real_cell_authorization):
+    """Reread, hash, semantically validate, and cross-bind a Formal parent."""
+    raw_path = real_cell_authorization.get("parent_authorization_path")
+    if not isinstance(raw_path, str) or not raw_path:
+        raise GateError("Formal parent authorization artifact is required")
+    path = Path(raw_path)
+    if not path.is_file():
+        raise GateError("Formal parent authorization artifact is missing")
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise GateError("Formal parent authorization artifact is unreadable") from exc
+    actual_sha256 = hashlib.sha256(raw).hexdigest()
+    if actual_sha256 != real_cell_authorization["parent_authorization_sha256"]:
+        raise GateError("Formal parent authorization SHA256 mismatch")
+    try:
+        parent = _validate_formal_parent_authorization(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError, TypeError) as exc:
+        raise GateError("Formal parent authorization artifact is malformed") from exc
+    matching = [row for row in parent["cells"] if row.get("cell") == real_cell_authorization["cell"]]
+    if len(matching) != 1:
+        raise GateError("requested real cell is absent or duplicated in Formal parent")
+    parent_cell = matching[0]
+    child_cell = {key: real_cell_authorization[key] for key in (
+        "cell", "pair", "role", "service_condition", "service_rate",
+        "serviceable_id_state_serviced_bytes_baseline", "evidence_shape_profile",
+    )}
+    if child_cell != {key: parent_cell.get(key) for key in child_cell}:
+        raise GateError("real-cell authorization does not match Formal parent cell")
+    if real_cell_authorization["output_root"] != parent_cell.get("output_root"):
+        raise GateError("real-cell output root does not match Formal parent cell")
+    return parent
 
 
 def validate_real_cell_authorization(authorization):
@@ -403,6 +473,8 @@ def validate_real_cell_authorization(authorization):
         or value["formal_aggregation_allowed"] is not False
     ):
         raise GateError("real-cell execution boundary mismatch")
+    if value["parent_policy"] == "C6_FORMAL":
+        _validate_formal_parent_binding(value)
     validate_implementation_sha(value["implementation_sha"])
     return value
 
