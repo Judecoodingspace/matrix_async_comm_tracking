@@ -4,36 +4,37 @@ Updated: 2026-09-16
 
 ## Latest platform-core update
 
-C6 now exposes a public, fail-closed `C6_REAL_CELL` launcher contract that
-separates the reusable one-cell child mechanism from MVE Attempt2 policy. A
-`C6_FORMAL + REAL_CHILD` authorization now additionally requires the single
-launcher-owned trust anchor at
-`summary_md/communication/c6_formal_authorization/C6_FORMAL_AUTHORIZATION_ISSUANCE.json`.
-The issuance artifact must be Git-tracked, byte-identical to `HEAD`, and must
-pin the exact parent authorization path and SHA-256 before the existing Formal
-semantic, cell, and root checks run. The production issuance path intentionally
-remains absent until a later C6 Formal Execution Authorization decision.
-Qualification used only temporary test artifacts; no live issuance or Formal
-authorization was created. The four frozen platform probes remain
-synthetic/no-data, and the MVE Attempt2 policy and full-matrix
-`aggregate_cells(...)` invariant remain unchanged. The qualified child wrapper,
-generated scientific runtime, Formal operator, rates, baselines, metrics, and
-child-process boundary were not changed.
+The C6 Formal operator now derives the exact strong-first four-cell matrix from
+the frozen execution package and calls the public `C6_REAL_CELL` launcher once
+per cell. Qualification and future LIVE execution share one authorization
+parser, preflight, orchestration loop, progress/failure lifecycle, persisted
+evidence validation, aggregation, seal, and terminal path. A platform-qualified
+CLI subprocess completed the four-cell synthetic/no-data production path using
+`candidate(False)` and temporary roots. The legacy aggregate E2E authorization
+substitution and alternate `--production-synthetic` orchestration were removed.
+
+LIVE remains fail-closed behind the fixed Git-controlled issuance trust anchor.
+The production issuance artifact and all four Formal attempt roots remain
+absent; no live Formal authorization was created and no real Formal execution
+occurred. The qualified launcher, real-child wrapper, generated scientific
+runtime, package, platform manifest, rates, baselines, metrics, and child
+boundary were byte-unchanged.
 
 Verification:
 
 ```text
-focused real-cell launcher -> 72 passed
-relevant C6 qualification and MVE regression -> 125 passed
-full regression suite -> 500 passed, 2 skipped
+focused Formal operator production path -> 24 passed
+relevant C6 qualification and MVE regression -> 147 passed
+full regression suite -> 522 passed, 2 skipped
 real scientific/Formal execution -> not performed
 tracking outcome read -> not performed
 ```
 
-Next gate: `TEAM_B_C6_FORMAL_AUTHORIZATION_TRUST_ANCHOR_DELTA_REVIEW`. This
-result qualifies the generic real-cell interface trust chain but does not issue
-Formal authority; the C6 Formal execution path remains unqualified and the
-Formal operator still requires a separate follow-up.
+Next gate: `TEAM_B_C6_FORMAL_OPERATOR_PRODUCTION_PATH_DELTA_REVIEW`. The
+operator and synthetic production path are qualified, but Formal execution is
+still unauthorized. A later `C6_FORMAL_EXECUTION_AUTHORIZATION_ISSUANCE` stage
+must create the live authorization and fixed issuance artifact before any real
+Formal run.
 
 ## Latest governance closure
 
