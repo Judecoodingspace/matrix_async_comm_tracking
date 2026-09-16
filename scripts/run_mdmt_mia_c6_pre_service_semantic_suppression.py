@@ -27,6 +27,7 @@ BASE_IMPLEMENTATION_SHA = "9a511c3ce300b5dedb1f2e970f131ddd2522b0c0"
 CONTRACT_SHA = "989ee15285866b119a643f1f1ccdf52d2d02009f"
 PLAN_SHA = "93f44de70c4540afa0f3044aa066a0ed894648e9"
 CELL_ORDER = ("pair_23__FIFO_mild", "pair_23__FIFO_strong", "pair_44__FIFO_moderate", "pair_66__FIFO_mild")
+EVIDENCE_SHAPE_PROFILES = frozenset(("TINY_SYNTHETIC", "REAL_C6_CELL"))
 REGIONS = ("_array", "_C5ShadowReceiverSnapshot", "_C5ShadowPacketResult", "_snapshot_c5_receiver_state", "_classify_whole_packet_currently_non_applicable", "PacketRuntime._c5_context_provider")
 FORMAL_VALIDITY_KEYS = frozenset(("run_id", "mve_authorization_sha", "mve_seal_sha", "mechanical_validity", "invariant_status", "runtime_sha256", "generated_variant_root", "generated_variant_manifest_sha256"))
 MVE_SCIENCE_KEYS = frozenset(("B_avoided", "delta_serviceable_id_state_serviced_bytes", "serviceable_id_state_serviced_bytes_baseline", "serviceable_id_state_serviced_bytes_treatment"))
@@ -353,6 +354,7 @@ def _validate_launch_spec(spec):
         "cells", "service_rates", "service_conditions",
         "expected_baseline_derivation_seal_sha256", "python_executable",
         "working_directory", "child_environment", "fault", "prelaunch_negative_tests",
+        "evidence_shape_profile",
     }
     optional = {"expected_deterministic_core_sha256"}
     if not required <= set(spec) or set(spec) - required - optional:
@@ -361,6 +363,8 @@ def _validate_launch_spec(spec):
         raise GateError("launch stage mismatch")
     if not isinstance(spec["run_id"], str) or not spec["run_id"]:
         raise GateError("launch run identity mismatch")
+    if spec["evidence_shape_profile"] not in EVIDENCE_SHAPE_PROFILES:
+        raise GateError("evidence shape profile mismatch")
     auth = _strict_object(spec["authorization"])
     if auth.get("contract_sha") != CONTRACT_SHA or auth.get("plan_sha") != PLAN_SHA:
         raise GateError("launch authorization authority mismatch")
@@ -432,7 +436,7 @@ def _validate_reconciliation(emissions, terminals, decisions, ledger):
     return {"census": "PASS", "ledger": "PASS", "decision": "PASS"}
 
 
-def _validate_disk_cell(root, cell):
+def _validate_disk_cell(root, cell, evidence_shape_profile="TINY_SYNTHETIC"):
     cell_root = Path(root) / "cells" / cell
     runtime_root = cell_root / "synthetic"
     c6_root = cell_root / "c6"
@@ -458,23 +462,49 @@ def _validate_disk_cell(root, cell):
     serviceable_terminals = [row for row in terminals if packet(row) in serviceable]
     serviceable_summaries = [row for row in ledger if row.get("event_type") == "packet_summary" and packet(row) in serviceable]
     starts = [row for row in ledger if row.get("event_type") == "service_start"]
-    if len(serviceable) != 1 or len(suppressed) != 1 or len(decisions) != 2:
-        raise GateError("sticky fixture decision cardinality mismatch")
-    if len(serviceable_slices) <= 1 or len(serviceable_terminals) != 1 or serviceable_terminals[0].get("terminal_class") not in {"TIMELY_DELIVERED", "ARRIVED_ACCEPTED"}:
-        raise GateError("sticky fixture service evidence mismatch")
-    if not serviceable_summaries or serviceable_summaries[0].get("terminal_disposition") != "completed_delivered":
-        raise GateError("sticky fixture completion evidence mismatch")
+    packet_summaries = [row for row in ledger if row.get("event_type") == "packet_summary"]
+    if len(packet_summaries) != len(emissions):
+        raise GateError("packet summary cardinality mismatch")
+    for summary in packet_summaries:
+        offered = int(summary.get("bytes_offered", -1))
+        served = int(summary.get("bytes_served", -1))
+        remaining = int(summary.get("remaining_service_bytes", -1))
+        suppressed_obligation = int(summary.get("suppressed_service_obligation_bytes", 0))
+        if min(offered, served, remaining, suppressed_obligation) < 0:
+            raise GateError("negative service accounting")
+        if served > offered or served + remaining + suppressed_obligation != offered:
+            raise GateError("service accounting exceeds obligation")
+        if packet(summary) in suppressed and served != 0:
+            raise GateError("suppressed packet has positive service")
     if any(row.get("event_type") == "suppression" and packet(row) in serviceable for row in ledger):
         raise GateError("serviceable packet was suppressed")
-    if [row.get("channel") for row in starts] != ["id_state", "supplement"]:
-        raise GateError("FIFO evidence mismatch")
-    if not any(row.get("event_type") == "service_slice" and packet(row) in serviceable and row.get("frame") == 0 for row in ledger):
-        raise GateError("same-frame capacity reuse evidence missing")
     if any(row.get("channel") == "supplement" for row in decisions):
         raise GateError("Supplement entered C6 gate")
+    start_sequences = [int(row.get("packet_sequence", -1)) for row in starts]
+    if any(left > right for left, right in zip(start_sequences, start_sequences[1:])):
+        raise GateError("FIFO service ordering mismatch")
+    if evidence_shape_profile == "TINY_SYNTHETIC":
+        if len(serviceable) != 1 or len(suppressed) != 1 or len(decisions) != 2:
+            raise GateError("sticky fixture decision cardinality mismatch")
+        if len(serviceable_slices) <= 1 or len(serviceable_terminals) != 1 or serviceable_terminals[0].get("terminal_class") not in {"TIMELY_DELIVERED", "ARRIVED_ACCEPTED"}:
+            raise GateError("sticky fixture service evidence mismatch")
+        if not serviceable_summaries or serviceable_summaries[0].get("terminal_disposition") != "completed_delivered":
+            raise GateError("sticky fixture completion evidence mismatch")
+        if [row.get("channel") for row in starts] != ["id_state", "supplement"]:
+            raise GateError("FIFO evidence mismatch")
+        if not any(row.get("event_type") == "service_slice" and packet(row) in serviceable and row.get("frame") == 0 for row in ledger):
+            raise GateError("same-frame capacity reuse evidence missing")
+    elif evidence_shape_profile == "REAL_C6_CELL":
+        allowed_terminal_classes = {"TIMELY_DELIVERED", "ARRIVED_ACCEPTED", "PENDING_AT_END", "ARRIVED_REJECTED", "EXPIRED", "SUPPRESSED"}
+        if any(row.get("terminal_class") not in allowed_terminal_classes for row in terminals):
+            raise GateError("invalid real-cell terminal class")
+    else:
+        raise GateError("unsupported evidence shape profile")
     report.update({
         "reconciliation": reconciliation,
-        "sticky_serviceable_decision": "PASS",
+        "evidence_shape_profile": evidence_shape_profile,
+        "tiny_cardinality_assumptions_applied": evidence_shape_profile == "TINY_SYNTHETIC",
+        "sticky_serviceable_decision": "PASS" if evidence_shape_profile == "TINY_SYNTHETIC" else "NOT_APPLICABLE",
         "positive_service_slice_count": len(serviceable_slices),
         "same_frame_reuse": "PASS",
         "supplement_ungated": "PASS",
@@ -571,6 +601,7 @@ def validate_e2e_seal(root):
 def launch_c6_stage(launch_spec):
     """Launch an authorized C6 fixture in a child process and seal disk evidence."""
     spec = dict(launch_spec)
+    spec.setdefault("evidence_shape_profile", "TINY_SYNTHETIC")
     _validate_launch_spec(spec)
     output_root = Path(spec["output_root"])
     if output_root.exists():
@@ -595,6 +626,7 @@ def launch_c6_stage(launch_spec):
             "output_root": str(output_root),
             "generated_manifest_sha256": spec["generated_manifest_sha256"],
             "generated_qualification_seal_sha256": spec["generated_qualification_seal_sha256"],
+            "evidence_shape_profile": spec["evidence_shape_profile"],
             "fixture_path": spec["fixture_path"],
             "fixture_sha256": spec["fixture_sha256"],
             "production_launcher_path": spec["production_launcher_path"],
@@ -632,7 +664,7 @@ def launch_c6_stage(launch_spec):
             raise GateError("child generated runtime import origin missing")
         if not runtime_origin.get("file"):
             raise GateError("child generated runtime import origin missing")
-        evidence = [_validate_disk_cell(output_root, cell) for cell in spec["cells"]]
+        evidence = [_validate_disk_cell(output_root, cell, spec["evidence_shape_profile"]) for cell in spec["cells"]]
         reports = [row["report"] for row in evidence]
         aggregate = aggregate_cells(reports)
         b_avoided = recompute_synthetic_b_avoided(evidence)
@@ -648,6 +680,7 @@ def launch_c6_stage(launch_spec):
             "child_exit_code": completed.returncode,
             "child_status": "PASS",
             "prelaunch_negative_tests": spec["prelaunch_negative_tests"],
+            "evidence_shape_profile": spec["evidence_shape_profile"],
             "synthetic_non_scientific": True,
             "status": "PASS",
         }
@@ -659,6 +692,7 @@ def launch_c6_stage(launch_spec):
             "generated_root": spec["generated_root"],
             "generated_manifest_sha256": spec["generated_manifest_sha256"],
             "generated_qualification_seal_sha256": spec["generated_qualification_seal_sha256"],
+            "evidence_shape_profile": spec["evidence_shape_profile"],
             "fixture_sha256": spec["fixture_sha256"],
             "production_launcher_sha256": spec["production_launcher_sha256"],
             "orchestration_sha256": spec["orchestration_sha256"],

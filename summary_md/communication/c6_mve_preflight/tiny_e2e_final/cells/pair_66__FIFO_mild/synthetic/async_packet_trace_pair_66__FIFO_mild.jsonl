@@ -1,0 +1,4 @@
+{"arrival_frame": 0, "capture_frame": 0, "emitted_frame": 0, "kind": "id_state", "packet_action": "suppressed", "source_state_version": 1, "state_version": 1, "wire_digest": "a3f190e2302cc6c85bc0d4deb2e0d7dca5e6b6c53f450156fa4c9bc047ef232b"}
+{"arrival_frame": 0, "capture_frame": 0, "delay_frames": 0, "emitted_frame": 0, "kind": "id_state", "packet_action": "service_queued", "source_state_version": 2, "state_version": 2, "wire_digest": "1b78b1220f59dc885e76b5c20314ec3172ed6d0b82e23eee5975b08d6140aa9e"}
+{"arrival_frame": 0, "capture_frame": 0, "delay_frames": 0, "emitted_frame": 0, "kind": "supplement", "packet_action": "service_queued", "source_state_version": 3, "state_version": 3, "wire_digest": "8676657c8b05b414920e9f4c65a22b4dc6107adb5da5b77d912b8a271e597583"}
+{"arrival_frame": 0, "capture_frame": 0, "delay_frames": 0, "emitted_frame": 0, "kind": "supplement", "packet_action": "expired", "stage": "fixture", "state_version": 4}

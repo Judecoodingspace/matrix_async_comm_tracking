@@ -110,18 +110,33 @@ def _run_cell(spec, module, cell):
     runtime = module.PacketRuntime(output, "synthetic", cell)
     rows = np.empty((0, 6), dtype=np.float32)
     runtime.begin_frame(0, rows, rows, [], [])
-    runtime.deliver_id_state(0, "fixture", rows, rows, rows, rows, [], [], [], [], 0, 0)
-    provider = runtime._c5_context_provider
-    runtime._c5_context_provider = lambda *_args: provider(rows, rows, ())
-    try:
+    profile = spec.get("evidence_shape_profile", "TINY_SYNTHETIC")
+
+    def deliver_serviceable(confirmed):
+        provider = runtime._c5_context_provider
+        runtime._c5_context_provider = lambda *_args: provider(rows, rows, ())
+        try:
+            runtime.deliver_id_state(0, "fixture", rows, rows, rows, rows, [], [], [], confirmed, 0, 0)
+        finally:
+            runtime._c5_context_provider = provider
+
+    if profile == "REAL_C6_CELL":
+        # Deliberately variable, non-scientific packet cardinalities.  The
+        # shared launcher must validate invariants without tiny-fixture counts.
+        for index in range(3):
+            runtime.deliver_id_state(0, "fixture", rows, rows, rows, rows, [], [], [], [], 0, 0)
+            deliver_serviceable([10000 + index])
+        runtime.deliver_supplement(0, "fixture", rows, rows, rows, rows, [], [], [], [], rows, rows)
+        runtime.deliver_supplement(0, "fixture", rows, rows, rows, rows, [], [], [], [], rows, rows)
+        final_frame = 12
+    else:
+        runtime.deliver_id_state(0, "fixture", rows, rows, rows, rows, [], [], [], [], 0, 0)
         # A large but opaque confirmed-ID vector forces multiple FIFO slices;
         # it carries no detector, tracker, GT, or scientific result values.
-        confirmed = list(range(10000))
-        runtime.deliver_id_state(0, "fixture", rows, rows, rows, rows, [], [], [], confirmed, 0, 0)
-    finally:
-        runtime._c5_context_provider = provider
-    runtime.deliver_supplement(0, "fixture", rows, rows, rows, rows, [], [], [], [], rows, rows)
-    for frame in range(1, 8):
+        deliver_serviceable(list(range(10000)))
+        runtime.deliver_supplement(0, "fixture", rows, rows, rows, rows, [], [], [], [], rows, rows)
+        final_frame = 7
+    for frame in range(1, final_frame + 1):
         runtime.begin_frame(frame, rows, rows, [], [])
     runtime.finalize()
     decisions = runtime._c6_suppression.records
@@ -152,6 +167,8 @@ def _run_cell(spec, module, cell):
         "suppression_event_count": sum(
             row.get("event_type") == "suppression" and by_packet(row) in suppressed for row in ledger
         ),
+        "evidence_shape_profile": profile,
+        "variable_cardinality_proof": profile == "REAL_C6_CELL" and len(suppressed) > 1 and len(serviceable) > 1,
         "generated_runtime_origin": str(Path(module.__file__).resolve()),
     }
     if spec.get("fault") == "missing_cell_end" and cell == CELLS[-1]:
@@ -181,6 +198,8 @@ def run(spec):
             "status": "PASS",
             "cells": list(spec["cells"]),
             "cell_statuses": statuses,
+            "evidence_shape_profile": spec.get("evidence_shape_profile", "TINY_SYNTHETIC"),
+            "variable_cardinality_proof": all(row.get("variable_cardinality_proof") for row in statuses) if spec.get("evidence_shape_profile") == "REAL_C6_CELL" else False,
             "fixture_sha256": spec["fixture_sha256"],
             "generated_root": str(generated),
             "generated_runtime_origin": str(Path(module.__file__).resolve()),
