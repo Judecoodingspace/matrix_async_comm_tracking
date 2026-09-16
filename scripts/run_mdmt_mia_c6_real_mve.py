@@ -15,6 +15,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER_PATH = ROOT / "scripts/run_mdmt_mia_c6_pre_service_semantic_suppression.py"
 CHILD_PATH = ROOT / "scripts/run_mdmt_mia_c6_real_child.py"
+TEST_PYTHON = "/mnt/data/deeplearning_env/anaconda3/bin/python"
+MVE_PYTHON = "/mnt/data/yzm/experiments/mdmt_mia_official/.conda-env/bin/python"
 GENERATED = Path("/mnt/data/yzm/experiments/mdmt_mia_official/variants/c6_pre_service_semantic_suppression_1e440166554e04d219291b1c3c6a8f5f6b88ff")
 MANIFEST = ROOT / "summary_md/communication/c6_generated_author_source_qualification_corrective/C6_GENERATED_AUTHOR_SOURCE_MANIFEST.json"
 QUAL_SEAL = ROOT / "summary_md/communication/c6_generated_author_source_qualification_corrective/C6_GENERATED_AUTHOR_SOURCE_QUALIFICATION_SEAL.json"
@@ -85,11 +87,11 @@ def authorization():
 
 
 def run_p2_closure_tests():
-    command = [sys.executable, "-m", "pytest", "-q", "tests/test_mdmt_mia_c6_evidence_shape_profile.py"]
+    command = [TEST_PYTHON, "-m", "pytest", "-q", "tests/test_mdmt_mia_c6_evidence_shape_profile.py"]
     env = dict(os.environ, PYTHONPATH=str(ROOT / "src"), PYTHONNOUSERSITE="1", PYTHONHASHSEED="0")
     completed = subprocess.run(command, cwd=str(ROOT), env=env, capture_output=True, text=True, check=False)
     return {
-        "command": "PYTHONPATH=src python -m pytest -q tests/test_mdmt_mia_c6_evidence_shape_profile.py",
+        "command": "PYTHONPATH=src /mnt/data/deeplearning_env/anaconda3/bin/python -m pytest -q tests/test_mdmt_mia_c6_evidence_shape_profile.py",
         "returncode": completed.returncode,
         "stdout": completed.stdout[-4000:],
         "stderr": completed.stderr[-2000:],
@@ -150,7 +152,7 @@ def build_launch_spec(auth, output_root, negatives):
         "service_rates": {CELL: RATE},
         "service_conditions": {CELL: CONDITION},
         "expected_baseline_derivation_seal_sha256": sha(baseline_seal),
-        "python_executable": sys.executable,
+        "python_executable": MVE_PYTHON,
         "working_directory": str(ROOT),
         "child_environment": {
             "PYTHONNOUSERSITE": "1", "PYTHONHASHSEED": "0", "DEVICE": "cuda:0",
@@ -296,7 +298,7 @@ def execute():
         "e2e_authority_sha": E2E_SHA, "mve_preflight_sha": PREFLIGHT_SHA,
         "baseline_derivation_identity": auth["baseline_derivation_identity"],
         "baseline_serviceable_id_state_serviced_bytes": BASELINE_BYTES,
-        "evidence_shape_profile": "REAL_C6_CELL", "python_executable": sys.executable,
+        "evidence_shape_profile": "REAL_C6_CELL", "python_executable": MVE_PYTHON,
         "python_version": sys.version.split()[0], "python_no_user_site": os.environ.get("PYTHONNOUSERSITE", ""),
         "python_hash_seed": os.environ.get("PYTHONHASHSEED", ""), "cwd": str(ROOT),
         "pythonpath_inputs": [str(ROOT), str(CHILD_PATH.parent)],
