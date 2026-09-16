@@ -629,7 +629,7 @@ def _validate_real_disk_cell(root, cell):
     """Validate communication-side evidence from one real author subprocess."""
     cell_root = Path(root) / "cells" / cell
     pair = str(cell).split("__", 1)[0].split("_", 1)[1]
-    runtime_root = cell_root / "mia" / "train_{}" / "results" / "mia_train_{}".format(pair, pair)
+    runtime_root = cell_root / "mia" / f"train_{pair}" / "results" / f"mia_train_{pair}"
     c6_root = cell_root / "c6"
     status = _read_json(cell_root / "C6_CHILD_CELL_STATUS.json")
     if status.get("status") != "PASS" or status.get("synthetic_non_scientific") is not False or status.get("tracking_outcome_read") is not False:

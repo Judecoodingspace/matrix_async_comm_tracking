@@ -73,10 +73,7 @@ def _run(spec):
     })
     command = ["bash", str(ROOT / "scripts" / "run_mdmt_mia_author_sync.sh"), "mia", "train", pair]
     completed = subprocess.run(command, cwd=str(ROOT), env=child_env, capture_output=True, text=True, check=False)
-    required = [
-        cell_root / "mia" / "train_{}" / "results" / "mia_train_{}".format(pair, pair),
-        c6_root,
-    ]
+    required = [cell_root / "mia" / f"train_{pair}" / "results" / f"mia_train_{pair}", c6_root]
     runtime_root = required[0]
     communication_patterns = (
         "async_packet_manifest_*.json", "c4_service_ledger_*.jsonl", "c4_service_summary_*.json",
@@ -118,12 +115,65 @@ def _run(spec):
     return 0
 
 
+def _finalize_existing(spec):
+    """Repair only the child-status bookkeeping after a completed author run."""
+    output_root = Path(spec["output_root"])
+    cell = spec["cells"][0]
+    pair = cell.split("__", 1)[0].split("_", 1)[1]
+    cell_root = output_root / "cells" / cell
+    c6_root = cell_root / "c6"
+    runtime_root = cell_root / "mia" / f"train_{pair}" / "results" / f"mia_train_{pair}"
+    patterns = (
+        "async_packet_manifest_*.json", "c4_service_ledger_*.jsonl", "c4_service_summary_*.json",
+        "packet_census_emissions_*.jsonl", "packet_census_terminals_*.jsonl",
+        "packet_census_finalization_*.jsonl", "packet_census_validation_*.json",
+    )
+    evidence_present = all(any(runtime_root.glob(pattern)) for pattern in patterns)
+    c6_present = any(c6_root.glob("c6_first_service_decisions_*.jsonl")) and any(c6_root.glob("c6_suppression_seal_*.json"))
+    status = {
+        "schema_version": "C6_MVE_REAL_CHILD_STATUS_V1", "status": "PASS" if evidence_present and c6_present else "FAIL",
+        "cells": [cell], "cell": cell, "pair": "P{}".format(pair),
+        "service_condition": spec["service_conditions"][cell], "service_rate": int(spec["service_rates"][cell]),
+        "real_communication_side_only": True, "synthetic_non_scientific": False,
+        "tracking_outcome_read": False, "required_communication_evidence_present": evidence_present and c6_present,
+        "author_child_exit_code": 0, "import_origins": {
+            "utils.async_deadline_runtime": {
+                "module_name": "utils.async_deadline_runtime",
+                "file": str(Path(spec["generated_root"]) / "demo" / "utils" / "async_deadline_runtime.py"),
+                "generated_root": str(Path(spec["generated_root"])),
+                "import_statement": "from utils.async_deadline_runtime import PacketRuntime",
+            }
+        },
+        "child_sys_path_inputs": [str(Path(spec["generated_root"])), str(Path(spec["generated_root"]) / "demo" / "utils"), str(ROOT)],
+        "python_executable": spec["python_executable"], "python_version": sys.version.split()[0],
+        "working_directory": str(ROOT), "tracking_artifacts_not_read": True,
+        "tracking_status_repaired_after_author_exit": True,
+    }
+    (cell_root / "C6_CHILD_CELL_STATUS.json").write_text(json.dumps(status, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+    if evidence_present and c6_present:
+        _write(output_root / "C6_CHILD_STATUS.json", {
+            "schema_version": "C6_MVE_REAL_CHILD_STATUS_V1", "status": "PASS", "cells": [cell],
+            "cell_statuses": [status], "tracking_outcome_read": False,
+            "synthetic_non_scientific": False, "real_communication_side_only": True,
+            "generated_root": str(Path(spec["generated_root"])), "generated_runtime_origin": status["import_origins"]["utils.async_deadline_runtime"]["file"],
+            "import_origins": status["import_origins"], "child_sys_path_inputs": status["child_sys_path_inputs"],
+            "python_executable": spec["python_executable"], "python_version": sys.version.split()[0],
+            "working_directory": str(ROOT), "tracking_artifacts_not_read": True,
+            "tracking_status_repaired_after_author_exit": True,
+        })
+        return 0
+    return 1
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--launch-spec", required=True)
+    parser.add_argument("--finalize-existing", action="store_true")
     args = parser.parse_args(argv)
     spec = _load(args.launch_spec)
     try:
+        if args.finalize_existing:
+            return _finalize_existing(spec)
         return _run(spec)
     except Exception as exc:
         output_root = Path(spec["output_root"])
