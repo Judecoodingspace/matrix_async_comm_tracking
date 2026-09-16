@@ -1,0 +1,1 @@
+{"aggregate":{"cell_order":["pair_23__FIFO_mild","pair_23__FIFO_strong","pair_44__FIFO_moderate","pair_66__FIFO_mild"],"schema_version":"C6_RUN_AGGREGATE_V1","status":"PASS","suppressed_packets":4},"b_avoided":{"B_avoided":1804,"independent_B_avoided":1804,"synthetic_non_scientific":true},"status":"PASS","synthetic_non_scientific":true}

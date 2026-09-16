@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import subprocess
 from pathlib import Path
 
@@ -31,6 +32,7 @@ FORMAL_VALIDITY_KEYS = frozenset(("run_id", "mve_authorization_sha", "mve_seal_s
 MVE_SCIENCE_KEYS = frozenset(("B_avoided", "delta_serviceable_id_state_serviced_bytes", "serviceable_id_state_serviced_bytes_baseline", "serviceable_id_state_serviced_bytes_treatment"))
 MVE_VALIDITY_RELATIVE_PATH = "mve/C6_MVE_VALIDITY.json"
 MVE_SCIENCE_RELATIVE_PATH = "mve/C6_MVE_SCIENCE.json"
+IMPLEMENTATION_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _canonical(value):
@@ -56,6 +58,26 @@ def _strict_object(raw):
     if not isinstance(value, dict):
         raise GateError("artifact must be object")
     return value
+
+
+def validate_implementation_sha(value, label="implementation_sha"):
+    """Require a canonical Git SHA-1 string without silently normalizing it."""
+    if not isinstance(value, str) or IMPLEMENTATION_SHA_PATTERN.fullmatch(value) is None:
+        raise GateError("{} must be canonical 40-hex: {!r}".format(label, value))
+    return value
+
+
+def validate_implementation_authority(requested, accepted):
+    """Validate syntax and exact equality while preserving both operands."""
+    validate_implementation_sha(requested, "requested implementation_sha")
+    validate_implementation_sha(accepted, "accepted implementation_sha")
+    if requested != accepted:
+        raise GateError(
+            "implementation_sha mismatch: requested={!r}, accepted={!r}".format(
+                requested, accepted
+            )
+        )
+    return accepted
 
 
 def validate_mve_validity_artifact(raw):
@@ -239,6 +261,7 @@ def validate_authorization(authorization):
         raise GateError("authorization authority mismatch")
     if tuple(value["cells"]) != CELL_ORDER or not all(isinstance(value[key], str) and value[key] for key in required if key != "cells"):
         raise GateError("authorization schema mismatch")
+    validate_implementation_sha(value["implementation_sha"])
     return value
 
 
@@ -301,8 +324,10 @@ def _validate_generated_launch_binding(spec):
     manifest = _read_json(manifest_path)
     if manifest.get("generated_source_root") != str(generated_root):
         raise GateError("generated source root mismatch")
-    if manifest.get("implementation_sha") != spec["authorization"].get("implementation_sha"):
-        raise GateError("generated implementation authority mismatch")
+    validate_implementation_authority(
+        manifest.get("implementation_sha"),
+        spec["authorization"].get("implementation_sha"),
+    )
     inventory = {row["relative_path"]: row["raw_sha256"] for row in manifest["generated_source_inventory"]}
     actual = {
         str(path.relative_to(generated_root))

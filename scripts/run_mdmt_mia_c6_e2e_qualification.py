@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -20,21 +21,22 @@ GENERATED = Path(
 )
 EVIDENCE = Path(os.environ.get(
     "C6_E2E_EVIDENCE_ROOT",
-    str(ROOT / "summary_md/communication/c6_e2e_qualification_corrective"),
+    str(ROOT / "summary_md/communication/c6_e2e_qualification_provenance_corrective"),
 ))
-MANIFEST = ROOT / "summary_md/communication/c6_generated_author_source_qualification/C6_GENERATED_AUTHOR_SOURCE_MANIFEST.json"
-QUAL_SEAL = ROOT / "summary_md/communication/c6_generated_author_source_qualification/C6_GENERATED_AUTHOR_SOURCE_QUALIFICATION_SEAL.json"
+MANIFEST = ROOT / "summary_md/communication/c6_generated_author_source_qualification_corrective/C6_GENERATED_AUTHOR_SOURCE_MANIFEST.json"
+QUAL_SEAL = ROOT / "summary_md/communication/c6_generated_author_source_qualification_corrective/C6_GENERATED_AUTHOR_SOURCE_QUALIFICATION_SEAL.json"
 BASE_AUTH = ROOT / "summary_md/communication/C6_BASE_SOURCE_AUTHORITY_CLOSURE.json"
 BASELINE = ROOT / "summary_md/communication/c6_run004_serviceable_baseline_derivation"
 RUNNER_PATH = ROOT / "scripts/run_mdmt_mia_c6_pre_service_semantic_suppression.py"
 FIXTURE = ROOT / "tests/fixtures/run_mdmt_mia_c6_tiny_runtime.py"
 CONTRACT = "989ee15285866b119a643f1f1ccdf52d2d02009f"
 PLAN = "93f44de70c4540afa0f3044aa066a0ed894648e9"
-IMPL = "1e440166554e04d219291b1c3c6a8f5f6b88ff"
+IMPL = "1e440166554e04d219291b1c3c6a8a1f5f6b88ff"
 AUTHORITY = "9b3582ae2b0c297923b076bf23e0a46da0700f7b"
 PREDECESSOR = "405645ea87fde009cec356a1e376d9207a4a9b7b"
-MANIFEST_SHA = "281ab9efba2a5ee87214173a758881f5b431d6c933403115e59b84c0becd9986"
-QUAL_SEAL_SHA = "e98c73a589fd44c1d373b1785da0d3d631bf632770ea624c41bfe0eb1cd5c7ae"
+MANIFEST_SHA = "40c2209e34b39966ef5c3059f3d565bdce0cc6f274ba72b1617b117caf1b04da"
+QUAL_SEAL_SHA = "4e450083170193dc3fd3c1782e44a77cc68694eb2e61959ae5758ca23c73bceb"
+IMPLEMENTATION_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 BASE_AUTHORITY_INVENTORY_SHA = "22a63573f583c5704dc90336cfa897d9b6b1c05a58eb48525c101da514e71387"
 BASE_AUTHORITY_CONTENT_SHA = "222d72a21b76a859b9bc2ae2fa6db8e7c734faaa54119c91f1876c98fbd2f2f9"
 BASE_AUTHORITY_ARTIFACT_SHA = "382a79df76bbe2e2e14b3d5dc3cb91dcbf989b0bc4587fd8b4f2ab4b867b9554"
@@ -104,7 +106,16 @@ def preflight(manifest_sha=MANIFEST_SHA, generated_root=GENERATED):
         path = BASELINE / name
         if not path.is_file() or sha(path) != expected:
             raise RuntimeError("baseline derivation artifact mismatch")
-    if manifest.get("implementation_sha") != IMPL or manifest.get("contract_sha") != CONTRACT or manifest.get("plan_sha") != PLAN:
+    manifest_impl = manifest.get("implementation_sha")
+    if not isinstance(manifest_impl, str) or IMPLEMENTATION_SHA_PATTERN.fullmatch(manifest_impl) is None:
+        raise RuntimeError("generated manifest implementation_sha must be canonical 40-hex: {!r}".format(manifest_impl))
+    if manifest_impl != IMPL:
+        raise RuntimeError(
+            "generated manifest implementation_sha mismatch: requested={!r}, accepted={!r}".format(
+                manifest_impl, IMPL
+            )
+        )
+    if manifest.get("contract_sha") != CONTRACT or manifest.get("plan_sha") != PLAN:
         raise RuntimeError("generated manifest authority mismatch")
     files = {row["relative_path"]: row["raw_sha256"] for row in manifest["generated_source_inventory"]}
     actual = {
@@ -124,7 +135,7 @@ def authorization():
         "generated_variant_manifest_sha": MANIFEST_SHA,
         "baseline_derivation_seal_sha": sha(BASELINE / "C6_RUN004_BASELINE_DERIVATION_SEAL.json"),
         "cells": list(CELLS),
-        "output_root": "summary_md/communication/c6_e2e_qualification_corrective",
+        "output_root": "summary_md/communication/c6_e2e_qualification_provenance_corrective",
     }
 
 
@@ -134,7 +145,7 @@ def build_launch_spec(root, auth, cells=CELLS, rates=None, conditions=None, faul
     return {
         "schema_version": "C6_PRODUCTION_LAUNCH_SPEC_V1",
         "stage": "C6_E2E_QUALIFICATION",
-        "run_id": "c6-e2e-corrective-synthetic",
+        "run_id": "c6-e2e-provenance-corrective-synthetic",
         "authorization": dict(auth),
         "output_root": str(Path(root)),
         "logical_output_root": auth["output_root"],
