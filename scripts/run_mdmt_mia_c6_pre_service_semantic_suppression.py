@@ -39,6 +39,13 @@ MVE_PAIR = "P23"
 MVE_CONDITION = "FIFO_strong"
 MVE_RATE = 16649
 CELL_ORDER = ("pair_23__FIFO_mild", "pair_23__FIFO_strong", "pair_44__FIFO_moderate", "pair_66__FIFO_mild")
+FORMAL_PACKAGE_PATH = ROOT / "summary_md/communication/c6_pre_formal_platform_qualification/C6_FORMAL_EXECUTION_PACKAGE.json"
+FORMAL_PACKAGE_SHA256 = "4a03629f989c33de970f5b74f7a683b08d521039069ffba965e893bcde1d2ae5"
+REAL_CHILD_PATH = ROOT / "scripts/run_mdmt_mia_c6_real_child.py"
+SYNTHETIC_REAL_CELL_CHILD_PATH = ROOT / "tests/fixtures/run_mdmt_mia_c6_tiny_runtime.py"
+REAL_CELL_STAGE = "C6_REAL_CELL"
+REAL_CELL_POLICIES = frozenset(("PLATFORM_QUALIFICATION", "C6_FORMAL"))
+REAL_CELL_EXECUTION_MODES = frozenset(("SYNTHETIC_NO_DATA", "REAL_CHILD"))
 EVIDENCE_SHAPE_PROFILES = frozenset(("TINY_SYNTHETIC", "REAL_C6_CELL"))
 C4_SERVICE_STATUS_ALLOWED = frozenset(("COMPLETE",))
 # Frozen generated author runtime: async_deadline_runtime.py emits an integer
@@ -327,6 +334,79 @@ def validate_mve_authorization(authorization):
     return value
 
 
+REAL_CELL_AUTHORIZATION_KEYS = frozenset((
+    "schema_version", "stage", "execution_authorized", "run_scope",
+    "parent_policy", "parent_authorization_sha256", "execution_mode",
+    "cell", "pair", "role", "service_condition", "service_rate",
+    "serviceable_id_state_serviced_bytes_baseline", "evidence_shape_profile",
+    "output_root", "formal_package_sha256", "implementation_sha",
+    "generated_source_manifest_sha256", "generated_source_qualification_seal_sha256",
+    "science_adaptation_allowed", "tracking_outcome_read_allowed",
+    "formal_aggregation_allowed",
+))
+
+
+def _frozen_formal_cells():
+    if not FORMAL_PACKAGE_PATH.is_file() or _sha256_file(FORMAL_PACKAGE_PATH) != FORMAL_PACKAGE_SHA256:
+        raise GateError("frozen Formal package identity mismatch")
+    package = _read_json(FORMAL_PACKAGE_PATH)
+    cells = package.get("cells")
+    if not isinstance(cells, list) or len(cells) != 4:
+        raise GateError("frozen Formal package cell schema mismatch")
+    return {row["cell"]: row for row in cells}
+
+
+def validate_real_cell_authorization(authorization):
+    """Validate the mechanism binding; MVE and Formal policy stay outside it."""
+    value = _strict_object(authorization)
+    if set(value) != REAL_CELL_AUTHORIZATION_KEYS:
+        raise GateError("real-cell authorization schema mismatch")
+    if (
+        value["schema_version"] != "C6_REAL_CELL_EXECUTION_AUTHORIZATION_V1"
+        or value["stage"] != REAL_CELL_STAGE
+        or value["execution_authorized"] is not True
+        or value["run_scope"] != "EXACTLY_ONE_C6_CELL"
+        or value["parent_policy"] not in REAL_CELL_POLICIES
+        or value["execution_mode"] not in REAL_CELL_EXECUTION_MODES
+    ):
+        raise GateError("real-cell authorization policy mismatch")
+    if not isinstance(value["parent_authorization_sha256"], str) or re.fullmatch(r"[0-9a-f]{64}", value["parent_authorization_sha256"]) is None:
+        raise GateError("real-cell parent authority identity mismatch")
+    if value["parent_policy"] == "PLATFORM_QUALIFICATION" and value["execution_mode"] != "SYNTHETIC_NO_DATA":
+        raise GateError("platform qualification must be synthetic/no-data")
+    if value["parent_policy"] == "C6_FORMAL" and value["execution_mode"] != "REAL_CHILD":
+        raise GateError("Formal real-cell binding must use the real child")
+    frozen = _frozen_formal_cells().get(value["cell"])
+    expected_cell = {
+        key: frozen[key] if frozen is not None else None
+        for key in (
+            "cell", "pair", "role", "service_condition", "service_rate",
+            "serviceable_id_state_serviced_bytes_baseline", "evidence_shape_profile",
+        )
+    }
+    observed_cell = {key: value[key] for key in expected_cell}
+    if frozen is None or observed_cell != expected_cell:
+        raise GateError("real-cell frozen cell identity mismatch")
+    if value["evidence_shape_profile"] != "REAL_C6_CELL":
+        raise GateError("real-cell evidence profile mismatch")
+    if (
+        value["formal_package_sha256"] != FORMAL_PACKAGE_SHA256
+        or value["implementation_sha"] != MVE_IMPLEMENTATION_SHA
+        or value["generated_source_manifest_sha256"] != MVE_GENERATED_MANIFEST_SHA256
+        or value["generated_source_qualification_seal_sha256"] != MVE_GENERATED_QUALIFICATION_SEAL_SHA256
+    ):
+        raise GateError("real-cell source authority mismatch")
+    if (
+        not isinstance(value["output_root"], str) or not value["output_root"]
+        or value["science_adaptation_allowed"] is not False
+        or value["tracking_outcome_read_allowed"] is not False
+        or value["formal_aggregation_allowed"] is not False
+    ):
+        raise GateError("real-cell execution boundary mismatch")
+    validate_implementation_sha(value["implementation_sha"])
+    return value
+
+
 def seal_run(context, results):
     if context.get("status") != "PASS" or results.get("status") != "PASS":
         raise GateError("cannot seal invalid run")
@@ -465,6 +545,30 @@ def _validate_launch_spec(spec):
             raise GateError("MVE service identity mismatch")
         if spec["evidence_shape_profile"] != "REAL_C6_CELL":
             raise GateError("MVE evidence shape profile mismatch")
+    elif spec["stage"] == REAL_CELL_STAGE:
+        validate_real_cell_authorization(auth)
+        if "attempt" in spec:
+            raise GateError("real-cell mechanism must not carry MVE attempt policy")
+        if tuple(spec["cells"]) != (auth["cell"],):
+            raise GateError("real-cell launch requires exactly one authorized cell")
+        if spec["service_rates"] != {auth["cell"]: auth["service_rate"]}:
+            raise GateError("real-cell service-rate binding mismatch")
+        if spec["service_conditions"] != {auth["cell"]: auth["service_condition"]}:
+            raise GateError("real-cell service-condition binding mismatch")
+        if spec["evidence_shape_profile"] != "REAL_C6_CELL":
+            raise GateError("real-cell evidence profile mismatch")
+        if auth["output_root"] != spec["logical_output_root"]:
+            raise GateError("real-cell output-root authority mismatch")
+        if (
+            spec["generated_manifest_sha256"] != auth["generated_source_manifest_sha256"]
+            or spec["generated_qualification_seal_sha256"] != auth["generated_source_qualification_seal_sha256"]
+        ):
+            raise GateError("real-cell generated-source binding mismatch")
+        expected_fixture = SYNTHETIC_REAL_CELL_CHILD_PATH if auth["execution_mode"] == "SYNTHETIC_NO_DATA" else REAL_CHILD_PATH
+        if Path(spec["fixture_path"]).resolve() != expected_fixture.resolve():
+            raise GateError("real-cell child boundary mismatch")
+        if Path(spec["production_launcher_path"]).resolve() != Path(__file__).resolve():
+            raise GateError("real-cell launcher identity mismatch")
     else:
         if auth.get("contract_sha") != CONTRACT_SHA or auth.get("plan_sha") != PLAN_SHA:
             raise GateError("launch authorization authority mismatch")
@@ -925,16 +1029,22 @@ def validate_e2e_seal(root):
     return True
 
 
-def _launch_real_c6_stage(spec):
-    """Run one authorized real communication-side cell through the common boundary."""
+def _execute_real_c6_cell(spec):
+    """Execute one cell after the public launch_c6_stage contract validates it."""
+    generic = spec["stage"] == REAL_CELL_STAGE
+    synthetic_probe = generic and spec["authorization"]["execution_mode"] == "SYNTHETIC_NO_DATA"
     output_root = Path(spec["output_root"])
     if output_root.exists():
         raise GateError("output root is not exclusive")
     output_root.mkdir(parents=True)
     terminal_written = False
-    launch_spec_path = output_root / "C6_MVE_LAUNCH_SPEC.json"
+    launch_spec_name = "C6_REAL_CELL_LAUNCH_SPEC.json" if generic else "C6_MVE_LAUNCH_SPEC.json"
+    authorization_name = "C6_REAL_CELL_AUTHORIZATION.json" if generic else "C6_MVE_AUTHORIZATION.json"
+    validator_name = "C6_REAL_CELL_VALIDATOR_OUTPUT.json" if generic else "C6_MVE_VALIDATOR_OUTPUT.json"
+    aggregation_name = "C6_REAL_CELL_AGGREGATION_OUTPUT.json" if generic else "C6_MVE_AGGREGATION_OUTPUT.json"
+    launch_spec_path = output_root / launch_spec_name
     start = {
-        "schema_version": "C6_MVE_RUN_START_V1",
+        "schema_version": "C6_REAL_CELL_RUN_START_V1" if generic else "C6_MVE_RUN_START_V1",
         "stage": spec["stage"],
         "run_id": spec["run_id"],
         "authorization": spec["authorization"],
@@ -955,15 +1065,15 @@ def _launch_real_c6_stage(spec):
     }
     try:
         _write_exclusive_json(output_root / "RUN_START.json", start)
-        _write_exclusive_json(output_root / "C6_MVE_AUTHORIZATION.json", spec["authorization"])
-        _write_exclusive_json(output_root / "C6_MVE_LAUNCH_SPEC.json", spec)
+        _write_exclusive_json(output_root / authorization_name, spec["authorization"])
+        _write_exclusive_json(output_root / launch_spec_name, spec)
         _validate_generated_launch_binding(spec)
         child_env = dict(os.environ)
         child_env.update({str(k): str(v) for k, v in spec["child_environment"].items()})
         child_env["PYTHONPATH"] = os.pathsep.join(
             part for part in (str(ROOT), str(Path(spec["fixture_path"]).parent), child_env.get("PYTHONPATH", "")) if part
         )
-        child_env["C6_MVE_CHILD"] = "1"
+        child_env["C6_REAL_CELL_CHILD" if generic else "C6_MVE_CHILD"] = "1"
         command = [spec["python_executable"], spec["fixture_path"], "--launch-spec", str(launch_spec_path)]
         completed = subprocess.run(command, cwd=spec["working_directory"], env=child_env,
                                    capture_output=True, text=True, check=False)
@@ -971,23 +1081,51 @@ def _launch_real_c6_stage(spec):
         (output_root / "C6_CHILD_STDERR.txt").write_text(completed.stderr, encoding="utf-8")
         if completed.returncode != 0:
             raise GateError("real child exit code {}".format(completed.returncode))
-        child_status = _validate_real_child_status(spec, output_root)
-        evidence = [_validate_real_disk_cell(output_root, cell) for cell in spec["cells"]]
+        if synthetic_probe:
+            child_status = _read_json(output_root / "C6_CHILD_STATUS.json")
+            if (
+                child_status.get("schema_version") != "C6_TINY_CHILD_STATUS_V1"
+                or child_status.get("status") != "PASS"
+                or child_status.get("synthetic_non_scientific") is not True
+                or child_status.get("evidence_shape_profile") != "REAL_C6_CELL"
+                or child_status.get("variable_cardinality_proof") is not True
+                or tuple(child_status.get("cells", ())) != tuple(spec["cells"])
+            ):
+                raise GateError("synthetic real-cell child status mismatch")
+            runtime_origin = child_status.get("import_origins", {}).get("utils.async_deadline_runtime", {})
+            if runtime_origin.get("generated_root") != spec["generated_root"]:
+                raise GateError("synthetic real-cell generated runtime mismatch")
+            evidence = [_validate_disk_cell(output_root, cell, "REAL_C6_CELL") for cell in spec["cells"]]
+        else:
+            child_status = _validate_real_child_status(spec, output_root)
+            evidence = [_validate_real_disk_cell(output_root, cell) for cell in spec["cells"]]
         reports = [row["report"] for row in evidence]
-        aggregate = {"schema_version": "C6_MVE_MECHANICAL_AGGREGATION_V1", "cell": spec["cells"][0],
+        aggregate = {"schema_version": "C6_REAL_CELL_MECHANICAL_AGGREGATION_V1" if generic else "C6_MVE_MECHANICAL_AGGREGATION_V1", "cell": spec["cells"][0],
                      "status": "PASS", "census": "PASS", "decision": "PASS", "ledger": "PASS",
                      "tracking_outcome_read": False}
-        quantities = recompute_real_mve_quantities(evidence)
-        validator_output = {"schema_version": "C6_MVE_VALIDATOR_OUTPUT_V1", "cells": reports,
-                            "child_status": child_status, "status": "PASS", "tracking_outcome_read": False}
-        aggregation_output = {"schema_version": "C6_MVE_AGGREGATION_OUTPUT_V1", "aggregate": aggregate,
-                              "quantities": quantities, "status": "PASS", "tracking_outcome_read": False}
-        _write_exclusive_json(output_root / "C6_MVE_VALIDATOR_OUTPUT.json", validator_output)
-        _write_exclusive_json(output_root / "C6_MVE_AGGREGATION_OUTPUT.json", aggregation_output)
-        return {"start": start, "child_status": child_status, "evidence": evidence,
-                "reports": reports, "aggregate": aggregate, "quantities": quantities,
-                "validator_output": validator_output, "aggregation_output": aggregation_output,
-                "child_exit_code": completed.returncode}
+        quantities = recompute_synthetic_b_avoided(evidence) if synthetic_probe else recompute_real_mve_quantities(evidence)
+        validator_output = {"schema_version": "C6_REAL_CELL_VALIDATOR_OUTPUT_V1" if generic else "C6_MVE_VALIDATOR_OUTPUT_V1", "cells": reports,
+                            "child_status": child_status, "status": "PASS", "tracking_outcome_read": False,
+                            "synthetic_non_scientific": synthetic_probe}
+        aggregation_output = {"schema_version": "C6_REAL_CELL_AGGREGATION_OUTPUT_V1" if generic else "C6_MVE_AGGREGATION_OUTPUT_V1", "aggregate": aggregate,
+                              "quantities": quantities, "status": "PASS", "tracking_outcome_read": False,
+                              "synthetic_non_scientific": synthetic_probe}
+        if not generic:
+            validator_output.pop("synthetic_non_scientific")
+            aggregation_output.pop("synthetic_non_scientific")
+        _write_exclusive_json(output_root / validator_name, validator_output)
+        _write_exclusive_json(output_root / aggregation_name, aggregation_output)
+        terminal = None
+        if generic:
+            terminal = write_terminal_record(output_root, spec["run_id"], "RUN_END", "C6_REAL_CELL_MECHANICAL_PASS")
+            terminal_written = True
+        result = {"start": start, "child_status": child_status, "evidence": evidence,
+                  "reports": reports, "aggregate": aggregate, "quantities": quantities,
+                  "validator_output": validator_output, "aggregation_output": aggregation_output,
+                  "child_exit_code": completed.returncode}
+        if generic:
+            result.update(terminal=terminal, synthetic_non_scientific=synthetic_probe)
+        return result
     except Exception as exc:
         if not terminal_written:
             try:
@@ -997,15 +1135,16 @@ def _launch_real_c6_stage(spec):
                 pass
         if isinstance(exc, GateError):
             raise
-        raise GateError("C6 real launch failed: {}".format(exc)) from exc
+        label = "C6 real-cell launch failed" if generic else "C6 real launch failed"
+        raise GateError("{}: {}".format(label, exc)) from exc
 
 
 def launch_c6_stage(launch_spec):
     """Launch an authorized C6 fixture in a child process and seal disk evidence."""
     spec = dict(launch_spec)
     _validate_launch_spec(spec)
-    if spec.get("stage") == "C6_MVE":
-        return _launch_real_c6_stage(spec)
+    if spec.get("stage") in ("C6_MVE", REAL_CELL_STAGE):
+        return _execute_real_c6_cell(spec)
     output_root = Path(spec["output_root"])
     if output_root.exists():
         raise GateError("output root is not exclusive")

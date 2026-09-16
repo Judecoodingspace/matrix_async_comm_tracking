@@ -1,6 +1,29 @@
 # Current Status
 
-Updated: 2026-09-04
+Updated: 2026-09-16
+
+## Latest platform-core update
+
+C6 now exposes a public, fail-closed `C6_REAL_CELL` launcher contract that
+separates the reusable one-cell child mechanism from MVE Attempt2 policy. The
+four frozen C6 cell identities pass synthetic/no-data mechanical probes through
+`launch_c6_stage(...)`; the existing MVE Attempt2 policy and full-matrix
+`aggregate_cells(...)` invariant remain unchanged. The qualified child wrapper,
+generated scientific runtime, Formal operator, rates, baselines, metrics, and
+child-process boundary were not changed.
+
+Verification:
+
+```text
+focused C6 qualification -> 84 passed
+full regression suite -> 459 passed, 2 skipped
+real scientific/Formal execution -> not performed
+tracking outcome read -> not performed
+```
+
+Next gate: `TEAM_B_C6_FORMAL_LAUNCHER_INTERFACE_DELTA_REVIEW`. This result only
+qualifies the generic real-cell interface; the C6 Formal execution path remains
+unqualified pending a separate operator corrective.
 
 ## Latest governance closure
 
