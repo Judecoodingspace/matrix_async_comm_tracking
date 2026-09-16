@@ -109,10 +109,25 @@ def write_formal_parent(tmp_path, parent=None, name="test-only-formal-parent.jso
     return path
 
 
-def bind_formal_parent(spec, tmp_path, parent=None):
+def write_test_issuance(tmp_path, parent_path, name="test-only-formal-issuance.json", **overrides):
+    path = tmp_path / name
+    value = {
+        "schema_version": "C6_FORMAL_AUTHORIZATION_ISSUANCE_V1",
+        "stage": "C6_FORMAL_EXECUTION_AUTHORIZATION_DECISION",
+        "status": "ISSUED",
+        "formal_stage": "C6_FORMAL",
+        "authorization_path": str(parent_path),
+        "authorization_sha256": sha(parent_path),
+    }
+    value.update(overrides)
+    path.write_text(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+    return path
+
+
+def bind_formal_parent(spec, tmp_path, monkeypatch, parent=None):
     path = write_formal_parent(tmp_path, parent)
-    source = formal.candidate(True) if parent is None else parent
-    cell = next(row for row in source["cells"] if row["cell"] == spec["authorization"]["cell"])
+    issuance_path = write_test_issuance(tmp_path, path)
+    cell = next(row for row in frozen_cells() if row["cell"] == spec["authorization"]["cell"])
     auth = spec["authorization"]
     auth["parent_policy"] = "C6_FORMAL"
     auth["parent_authorization_path"] = str(path)
@@ -122,7 +137,9 @@ def bind_formal_parent(spec, tmp_path, parent=None):
     spec["logical_output_root"] = cell["output_root"]
     spec["fixture_path"] = str(runner.REAL_CHILD_PATH)
     spec["fixture_sha256"] = sha(runner.REAL_CHILD_PATH)
-    return path
+    monkeypatch.setattr(runner, "FORMAL_ISSUANCE_AUTHORITY_PATH", issuance_path)
+    monkeypatch.setattr(runner, "_require_repository_tracked_issuance", lambda path, raw: None)
+    return path, issuance_path
 
 
 def assert_formal_parent_rejected_before_child(spec, monkeypatch):
@@ -208,20 +225,20 @@ def test_mve_authorization_cannot_enter_generic_path(tmp_path, monkeypatch):
         runner.launch_c6_stage(spec)
 
 
-def test_real_mode_requires_bound_parent_and_uses_existing_wrapper(tmp_path):
+def test_real_mode_requires_bound_parent_and_uses_existing_wrapper(tmp_path, monkeypatch):
     cell = frozen_cells()[0]
     spec = launch_spec(cell, tmp_path / "future-formal")
     spec["authorization"]["parent_policy"] = "C6_FORMAL"
     spec["authorization"]["execution_mode"] = "REAL_CHILD"
-    with pytest.raises(runner.GateError, match="parent authorization artifact is required"):
+    with pytest.raises(runner.GateError, match="issuance authority artifact is missing"):
         runner._validate_launch_spec(spec)
-    bind_formal_parent(spec, tmp_path)
+    bind_formal_parent(spec, tmp_path, monkeypatch)
     runner._validate_launch_spec(spec)
 
 
 def test_valid_persisted_formal_parent_passes_validation_without_launch(tmp_path, monkeypatch):
     spec = launch_spec(frozen_cells()[0], tmp_path / "formal-positive")
-    bind_formal_parent(spec, tmp_path)
+    bind_formal_parent(spec, tmp_path, monkeypatch)
     monkeypatch.setattr(runner.subprocess, "run", lambda *args, **kwargs: pytest.fail("child boundary reached"))
     runner._validate_launch_spec(spec)
     assert not Path(spec["output_root"]).exists()
@@ -233,9 +250,9 @@ def test_valid_persisted_formal_parent_passes_validation_without_launch(tmp_path
 )
 def test_formal_parent_artifact_failures_stop_before_child(tmp_path, monkeypatch, failure):
     spec = launch_spec(frozen_cells()[0], tmp_path / ("formal-artifact-" + failure))
-    path = bind_formal_parent(spec, tmp_path)
+    path, _ = bind_formal_parent(spec, tmp_path, monkeypatch)
     if failure == "missing":
-        spec["authorization"]["parent_authorization_path"] = str(tmp_path / "does-not-exist.json")
+        path.unlink()
     elif failure == "wrong_path":
         spec["authorization"]["parent_authorization_path"] = str(FORMAL_PACKAGE)
         spec["authorization"]["parent_authorization_sha256"] = sha(FORMAL_PACKAGE)
@@ -246,13 +263,109 @@ def test_formal_parent_artifact_failures_stop_before_child(tmp_path, monkeypatch
     elif failure == "malformed":
         path.write_text("{\n", encoding="utf-8")
         spec["authorization"]["parent_authorization_sha256"] = sha(path)
+        write_test_issuance(tmp_path, path)
     else:
         raw = path.read_text(encoding="utf-8").replace(
             '"stage":"C6_FORMAL"', '"stage":"C6_FORMAL","stage":"C6_FORMAL"', 1
         )
         path.write_text(raw, encoding="utf-8")
         spec["authorization"]["parent_authorization_sha256"] = sha(path)
+        write_test_issuance(tmp_path, path)
     assert_formal_parent_rejected_before_child(spec, monkeypatch)
+
+
+def test_issuance_authority_path_is_launcher_owned_and_absent_from_real_cell_schema():
+    assert runner.FORMAL_ISSUANCE_AUTHORITY_PATH == (
+        ROOT / "summary_md/communication/c6_formal_authorization/C6_FORMAL_AUTHORIZATION_ISSUANCE.json"
+    )
+    assert not any("issuance" in key for key in runner.REAL_CELL_AUTHORIZATION_KEYS)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "missing",
+        "malformed",
+        "duplicate_key",
+        "wrong_schema",
+        "wrong_status",
+        "wrong_stage",
+        "wrong_formal_stage",
+        "path_mismatch",
+        "issuance_sha_mismatch",
+        "real_cell_sha_mismatch",
+        "arbitrary_self_issued_parent",
+        "wrong_formal_authorization",
+        "parent_modified_after_issuance",
+    ],
+)
+def test_formal_issuance_failures_stop_before_child(tmp_path, monkeypatch, failure):
+    spec = launch_spec(frozen_cells()[0], tmp_path / ("formal-issuance-" + failure))
+    parent_path, issuance_path = bind_formal_parent(spec, tmp_path, monkeypatch)
+    issuance = json.loads(issuance_path.read_text(encoding="utf-8"))
+    if failure == "missing":
+        monkeypatch.setattr(runner, "FORMAL_ISSUANCE_AUTHORITY_PATH", tmp_path / "missing-issuance.json")
+    elif failure == "malformed":
+        issuance_path.write_text("{\n", encoding="utf-8")
+    elif failure == "duplicate_key":
+        raw = issuance_path.read_text(encoding="utf-8").replace(
+            '"status":"ISSUED"', '"status":"ISSUED","status":"ISSUED"', 1
+        )
+        issuance_path.write_text(raw, encoding="utf-8")
+    elif failure == "wrong_schema":
+        issuance["schema_version"] = "WRONG"
+    elif failure == "wrong_status":
+        issuance["status"] = "PENDING"
+    elif failure == "wrong_stage":
+        issuance["stage"] = "C6_WRONG"
+    elif failure == "wrong_formal_stage":
+        issuance["formal_stage"] = "C6_WRONG"
+    elif failure == "path_mismatch":
+        issuance["authorization_path"] = str(tmp_path / "not-the-authorized-parent.json")
+    elif failure == "issuance_sha_mismatch":
+        issuance["authorization_sha256"] = "0" * 64
+    elif failure == "real_cell_sha_mismatch":
+        spec["authorization"]["parent_authorization_sha256"] = "0" * 64
+    elif failure == "arbitrary_self_issued_parent":
+        arbitrary = write_formal_parent(tmp_path, name="arbitrary-self-issued-parent.json")
+        spec["authorization"]["parent_authorization_path"] = str(arbitrary)
+        spec["authorization"]["parent_authorization_sha256"] = sha(arbitrary)
+    elif failure == "wrong_formal_authorization":
+        wrong = tmp_path / "issued-but-not-formal-authorization.json"
+        wrong.write_bytes(FORMAL_PACKAGE.read_bytes())
+        issuance["authorization_path"] = str(wrong)
+        issuance["authorization_sha256"] = sha(wrong)
+        spec["authorization"]["parent_authorization_path"] = str(wrong)
+        spec["authorization"]["parent_authorization_sha256"] = sha(wrong)
+    else:
+        parent_path.write_text(parent_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    if failure not in {"missing", "malformed", "duplicate_key", "real_cell_sha_mismatch", "arbitrary_self_issued_parent", "parent_modified_after_issuance"}:
+        issuance_path.write_text(
+            json.dumps(issuance, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8"
+        )
+    assert_formal_parent_rejected_before_child(spec, monkeypatch)
+
+
+def test_repository_tracked_issuance_must_match_head_bytes(tmp_path, monkeypatch):
+    anchor = tmp_path / "summary_md/communication/c6_formal_authorization/issuance.json"
+    anchor.parent.mkdir(parents=True)
+    anchor.write_bytes(b"issued\n")
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+
+    def git_bytes(command, **_kwargs):
+        return b"issued\n" if command[1] == "show" else b"summary_md/communication/c6_formal_authorization/issuance.json\n"
+
+    monkeypatch.setattr(runner.subprocess, "check_output", git_bytes)
+    runner._require_repository_tracked_issuance(anchor, anchor.read_bytes())
+    with pytest.raises(runner.GateError, match="differs from HEAD"):
+        runner._require_repository_tracked_issuance(anchor, b"modified\n")
+
+    def untracked(command, **_kwargs):
+        raise runner.subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(runner.subprocess, "check_output", untracked)
+    with pytest.raises(runner.GateError, match="not repository-tracked"):
+        runner._require_repository_tracked_issuance(anchor, anchor.read_bytes())
 
 
 @pytest.mark.parametrize(
@@ -275,7 +388,7 @@ def test_formal_parent_semantic_gates_stop_before_child(tmp_path, monkeypatch, f
     spec = launch_spec(frozen_cells()[0], tmp_path / ("formal-semantic-" + field + "-" + str(value)))
     parent = formal.candidate(True)
     parent[field] = value
-    bind_formal_parent(spec, tmp_path, parent)
+    bind_formal_parent(spec, tmp_path, monkeypatch, parent)
     assert_formal_parent_rejected_before_child(spec, monkeypatch)
 
 
@@ -294,7 +407,7 @@ def test_formal_parent_cell_mutations_stop_before_child(tmp_path, monkeypatch, f
     spec = launch_spec(frozen_cells()[0], tmp_path / ("formal-cell-" + field))
     parent = formal.candidate(True)
     parent["cells"][0][field] = value
-    bind_formal_parent(spec, tmp_path, parent)
+    bind_formal_parent(spec, tmp_path, monkeypatch, parent)
     assert_formal_parent_rejected_before_child(spec, monkeypatch)
 
 
@@ -302,21 +415,13 @@ def test_requested_cell_absent_from_formal_parent_stops_before_child(tmp_path, m
     spec = launch_spec(frozen_cells()[0], tmp_path / "formal-cell-absent")
     parent = formal.candidate(True)
     parent["cells"] = parent["cells"][1:]
-    path = write_formal_parent(tmp_path, parent)
-    spec["authorization"].update(
-        parent_policy="C6_FORMAL",
-        parent_authorization_path=str(path),
-        parent_authorization_sha256=sha(path),
-        execution_mode="REAL_CHILD",
-    )
-    spec["fixture_path"] = str(runner.REAL_CHILD_PATH)
-    spec["fixture_sha256"] = sha(runner.REAL_CHILD_PATH)
+    bind_formal_parent(spec, tmp_path, monkeypatch, parent)
     assert_formal_parent_rejected_before_child(spec, monkeypatch)
 
 
 def test_formal_parent_output_root_mismatch_stops_before_child(tmp_path, monkeypatch):
     spec = launch_spec(frozen_cells()[0], tmp_path / "formal-root-mismatch")
-    bind_formal_parent(spec, tmp_path)
+    bind_formal_parent(spec, tmp_path, monkeypatch)
     spec["authorization"]["output_root"] = "summary_md/communication/c6_formal/wrong/attempt1"
     spec["logical_output_root"] = spec["authorization"]["output_root"]
     assert_formal_parent_rejected_before_child(spec, monkeypatch)

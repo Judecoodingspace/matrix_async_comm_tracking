@@ -43,6 +43,7 @@ FORMAL_PACKAGE_PATH = ROOT / "summary_md/communication/c6_pre_formal_platform_qu
 FORMAL_PACKAGE_SHA256 = "4a03629f989c33de970f5b74f7a683b08d521039069ffba965e893bcde1d2ae5"
 PLATFORM_MANIFEST_PATH = ROOT / "summary_md/communication/c6_pre_formal_platform_qualification/C6_PLATFORM_QUALIFICATION_MANIFEST.json"
 PLATFORM_QUALIFICATION_AUTHORITY_SHA = "16c85908246cf433ec03d7b9aebe965cc58b59c9"
+FORMAL_ISSUANCE_AUTHORITY_PATH = ROOT / "summary_md/communication/c6_formal_authorization/C6_FORMAL_AUTHORIZATION_ISSUANCE.json"
 REAL_CHILD_PATH = ROOT / "scripts/run_mdmt_mia_c6_real_child.py"
 SYNTHETIC_REAL_CELL_CHILD_PATH = ROOT / "tests/fixtures/run_mdmt_mia_c6_tiny_runtime.py"
 REAL_CELL_STAGE = "C6_REAL_CELL"
@@ -364,6 +365,66 @@ FORMAL_PARENT_AUTHORIZATION_KEYS = frozenset((
     "metrics", "cells", "retry_policy", "storage_policy", "environment_binding",
     "tracking_outcome_read_allowed", "science_adaptation_allowed",
 ))
+FORMAL_ISSUANCE_KEYS = frozenset((
+    "schema_version", "stage", "status", "formal_stage",
+    "authorization_path", "authorization_sha256",
+))
+
+
+def _require_repository_tracked_issuance(path, raw):
+    """Require the fixed governance anchor to be tracked and clean at HEAD."""
+    try:
+        relative = path.resolve(strict=True).relative_to(ROOT.resolve()).as_posix()
+    except (OSError, ValueError) as exc:
+        raise GateError("Formal issuance authority must be inside the repository") from exc
+    try:
+        subprocess.check_output(
+            ["git", "ls-files", "--error-unmatch", "--", relative],
+            cwd=ROOT,
+            stderr=subprocess.STDOUT,
+        )
+        committed = subprocess.check_output(
+            ["git", "show", "HEAD:{}".format(relative)],
+            cwd=ROOT,
+            stderr=subprocess.STDOUT,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise GateError("Formal issuance authority is not repository-tracked") from exc
+    if raw != committed:
+        raise GateError("Formal issuance authority differs from HEAD")
+
+
+def _read_formal_issuance_authority():
+    """Read the single launcher-owned issuance trust anchor from disk."""
+    path = Path(FORMAL_ISSUANCE_AUTHORITY_PATH)
+    if not path.is_file():
+        raise GateError("Formal issuance authority artifact is missing")
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise GateError("Formal issuance authority artifact is unreadable") from exc
+    _require_repository_tracked_issuance(path, raw)
+    try:
+        issuance = _strict_object(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError, TypeError) as exc:
+        raise GateError("Formal issuance authority artifact is malformed") from exc
+    if set(issuance) != FORMAL_ISSUANCE_KEYS:
+        raise GateError("Formal issuance authority schema mismatch")
+    if (
+        issuance["schema_version"] != "C6_FORMAL_AUTHORIZATION_ISSUANCE_V1"
+        or issuance["stage"] != "C6_FORMAL_EXECUTION_AUTHORIZATION_DECISION"
+        or issuance["status"] != "ISSUED"
+        or issuance["formal_stage"] != "C6_FORMAL"
+    ):
+        raise GateError("Formal issuance authority decision mismatch")
+    if not isinstance(issuance["authorization_path"], str) or not issuance["authorization_path"]:
+        raise GateError("Formal issuance authorization path is invalid")
+    if (
+        not isinstance(issuance["authorization_sha256"], str)
+        or re.fullmatch(r"[0-9a-f]{64}", issuance["authorization_sha256"]) is None
+    ):
+        raise GateError("Formal issuance authorization SHA256 is invalid")
+    return issuance
 
 
 def _validate_formal_parent_authorization(parent):
@@ -394,9 +455,12 @@ def _validate_formal_parent_authorization(parent):
 
 def _validate_formal_parent_binding(real_cell_authorization):
     """Reread, hash, semantically validate, and cross-bind a Formal parent."""
+    issuance = _read_formal_issuance_authority()
     raw_path = real_cell_authorization.get("parent_authorization_path")
     if not isinstance(raw_path, str) or not raw_path:
         raise GateError("Formal parent authorization artifact is required")
+    if raw_path != issuance["authorization_path"]:
+        raise GateError("Formal parent authorization path is not issued")
     path = Path(raw_path)
     if not path.is_file():
         raise GateError("Formal parent authorization artifact is missing")
@@ -405,8 +469,11 @@ def _validate_formal_parent_binding(real_cell_authorization):
     except OSError as exc:
         raise GateError("Formal parent authorization artifact is unreadable") from exc
     actual_sha256 = hashlib.sha256(raw).hexdigest()
-    if actual_sha256 != real_cell_authorization["parent_authorization_sha256"]:
-        raise GateError("Formal parent authorization SHA256 mismatch")
+    if (
+        actual_sha256 != issuance["authorization_sha256"]
+        or actual_sha256 != real_cell_authorization["parent_authorization_sha256"]
+    ):
+        raise GateError("Formal parent authorization SHA256 is not issued")
     try:
         parent = _validate_formal_parent_authorization(raw.decode("utf-8"))
     except (UnicodeDecodeError, ValueError, TypeError) as exc:
