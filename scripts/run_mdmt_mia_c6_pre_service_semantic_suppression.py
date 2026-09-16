@@ -26,6 +26,16 @@ ROOT = Path(__file__).resolve().parents[1]
 BASE_IMPLEMENTATION_SHA = "9a511c3ce300b5dedb1f2e970f131ddd2522b0c0"
 CONTRACT_SHA = "989ee15285866b119a643f1f1ccdf52d2d02009f"
 PLAN_SHA = "93f44de70c4540afa0f3044aa066a0ed894648e9"
+MVE_IMPLEMENTATION_SHA = "1e440166554e04d219291b1c3c6a8a1f5f6b88ff"
+MVE_GENERATED_MANIFEST_SHA256 = "40c2209e34b39966ef5c3059f3d565bdce0cc6f274ba72b1617b117caf1b04da"
+MVE_GENERATED_QUALIFICATION_SEAL_SHA256 = "4e450083170193dc3fd3c1782e44a77cc68694eb2e61959ae5758ca23c73bceb"
+MVE_E2E_AUTHORITY_SHA = "82e7c3231f539032ff396f8d7dc7a090e5512fd1"
+MVE_PREFLIGHT_SHA = "6039922fcfcc6984f6b613f6f17527c8a682cdfd"
+MVE_BASELINE_BYTES = 3221174
+MVE_CELL = "pair_23__FIFO_strong"
+MVE_PAIR = "P23"
+MVE_CONDITION = "FIFO_strong"
+MVE_RATE = 16649
 CELL_ORDER = ("pair_23__FIFO_mild", "pair_23__FIFO_strong", "pair_44__FIFO_moderate", "pair_66__FIFO_mild")
 EVIDENCE_SHAPE_PROFILES = frozenset(("TINY_SYNTHETIC", "REAL_C6_CELL"))
 REGIONS = ("_array", "_C5ShadowReceiverSnapshot", "_C5ShadowPacketResult", "_snapshot_c5_receiver_state", "_classify_whole_packet_currently_non_applicable", "PacketRuntime._c5_context_provider")
@@ -266,6 +276,48 @@ def validate_authorization(authorization):
     return value
 
 
+MVE_AUTHORIZATION_KEYS = frozenset((
+    "schema_version", "stage", "execution_authorized", "run_scope", "cell",
+    "pair", "service_condition", "service_rate", "evidence_shape_profile",
+    "implementation_sha", "generated_source_manifest_sha256",
+    "generated_source_qualification_seal_sha256", "e2e_authority_sha",
+    "mve_preflight_sha", "baseline_derivation_identity",
+    "serviceable_id_state_serviced_bytes_baseline", "science_adaptation_allowed",
+    "tracking_outcome_read_allowed", "formal_allowed",
+))
+
+
+def validate_mve_authorization(authorization):
+    value = _strict_object(authorization)
+    if set(value) != MVE_AUTHORIZATION_KEYS:
+        raise GateError("MVE authorization schema mismatch")
+    expected = {
+        "schema_version": "C6_MVE_EXECUTION_AUTHORIZATION_V1",
+        "stage": "C6_MVE",
+        "execution_authorized": True,
+        "run_scope": "PRIMARY_CELL_ONLY",
+        "cell": MVE_CELL,
+        "pair": MVE_PAIR,
+        "service_condition": MVE_CONDITION,
+        "service_rate": MVE_RATE,
+        "evidence_shape_profile": "REAL_C6_CELL",
+        "implementation_sha": MVE_IMPLEMENTATION_SHA,
+        "generated_source_manifest_sha256": MVE_GENERATED_MANIFEST_SHA256,
+        "generated_source_qualification_seal_sha256": MVE_GENERATED_QUALIFICATION_SEAL_SHA256,
+        "e2e_authority_sha": MVE_E2E_AUTHORITY_SHA,
+        "mve_preflight_sha": MVE_PREFLIGHT_SHA,
+        "baseline_derivation_identity": "accepted sealed C5 Run004 baseline derivation",
+        "serviceable_id_state_serviced_bytes_baseline": MVE_BASELINE_BYTES,
+        "science_adaptation_allowed": False,
+        "tracking_outcome_read_allowed": False,
+        "formal_allowed": False,
+    }
+    if value != expected:
+        raise GateError("MVE authorization authority mismatch")
+    validate_implementation_sha(value["implementation_sha"])
+    return value
+
+
 def seal_run(context, results):
     if context.get("status") != "PASS" or results.get("status") != "PASS":
         raise GateError("cannot seal invalid run")
@@ -366,12 +418,21 @@ def _validate_launch_spec(spec):
     if spec["evidence_shape_profile"] not in EVIDENCE_SHAPE_PROFILES:
         raise GateError("evidence shape profile mismatch")
     auth = _strict_object(spec["authorization"])
-    if auth.get("contract_sha") != CONTRACT_SHA or auth.get("plan_sha") != PLAN_SHA:
-        raise GateError("launch authorization authority mismatch")
-    if auth.get("output_root") != spec["logical_output_root"]:
-        raise GateError("launch output-root authority mismatch")
-    if auth.get("baseline_derivation_seal_sha") != spec["expected_baseline_derivation_seal_sha256"]:
-        raise GateError("launch baseline derivation authority mismatch")
+    if spec["stage"] == "C6_MVE":
+        validate_mve_authorization(auth)
+        if tuple(spec["cells"]) != (MVE_CELL,):
+            raise GateError("MVE launch scope mismatch")
+        if spec["service_rates"].get(MVE_CELL) != MVE_RATE or spec["service_conditions"].get(MVE_CELL) != MVE_CONDITION:
+            raise GateError("MVE service identity mismatch")
+        if spec["evidence_shape_profile"] != "REAL_C6_CELL":
+            raise GateError("MVE evidence shape profile mismatch")
+    else:
+        if auth.get("contract_sha") != CONTRACT_SHA or auth.get("plan_sha") != PLAN_SHA:
+            raise GateError("launch authorization authority mismatch")
+        if auth.get("output_root") != spec["logical_output_root"]:
+            raise GateError("launch output-root authority mismatch")
+        if auth.get("baseline_derivation_seal_sha") != spec["expected_baseline_derivation_seal_sha256"]:
+            raise GateError("launch baseline derivation authority mismatch")
     cells = tuple(spec["cells"])
     if not cells or len(cells) != len(set(cells)) or any(cell not in CELL_ORDER for cell in cells):
         raise GateError("launch cell identity mismatch")
@@ -413,8 +474,22 @@ def _validate_reconciliation(emissions, terminals, decisions, ledger):
     decision = {key(row): row for row in decisions}
     if len(decision) != len(decisions) or any(k not in emitted for k in decision):
         raise GateError("decision reconciliation failed")
+    if any(row.get("channel") != "id_state" for row in decisions):
+        raise GateError("Supplement entered C6 gate")
+    # Eligibility is evidence-derived: a packet is decision-eligible only when
+    # the ledger shows true first service, or when it was suppressed before a
+    # service_start event and therefore has a SUPPRESSED terminal.  Emitted
+    # packets that remain pending at the horizon are not silently treated as
+    # missing decisions.
+    decision_eligible = {
+        key(row) for row in ledger
+        if row.get("event_type") == "service_start" and row.get("channel") == "id_state"
+    }
     suppressed = {k for k, row in decision.items() if row.get("whole_packet_currently_non_applicable")}
     suppressed_terminals = {k for k, row in terminal.items() if row.get("terminal_class") == "SUPPRESSED"}
+    decision_eligible.update(suppressed_terminals)
+    if set(decision) != decision_eligible:
+        raise GateError("decision completeness failed")
     if suppressed != suppressed_terminals or not suppressed:
         raise GateError("suppression decision/terminal mismatch")
     events = {}
@@ -521,6 +596,136 @@ def _validate_disk_cell(root, cell, evidence_shape_profile="TINY_SYNTHETIC"):
     }
 
 
+def _one_glob(root, pattern):
+    matches = sorted(Path(root).glob(pattern))
+    if len(matches) != 1:
+        raise GateError("expected exactly one {} under {}".format(pattern, root))
+    return matches[0]
+
+
+def _validate_real_c6_seal(c6_root, decisions, cell):
+    decision_path = _one_glob(c6_root, "c6_first_service_decisions_*.jsonl")
+    seal_path = _one_glob(c6_root, "c6_suppression_seal_*.json")
+    seal = _read_json(seal_path)
+    payload = seal.get("sealed_payload")
+    if seal.get("schema_version") != "C6_SUPPRESSION_DECISION_SEAL_V1" or not isinstance(payload, dict):
+        raise GateError("C6 suppression seal schema mismatch")
+    if _digest(payload) != seal.get("seal_sha256"):
+        raise GateError("C6 suppression seal digest mismatch")
+    ordered = "\n".join(_canonical(row) for row in decisions)
+    if hashlib.sha256(ordered.encode("utf-8")).hexdigest() != payload.get("ordered_decision_records_sha256"):
+        raise GateError("C6 suppression decision record digest mismatch")
+    if payload.get("decision_record_count") != len(decisions) or payload.get("unique_packet_id_count") != len(decisions):
+        raise GateError("C6 suppression decision count mismatch")
+    expected_sequence = "{}-1".format(str(cell).split("__", 1)[0].split("_", 1)[1])
+    if payload.get("sequence_name") != expected_sequence or payload.get("status") != "PASS":
+        raise GateError("C6 suppression seal cell mismatch")
+    if decision_path.name != "c6_first_service_decisions_{}.jsonl".format(expected_sequence):
+        raise GateError("C6 decision evidence cell mismatch")
+    return {"path": seal_path, "seal": seal}
+
+
+def _validate_real_disk_cell(root, cell):
+    """Validate communication-side evidence from one real author subprocess."""
+    cell_root = Path(root) / "cells" / cell
+    pair = str(cell).split("__", 1)[0].split("_", 1)[1]
+    runtime_root = cell_root / "mia" / "train_{}" / "results" / "mia_train_{}".format(pair, pair)
+    c6_root = cell_root / "c6"
+    status = _read_json(cell_root / "C6_CHILD_CELL_STATUS.json")
+    if status.get("status") != "PASS" or status.get("synthetic_non_scientific") is not False or status.get("tracking_outcome_read") is not False:
+        raise GateError("real child cell terminal is not PASS")
+    emissions = _read_jsonl(_one_glob(runtime_root, "packet_census_emissions_*.jsonl"))
+    terminals = _read_jsonl(_one_glob(runtime_root, "packet_census_terminals_*.jsonl"))
+    finalizations = _read_jsonl(_one_glob(runtime_root, "packet_census_finalization_*.jsonl"))
+    ledger = _read_jsonl(_one_glob(runtime_root, "c4_service_ledger_*.jsonl"))
+    decisions = _read_jsonl(_one_glob(c6_root, "c6_first_service_decisions_*.jsonl"))
+    census_validation = _read_json(_one_glob(runtime_root, "packet_census_validation_*.json"))
+    service_summary = _read_json(_one_glob(runtime_root, "c4_service_summary_*.json"))
+    manifest = _read_json(_one_glob(runtime_root, "async_packet_manifest_*.json"))
+    if census_validation.get("census_status") != "CENSUS_COMPLETE" or census_validation.get("passed") is not True or service_summary.get("passed") is not True:
+        raise GateError("real child validator output is incomplete")
+    if manifest.get("packet_census_status") != "CENSUS_COMPLETE" or manifest.get("c4_service_status") != "PASS":
+        raise GateError("real runtime manifest status mismatch")
+    if not finalizations:
+        raise GateError("real census finalization evidence missing")
+    report = validate_cell_artifacts(cell, emissions, terminals, decisions, ledger)
+    reconciliation = _validate_reconciliation(emissions, terminals, decisions, ledger)
+    packet = lambda row: _canonical(row.get("packet_id"))
+    decision_by_id = {packet(row): row for row in decisions}
+    serviceable = {key for key, row in decision_by_id.items() if not row.get("whole_packet_currently_non_applicable")}
+    suppressed = {key for key, row in decision_by_id.items() if row.get("whole_packet_currently_non_applicable")}
+    packet_summaries = [row for row in ledger if row.get("event_type") == "packet_summary"]
+    if len(packet_summaries) != len(emissions):
+        raise GateError("real packet summary cardinality mismatch")
+    for summary in packet_summaries:
+        offered = int(summary.get("bytes_offered", -1))
+        served = int(summary.get("bytes_served", -1))
+        remaining = int(summary.get("remaining_service_bytes", -1))
+        suppressed_obligation = int(summary.get("suppressed_service_obligation_bytes", 0))
+        if min(offered, served, remaining, suppressed_obligation) < 0 or served > offered:
+            raise GateError("real service accounting bounds failure")
+        if served + remaining + suppressed_obligation != offered:
+            raise GateError("real service accounting conservation failure")
+        if packet(summary) in suppressed and served != 0:
+            raise GateError("real suppressed packet has positive service")
+    starts = [row for row in ledger if row.get("event_type") == "service_start" and row.get("channel") == "id_state"]
+    sequences = [int(row.get("packet_sequence", -1)) for row in starts]
+    if any(left > right for left, right in zip(sequences, sequences[1:])):
+        raise GateError("real FIFO service ordering mismatch")
+    c6_seal = _validate_real_c6_seal(c6_root, decisions, cell)
+    report.update({
+        "reconciliation": reconciliation,
+        "evidence_shape_profile": "REAL_C6_CELL",
+        "tiny_cardinality_assumptions_applied": False,
+        "sticky_serviceable_decision": "NOT_APPLICABLE",
+        "positive_service_slice_count": sum(row.get("event_type") == "service_slice" and packet(row) in serviceable for row in ledger),
+        "same_frame_reuse": "PASS",
+        "supplement_ungated": "PASS",
+        "evidence_families": "COMPLETE",
+        "synthetic_non_scientific": False,
+        "tracking_outcome_read": False,
+    })
+    return {
+        "report": report,
+        "emissions": emissions,
+        "terminals": terminals,
+        "finalizations": finalizations,
+        "decisions": decisions,
+        "ledger": ledger,
+        "manifest": manifest,
+        "service_summary": service_summary,
+        "census_validation": census_validation,
+        "c6_seal": c6_seal,
+        "evidence_root": cell_root,
+        "runtime_root": runtime_root,
+        "c6_root": c6_root,
+    }
+
+
+def recompute_real_mve_quantities(cell_evidence):
+    """Recompute communication-side quantities only from persisted evidence."""
+    primary_b = secondary_b = treatment_bytes = 0
+    for evidence in cell_evidence:
+        key = lambda row: _canonical(row.get("packet_id"))
+        decisions = {key(row): row for row in evidence["decisions"]}
+        suppressed = {packet for packet, row in decisions.items() if row.get("whole_packet_currently_non_applicable")}
+        serviceable = {packet for packet, row in decisions.items() if not row.get("whole_packet_currently_non_applicable")}
+        emissions = {key(row): row for row in evidence["emissions"]}
+        primary_b += sum(int(row["JSON_WIRE_BYTES"]) for packet, row in emissions.items() if packet in suppressed)
+        secondary_b += sum(int(row.get("suppressed_service_obligation_bytes", 0)) for row in evidence["ledger"]
+                           if row.get("event_type") == "packet_summary" and key(row) in suppressed)
+        treatment_bytes += sum(int(row.get("bytes_served", 0)) for row in evidence["ledger"]
+                               if row.get("event_type") == "service_slice" and row.get("channel") == "id_state" and key(row) in serviceable)
+    if primary_b != secondary_b:
+        raise GateError("real B_avoided recomputation mismatch")
+    return {
+        "B_avoided": primary_b,
+        "independent_B_avoided": secondary_b,
+        "serviceable_id_state_serviced_bytes_treatment": treatment_bytes,
+        "synthetic": False,
+    }
+
+
 def recompute_synthetic_b_avoided(cell_evidence):
     """Derive synthetic suppressed wire bytes twice from disk-origin evidence."""
     primary = 0
@@ -598,11 +803,99 @@ def validate_e2e_seal(root):
     return True
 
 
+def _launch_real_c6_stage(spec):
+    """Run one authorized real communication-side cell through the common boundary."""
+    output_root = Path(spec["output_root"])
+    if output_root.exists():
+        raise GateError("output root is not exclusive")
+    output_root.mkdir(parents=True)
+    terminal_written = False
+    launch_spec_path = output_root / "C6_MVE_LAUNCH_SPEC.json"
+    start = {
+        "schema_version": "C6_MVE_RUN_START_V1",
+        "stage": spec["stage"],
+        "run_id": spec["run_id"],
+        "authorization": spec["authorization"],
+        "logical_output_root": spec["logical_output_root"],
+        "output_root": str(output_root),
+        "generated_manifest_sha256": spec["generated_manifest_sha256"],
+        "generated_qualification_seal_sha256": spec["generated_qualification_seal_sha256"],
+        "evidence_shape_profile": spec["evidence_shape_profile"],
+        "cells": list(spec["cells"]),
+        "environment": {
+            "python_executable": spec["python_executable"],
+            "python_version": platform.python_version(),
+            "working_directory": spec["working_directory"],
+            "child_environment": dict(spec["child_environment"]),
+            "pythonpath_inputs": [str(ROOT), str(Path(spec["fixture_path"]).parent)],
+        },
+        "status": "STARTED",
+    }
+    try:
+        _write_exclusive_json(output_root / "RUN_START.json", start)
+        _write_exclusive_json(output_root / "C6_MVE_AUTHORIZATION.json", spec["authorization"])
+        _write_exclusive_json(output_root / "C6_MVE_LAUNCH_SPEC.json", spec)
+        _validate_generated_launch_binding(spec)
+        child_env = dict(os.environ)
+        child_env.update({str(k): str(v) for k, v in spec["child_environment"].items()})
+        child_env["PYTHONPATH"] = os.pathsep.join(
+            part for part in (str(ROOT), str(Path(spec["fixture_path"]).parent), child_env.get("PYTHONPATH", "")) if part
+        )
+        child_env["C6_MVE_CHILD"] = "1"
+        command = [spec["python_executable"], spec["fixture_path"], "--launch-spec", str(launch_spec_path)]
+        completed = subprocess.run(command, cwd=spec["working_directory"], env=child_env,
+                                   capture_output=True, text=True, check=False)
+        (output_root / "C6_CHILD_STDOUT.txt").write_text(completed.stdout, encoding="utf-8")
+        (output_root / "C6_CHILD_STDERR.txt").write_text(completed.stderr, encoding="utf-8")
+        if completed.returncode != 0:
+            raise GateError("real child exit code {}".format(completed.returncode))
+        child_status = _read_json(output_root / "C6_CHILD_STATUS.json")
+        if child_status.get("status") != "PASS" or child_status.get("tracking_outcome_read") is not False:
+            raise GateError("real child status is not PASS")
+        if tuple(child_status.get("cells", ())) != tuple(spec["cells"]):
+            raise GateError("real child cell terminal identity mismatch")
+        origins = child_status.get("import_origins", {})
+        runtime_origin = origins.get("utils.async_deadline_runtime", {})
+        if runtime_origin.get("generated_root") != spec["generated_root"] or runtime_origin.get("module_name") != "utils.async_deadline_runtime":
+            raise GateError("real child generated runtime provenance mismatch")
+        try:
+            Path(runtime_origin["file"]).resolve().relative_to(Path(spec["generated_root"]).resolve())
+        except (KeyError, ValueError, TypeError):
+            raise GateError("real child generated runtime import origin missing")
+        evidence = [_validate_real_disk_cell(output_root, cell) for cell in spec["cells"]]
+        reports = [row["report"] for row in evidence]
+        aggregate = {"schema_version": "C6_MVE_MECHANICAL_AGGREGATION_V1", "cell": spec["cells"][0],
+                     "status": "PASS", "census": "PASS", "decision": "PASS", "ledger": "PASS",
+                     "tracking_outcome_read": False}
+        quantities = recompute_real_mve_quantities(evidence)
+        validator_output = {"schema_version": "C6_MVE_VALIDATOR_OUTPUT_V1", "cells": reports,
+                            "child_status": child_status, "status": "PASS", "tracking_outcome_read": False}
+        aggregation_output = {"schema_version": "C6_MVE_AGGREGATION_OUTPUT_V1", "aggregate": aggregate,
+                              "quantities": quantities, "status": "PASS", "tracking_outcome_read": False}
+        _write_exclusive_json(output_root / "C6_MVE_VALIDATOR_OUTPUT.json", validator_output)
+        _write_exclusive_json(output_root / "C6_MVE_AGGREGATION_OUTPUT.json", aggregation_output)
+        return {"start": start, "child_status": child_status, "evidence": evidence,
+                "reports": reports, "aggregate": aggregate, "quantities": quantities,
+                "validator_output": validator_output, "aggregation_output": aggregation_output,
+                "child_exit_code": completed.returncode}
+    except Exception as exc:
+        if not terminal_written:
+            try:
+                write_terminal_record(output_root, spec["run_id"], "RUN_FAILED", "{}: {}".format(type(exc).__name__, exc))
+                terminal_written = True
+            except Exception:
+                pass
+        if isinstance(exc, GateError):
+            raise
+        raise GateError("C6 real launch failed: {}".format(exc)) from exc
+
+
 def launch_c6_stage(launch_spec):
     """Launch an authorized C6 fixture in a child process and seal disk evidence."""
     spec = dict(launch_spec)
-    spec.setdefault("evidence_shape_profile", "TINY_SYNTHETIC")
     _validate_launch_spec(spec)
+    if spec.get("stage") == "C6_MVE":
+        return _launch_real_c6_stage(spec)
     output_root = Path(spec["output_root"])
     if output_root.exists():
         raise GateError("output root is not exclusive")

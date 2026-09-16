@@ -169,6 +169,7 @@ def build_launch_spec(root, auth, cells=CELLS, rates=None, conditions=None, faul
         "child_environment": {"PYTHONNOUSERSITE": "1", "PYTHONHASHSEED": "0"},
         "fault": fault,
         "prelaunch_negative_tests": dict(negatives or {}),
+        "evidence_shape_profile": "TINY_SYNTHETIC",
         "expected_deterministic_core_sha256": expected_core,
     }
 
