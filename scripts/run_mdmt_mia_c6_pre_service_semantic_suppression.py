@@ -31,6 +31,8 @@ MVE_GENERATED_MANIFEST_SHA256 = "40c2209e34b39966ef5c3059f3d565bdce0cc6f274ba72b
 MVE_GENERATED_QUALIFICATION_SEAL_SHA256 = "4e450083170193dc3fd3c1782e44a77cc68694eb2e61959ae5758ca23c73bceb"
 MVE_E2E_AUTHORITY_SHA = "82e7c3231f539032ff396f8d7dc7a090e5512fd1"
 MVE_PREFLIGHT_SHA = "6039922fcfcc6984f6b613f6f17527c8a682cdfd"
+MVE_ATTEMPT = 2
+MVE_WRAPPER_STATUS_CONTRACT_AUTHORITY_SHA = "47d20389363582e62676e547483547582c4d820c"
 MVE_BASELINE_BYTES = 3221174
 MVE_CELL = "pair_23__FIFO_strong"
 MVE_PAIR = "P23"
@@ -282,11 +284,11 @@ def validate_authorization(authorization):
 
 
 MVE_AUTHORIZATION_KEYS = frozenset((
-    "schema_version", "stage", "execution_authorized", "run_scope", "cell",
+    "schema_version", "stage", "attempt", "execution_authorized", "run_scope", "cell",
     "pair", "service_condition", "service_rate", "evidence_shape_profile",
     "implementation_sha", "generated_source_manifest_sha256",
     "generated_source_qualification_seal_sha256", "e2e_authority_sha",
-    "mve_preflight_sha", "baseline_derivation_identity",
+    "mve_preflight_sha", "wrapper_status_contract_authority_sha", "baseline_derivation_identity",
     "serviceable_id_state_serviced_bytes_baseline", "science_adaptation_allowed",
     "tracking_outcome_read_allowed", "formal_allowed",
 ))
@@ -299,6 +301,7 @@ def validate_mve_authorization(authorization):
     expected = {
         "schema_version": "C6_MVE_EXECUTION_AUTHORIZATION_V1",
         "stage": "C6_MVE",
+        "attempt": MVE_ATTEMPT,
         "execution_authorized": True,
         "run_scope": "PRIMARY_CELL_ONLY",
         "cell": MVE_CELL,
@@ -311,6 +314,7 @@ def validate_mve_authorization(authorization):
         "generated_source_qualification_seal_sha256": MVE_GENERATED_QUALIFICATION_SEAL_SHA256,
         "e2e_authority_sha": MVE_E2E_AUTHORITY_SHA,
         "mve_preflight_sha": MVE_PREFLIGHT_SHA,
+        "wrapper_status_contract_authority_sha": MVE_WRAPPER_STATUS_CONTRACT_AUTHORITY_SHA,
         "baseline_derivation_identity": "accepted sealed C5 Run004 baseline derivation",
         "serviceable_id_state_serviced_bytes_baseline": MVE_BASELINE_BYTES,
         "science_adaptation_allowed": False,
@@ -435,7 +439,7 @@ def _validate_launch_spec(spec):
         "working_directory", "child_environment", "fault", "prelaunch_negative_tests",
         "evidence_shape_profile",
     }
-    optional = {"expected_deterministic_core_sha256"}
+    optional = {"expected_deterministic_core_sha256", "attempt"}
     if not required <= set(spec) or set(spec) - required - optional:
         raise GateError("launch spec key mismatch")
     if not isinstance(spec["stage"], str) or not spec["stage"].startswith("C6_"):
@@ -447,6 +451,14 @@ def _validate_launch_spec(spec):
     auth = _strict_object(spec["authorization"])
     if spec["stage"] == "C6_MVE":
         validate_mve_authorization(auth)
+        if type(spec.get("attempt")) is not int or spec["attempt"] != auth["attempt"] or spec["attempt"] != MVE_ATTEMPT:
+            raise GateError("MVE attempt cross-binding mismatch")
+        expected_run_id = "c6-mve-20260916-primary-p23-fifo-strong-attempt{}".format(MVE_ATTEMPT)
+        expected_logical_root = ROOT / "summary_md/communication/c6_mve_primary_p23_fifo_strong_attempt{}".format(MVE_ATTEMPT)
+        if spec["run_id"] != expected_run_id or Path(spec["logical_output_root"]).resolve() != expected_logical_root.resolve():
+            raise GateError("MVE attempt run identity mismatch")
+        if Path(spec["output_root"]).resolve() == Path("/tmp/c6_mve_primary_p23_fifo_strong_failed_mechanical_20260916").resolve():
+            raise GateError("MVE failed-attempt root reuse forbidden")
         if tuple(spec["cells"]) != (MVE_CELL,):
             raise GateError("MVE launch scope mismatch")
         if spec["service_rates"].get(MVE_CELL) != MVE_RATE or spec["service_conditions"].get(MVE_CELL) != MVE_CONDITION:

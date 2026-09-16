@@ -1,0 +1,37 @@
+{
+  "schema_version": "C6_ATTEMPT2_LAUNCHER_AUTH_SCHEMA_EVIDENCE_V1",
+  "scope": "synthetic authorization and prelaunch boundary qualification only",
+  "base_wrapper_status_contract_authority_sha": "47d20389363582e62676e547483547582c4d820c",
+  "attempt": 2,
+  "cell": "pair_23__FIFO_strong",
+  "service_rate": 16649,
+  "run_id": "c6-mve-20260916-primary-p23-fifo-strong-attempt2",
+  "logical_output_root": "summary_md/communication/c6_mve_primary_p23_fifo_strong_attempt2",
+  "authorization_schema": {
+    "attempt_required_exact_value": 2,
+    "wrapper_status_contract_authority_required_exact_value": "47d20389363582e62676e547483547582c4d820c",
+    "missing_or_mistyped_attempt_rejected": true,
+    "missing_malformed_or_stale_wrapper_authority_rejected": true
+  },
+  "prelaunch_binding": {
+    "authorization_attempt_equals_launch_spec_attempt": true,
+    "attempt2_run_id_and_root_required": true,
+    "failed_attempt_tmp_root_rejected_before_output_creation": true,
+    "output_collision_rejected_before_child_execution": true,
+    "stubbed_parent_reaches_child_boundary": true
+  },
+  "verification": {
+    "command": "PYTHONPATH=src pytest -q tests/test_mdmt_mia_c6_*.py",
+    "result": "48 passed",
+    "static_authorization_negative_check_count": 25,
+    "static_authorization_negative_checks_all_fail_closed": true
+  },
+  "prohibited_actions": {
+    "real_attempt2_authorization_created": false,
+    "real_mve_performed": false,
+    "author_workload_started": false,
+    "tracking_outcome_read": false,
+    "formal_performed": false,
+    "science_adaptation_occurred": false
+  }
+}

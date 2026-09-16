@@ -20,6 +20,7 @@ def _load(name):
 child = _load("run_mdmt_mia_c6_real_child.py")
 runner = _load("run_mdmt_mia_c6_pre_service_semantic_suppression.py")
 e2e = _load("run_mdmt_mia_c6_e2e_qualification.py")
+mve = _load("run_mdmt_mia_c6_real_mve.py")
 
 
 def _spec(tmp_path):
@@ -207,3 +208,69 @@ def test_output_root_mismatch_fails_before_launch(tmp_path):
     spec["logical_output_root"] = str(tmp_path / "different-logical-root")
     with pytest.raises(runner.GateError, match="launch output-root authority mismatch"):
         runner._validate_launch_spec(spec)
+
+
+def test_attempt2_authorization_schema_is_exact_and_fail_closed():
+    auth = mve.authorization()
+    assert runner.validate_mve_authorization(auth) == auth
+    assert auth["attempt"] == 2
+    assert auth["wrapper_status_contract_authority_sha"] == "47d20389363582e62676e547483547582c4d820c"
+    mutations = (
+        {key: value for key, value in auth.items() if key != "attempt"},
+        dict(auth, attempt=1), dict(auth, attempt=True), dict(auth, attempt="2"),
+        dict(auth, attempt=None), dict(auth, attempt=[2]), dict(auth, attempt={"attempt": 2}),
+        {key: value for key, value in auth.items() if key != "wrapper_status_contract_authority_sha"},
+        dict(auth, wrapper_status_contract_authority_sha="0" * 39),
+        dict(auth, wrapper_status_contract_authority_sha="0" * 40),
+    )
+    for mutated in mutations:
+        with pytest.raises(runner.GateError):
+            runner.validate_mve_authorization(mutated)
+
+
+def test_attempt2_launch_identity_is_distinct_and_cross_bound(tmp_path):
+    auth = mve.authorization()
+    spec = mve.build_launch_spec(auth, tmp_path / "attempt2-output", {"synthetic": True})
+    runner._validate_launch_spec(spec)
+    assert spec["attempt"] == auth["attempt"] == 2
+    assert spec["run_id"].endswith("attempt2")
+    assert Path(spec["logical_output_root"]).name.endswith("attempt2")
+    assert Path(spec["logical_output_root"]) != mve.ROOT / "summary_md/communication/c6_mve_primary_p23_fifo_strong"
+    assert "failed_mechanical" not in spec["output_root"]
+    for mutation in (
+        dict(spec, attempt=1),
+        dict(spec, run_id="c6-mve-20260916-primary-p23-fifo-strong"),
+        dict(spec, logical_output_root=str(tmp_path / "attempt1")),
+        dict(spec, output_root="/tmp/c6_mve_primary_p23_fifo_strong_failed_mechanical_20260916"),
+    ):
+        with pytest.raises(runner.GateError):
+            runner._validate_launch_spec(mutation)
+    assert not (tmp_path / "attempt2-output").exists()
+
+
+def test_attempt2_parent_reaches_child_boundary_without_running_child(monkeypatch, tmp_path):
+    auth = mve.authorization()
+    spec = mve.build_launch_spec(auth, tmp_path / "attempt2-boundary", {"synthetic": True})
+    observed = {}
+
+    def stop_before_child(command, **kwargs):
+        observed["command"] = command
+        raise RuntimeError("test stop before child execution")
+
+    monkeypatch.setattr(runner, "_validate_generated_launch_binding", lambda value: None)
+    monkeypatch.setattr(runner.subprocess, "run", stop_before_child)
+    with pytest.raises(runner.GateError, match="C6 real launch failed"):
+        runner.launch_c6_stage(spec)
+    assert observed["command"] == [spec["python_executable"], spec["fixture_path"], "--launch-spec", str(Path(spec["output_root"]) / "C6_MVE_LAUNCH_SPEC.json")]
+    assert (Path(spec["output_root"]) / "RUN_START.json").is_file()
+    assert (Path(spec["output_root"]) / "C6_RUN_TERMINAL.json").is_file()
+
+
+def test_attempt2_output_collision_fails_before_child(monkeypatch, tmp_path):
+    auth = mve.authorization()
+    root = tmp_path / "occupied"
+    root.mkdir()
+    spec = mve.build_launch_spec(auth, root, {"synthetic": True})
+    monkeypatch.setattr(runner.subprocess, "run", lambda *args, **kwargs: pytest.fail("child boundary reached"))
+    with pytest.raises(runner.GateError, match="output root is not exclusive"):
+        runner.launch_c6_stage(spec)

@@ -21,19 +21,32 @@ GENERATED = Path("/mnt/data/yzm/experiments/mdmt_mia_official/variants/c6_pre_se
 MANIFEST = ROOT / "summary_md/communication/c6_generated_author_source_qualification_corrective/C6_GENERATED_AUTHOR_SOURCE_MANIFEST.json"
 QUAL_SEAL = ROOT / "summary_md/communication/c6_generated_author_source_qualification_corrective/C6_GENERATED_AUTHOR_SOURCE_QUALIFICATION_SEAL.json"
 BASELINE = ROOT / "summary_md/communication/c6_run004_serviceable_baseline_derivation"
-EVIDENCE = ROOT / "summary_md/communication/c6_mve_primary_p23_fifo_strong"
-RUN_ID = "c6-mve-20260916-primary-p23-fifo-strong"
 BASE_SHA = "6039922fcfcc6984f6b613f6f17527c8a682cdfd"
 IMPLEMENTATION_SHA = "1e440166554e04d219291b1c3c6a8a1f5f6b88ff"
 MANIFEST_SHA = "40c2209e34b39966ef5c3059f3d565bdce0cc6f274ba72b1617b117caf1b04da"
 QUAL_SEAL_SHA = "4e450083170193dc3fd3c1782e44a77cc68694eb2e61959ae5758ca23c73bceb"
 E2E_SHA = "82e7c3231f539032ff396f8d7dc7a090e5512fd1"
 PREFLIGHT_SHA = BASE_SHA
+ATTEMPT = 2
+WRAPPER_STATUS_CONTRACT_AUTHORITY_SHA = "47d20389363582e62676e547483547582c4d820c"
 BASELINE_BYTES = 3221174
 CELL = "pair_23__FIFO_strong"
 PAIR = "P23"
 CONDITION = "FIFO_strong"
 RATE = 16649
+
+
+def attempt_identity(attempt):
+    if type(attempt) is not int or attempt != ATTEMPT:
+        raise ValueError("unsupported C6 MVE attempt identity")
+    suffix = "attempt{}".format(attempt)
+    return (
+        "c6-mve-20260916-primary-p23-fifo-strong-{}".format(suffix),
+        ROOT / "summary_md/communication/c6_mve_primary_p23_fifo_strong_{}".format(suffix),
+    )
+
+
+RUN_ID, EVIDENCE = attempt_identity(ATTEMPT)
 
 
 def load_runner():
@@ -66,6 +79,7 @@ def authorization():
     return {
         "schema_version": "C6_MVE_EXECUTION_AUTHORIZATION_V1",
         "stage": "C6_MVE",
+        "attempt": ATTEMPT,
         "execution_authorized": True,
         "run_scope": "PRIMARY_CELL_ONLY",
         "cell": CELL,
@@ -78,6 +92,7 @@ def authorization():
         "generated_source_qualification_seal_sha256": QUAL_SEAL_SHA,
         "e2e_authority_sha": E2E_SHA,
         "mve_preflight_sha": PREFLIGHT_SHA,
+        "wrapper_status_contract_authority_sha": WRAPPER_STATUS_CONTRACT_AUTHORITY_SHA,
         "baseline_derivation_identity": "accepted sealed C5 Run004 baseline derivation",
         "serviceable_id_state_serviced_bytes_baseline": BASELINE_BYTES,
         "science_adaptation_allowed": False,
@@ -102,6 +117,16 @@ def run_p2_closure_tests():
 def negative_authorization_checks(auth):
     checks = {}
     mutations = {
+        "missing_attempt": {key: value for key, value in auth.items() if key != "attempt"},
+        "attempt_one": dict(auth, attempt=1),
+        "attempt_bool": dict(auth, attempt=True),
+        "attempt_string": dict(auth, attempt="2"),
+        "attempt_null": dict(auth, attempt=None),
+        "attempt_list": dict(auth, attempt=[2]),
+        "attempt_dict": dict(auth, attempt={"attempt": 2}),
+        "missing_wrapper_status_contract_authority": {key: value for key, value in auth.items() if key != "wrapper_status_contract_authority_sha"},
+        "malformed_wrapper_status_contract_authority": dict(auth, wrapper_status_contract_authority_sha="0" * 39),
+        "stale_wrapper_status_contract_authority": dict(auth, wrapper_status_contract_authority_sha="0" * 40),
         "wrong_implementation_sha": dict(auth, implementation_sha="0" * 38),
         "old_malformed_implementation_sha": dict(auth, implementation_sha="1e440166554e04d219291b1c3c6a8f5f6b88ff00"),
         "wrong_manifest_sha": dict(auth, generated_source_manifest_sha256="0" * 64),
@@ -130,13 +155,15 @@ def negative_authorization_checks(auth):
 
 def build_launch_spec(auth, output_root, negatives):
     baseline_seal = BASELINE / "C6_RUN004_BASELINE_DERIVATION_SEAL.json"
+    run_id, logical_root = attempt_identity(auth.get("attempt"))
     return {
         "schema_version": "C6_PRODUCTION_LAUNCH_SPEC_V1",
         "stage": "C6_MVE",
-        "run_id": RUN_ID,
+        "run_id": run_id,
+        "attempt": auth["attempt"],
         "authorization": dict(auth),
         "output_root": str(Path(output_root).resolve()),
-        "logical_output_root": str(EVIDENCE),
+        "logical_output_root": str(logical_root),
         "generated_root": str(GENERATED),
         "generated_manifest_path": str(MANIFEST),
         "generated_manifest_sha256": MANIFEST_SHA,
@@ -290,12 +317,13 @@ def execute():
     launch = runner.launch_c6_stage(spec)
     quantities = launch["quantities"]
     context = {
-        "schema_version": "C6_MVE_CONTEXT_V1", "stage": "C6_MVE", "run_id": RUN_ID,
+        "schema_version": "C6_MVE_CONTEXT_V1", "stage": "C6_MVE", "attempt": ATTEMPT, "run_id": RUN_ID,
         "cell": CELL, "pair": PAIR, "service_condition": CONDITION, "service_rate": RATE,
         "implementation_sha": IMPLEMENTATION_SHA, "generated_root": str(GENERATED),
         "generated_source_manifest_sha256": MANIFEST_SHA,
         "generated_source_qualification_seal_sha256": QUAL_SEAL_SHA,
         "e2e_authority_sha": E2E_SHA, "mve_preflight_sha": PREFLIGHT_SHA,
+        "wrapper_status_contract_authority_sha": WRAPPER_STATUS_CONTRACT_AUTHORITY_SHA,
         "baseline_derivation_identity": auth["baseline_derivation_identity"],
         "baseline_serviceable_id_state_serviced_bytes": BASELINE_BYTES,
         "evidence_shape_profile": "REAL_C6_CELL", "python_executable": MVE_PYTHON,
@@ -342,7 +370,7 @@ def execute():
     inventory = build_inventory(EVIDENCE)
     write_exclusive(EVIDENCE / "C6_MVE_EVIDENCE_INVENTORY.json", inventory)
     seal_payload = {
-        "schema_version": "C6_MVE_SEAL_PAYLOAD_V1", "status": "PASS", "run_id": RUN_ID,
+        "schema_version": "C6_MVE_SEAL_PAYLOAD_V1", "status": "PASS", "attempt": ATTEMPT, "run_id": RUN_ID,
         "authorization_sha256": sha(EVIDENCE / "C6_MVE_AUTHORIZATION.json"),
         "context_sha256": sha(EVIDENCE / "C6_MVE_CONTEXT.json"),
         "validator_sha256": sha(EVIDENCE / "C6_MVE_VALIDATOR_OUTPUT.json"),
@@ -353,7 +381,8 @@ def execute():
         "terminal_sha256": sha(EVIDENCE / "RUN_END.json"),
         "implementation_sha": IMPLEMENTATION_SHA, "generated_source_manifest_sha256": MANIFEST_SHA,
         "generated_source_qualification_seal_sha256": QUAL_SEAL_SHA, "e2e_authority_sha": E2E_SHA,
-        "mve_preflight_sha": PREFLIGHT_SHA, "baseline_derivation_identity": auth["baseline_derivation_identity"],
+        "mve_preflight_sha": PREFLIGHT_SHA, "wrapper_status_contract_authority_sha": WRAPPER_STATUS_CONTRACT_AUTHORITY_SHA,
+        "baseline_derivation_identity": auth["baseline_derivation_identity"],
         "cell": CELL, "service_rate": RATE, "evidence_shape_profile": "REAL_C6_CELL",
         "tracking_outcome_read": False, "formal_performed": False, "science_adaptation_allowed": False,
     }
