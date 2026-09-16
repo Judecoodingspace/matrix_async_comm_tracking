@@ -38,6 +38,11 @@ MVE_CONDITION = "FIFO_strong"
 MVE_RATE = 16649
 CELL_ORDER = ("pair_23__FIFO_mild", "pair_23__FIFO_strong", "pair_44__FIFO_moderate", "pair_66__FIFO_mild")
 EVIDENCE_SHAPE_PROFILES = frozenset(("TINY_SYNTHETIC", "REAL_C6_CELL"))
+C4_SERVICE_STATUS_ALLOWED = frozenset(("COMPLETE",))
+# Frozen generated author runtime: async_deadline_runtime.py emits an integer
+# service summary ``passed`` (0/1) and maps 1 to manifest status COMPLETE.
+C4_SERVICE_SUMMARY_PASSED_VALUE = 1
+C4_SERVICE_STATUS_PRODUCER = "generated async_deadline_runtime.py service finalization"
 REGIONS = ("_array", "_C5ShadowReceiverSnapshot", "_C5ShadowPacketResult", "_snapshot_c5_receiver_state", "_classify_whole_packet_currently_non_applicable", "PacketRuntime._c5_context_provider")
 FORMAL_VALIDITY_KEYS = frozenset(("run_id", "mve_authorization_sha", "mve_seal_sha", "mechanical_validity", "invariant_status", "runtime_sha256", "generated_variant_root", "generated_variant_manifest_sha256"))
 MVE_SCIENCE_KEYS = frozenset(("B_avoided", "delta_serviceable_id_state_serviced_bytes", "serviceable_id_state_serviced_bytes_baseline", "serviceable_id_state_serviced_bytes_treatment"))
@@ -360,6 +365,28 @@ def _read_jsonl(path):
     return rows
 
 
+def _require_true_boolean(value, label):
+    if type(value) is not bool or value is not True:
+        raise GateError("{} must be boolean true".format(label))
+
+
+def _require_frozen_c4_summary_passed(value):
+    if type(value) is not int or value != C4_SERVICE_SUMMARY_PASSED_VALUE:
+        raise GateError("C4 service summary passed has invalid frozen encoding")
+
+
+def _validate_real_runtime_status_fields(census_validation, service_summary, manifest):
+    """Validate exact producer-defined status types and vocabulary on disk."""
+    if census_validation.get("census_status") != "CENSUS_COMPLETE":
+        raise GateError("real census status is incomplete")
+    _require_true_boolean(census_validation.get("passed"), "census validation passed")
+    _require_frozen_c4_summary_passed(service_summary.get("passed"))
+    if manifest.get("packet_census_status") != "CENSUS_COMPLETE":
+        raise GateError("real runtime packet census status mismatch")
+    if manifest.get("c4_service_status") not in C4_SERVICE_STATUS_ALLOWED:
+        raise GateError("real runtime manifest C4 service status mismatch")
+
+
 def _sha256_file(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -645,10 +672,7 @@ def _validate_real_disk_cell(root, cell):
     census_validation = _read_json(_one_glob(runtime_root, "packet_census_validation_*.json"))
     service_summary = _read_json(_one_glob(runtime_root, "c4_service_summary_*.json"))
     manifest = _read_json(_one_glob(runtime_root, "async_packet_manifest_*.json"))
-    if census_validation.get("census_status") != "CENSUS_COMPLETE" or not census_validation.get("passed") or not service_summary.get("passed"):
-        raise GateError("real child validator output is incomplete")
-    if manifest.get("packet_census_status") != "CENSUS_COMPLETE" or manifest.get("c4_service_status") not in {"PASS", "COMPLETE"}:
-        raise GateError("real runtime manifest status mismatch")
+    _validate_real_runtime_status_fields(census_validation, service_summary, manifest)
     if not finalizations:
         raise GateError("real census finalization evidence missing")
     report = validate_cell_artifacts(cell, emissions, terminals, decisions, ledger)
@@ -704,6 +728,88 @@ def _validate_real_disk_cell(root, cell):
         "runtime_root": runtime_root,
         "c6_root": c6_root,
     }
+
+
+def _validate_real_child_status(spec, output_root):
+    """Validate the sole root-level status handoff emitted by real child _run()."""
+    output_root = Path(output_root)
+    try:
+        status = _read_json(output_root / "C6_CHILD_STATUS.json")
+    except (OSError, TypeError, ValueError) as exc:
+        raise GateError("real child root status is missing or malformed") from exc
+    required = {
+        "schema_version", "stage", "run_id", "cells", "cell_status_paths",
+        "author_workload_exit_codes", "author_frames_completed", "evidence_roots",
+        "generated_source_identity", "generated_root", "generated_runtime_origin",
+        "import_origins", "child_sys_path_inputs", "python_executable", "python_version",
+        "working_directory", "real_communication_side_only", "synthetic_non_scientific",
+        "tracking_outcome_read", "tracking_artifacts_not_read", "status",
+    }
+    if set(status) != required:
+        raise GateError("real child root status schema mismatch")
+    if status["schema_version"] != "C6_MVE_REAL_CHILD_STATUS_V2":
+        raise GateError("real child root status version mismatch")
+    if status["stage"] != spec["stage"] or status["run_id"] != spec["run_id"]:
+        raise GateError("real child root status run identity mismatch")
+    if tuple(status["cells"]) != tuple(spec["cells"]):
+        raise GateError("real child cell terminal identity mismatch")
+    if status["status"] != "PASS" or status["tracking_outcome_read"] is not False:
+        raise GateError("real child status is not PASS")
+    if status["synthetic_non_scientific"] is not False or status["real_communication_side_only"] is not True:
+        raise GateError("real child root status execution scope mismatch")
+    if status["tracking_artifacts_not_read"] is not True:
+        raise GateError("real child root status tracking-artifact guard mismatch")
+    expected_identity = {
+        "generated_root": spec["generated_root"],
+        "generated_manifest_sha256": spec["generated_manifest_sha256"],
+        "generated_qualification_seal_sha256": spec["generated_qualification_seal_sha256"],
+        "implementation_sha": spec["authorization"]["implementation_sha"],
+    }
+    if status["generated_source_identity"] != expected_identity or status["generated_root"] != spec["generated_root"]:
+        raise GateError("real child generated source identity mismatch")
+    for cell in spec["cells"]:
+        pair = str(cell).split("__", 1)[0].split("_", 1)[1]
+        expected_status_path = "cells/{}/C6_CHILD_CELL_STATUS.json".format(cell)
+        expected_roots = {
+            "runtime": "cells/{}/mia/train_{}/results/mia_train_{}".format(cell, pair, pair),
+            "c6": "cells/{}/c6".format(cell),
+        }
+        if status["cell_status_paths"].get(cell) != expected_status_path:
+            raise GateError("real child root status path mismatch")
+        if status["evidence_roots"].get(cell) != expected_roots:
+            raise GateError("real child root evidence path mismatch")
+        if type(status["author_workload_exit_codes"].get(cell)) is not int or status["author_workload_exit_codes"][cell] != 0:
+            raise GateError("real child author exit status mismatch")
+        if not (output_root / expected_status_path).is_file():
+            raise GateError("real child cell status evidence missing")
+        observed_cell_status = _read_json(output_root / expected_status_path)
+        if (
+            observed_cell_status.get("status") != "PASS"
+            or observed_cell_status.get("cell") != cell
+            or observed_cell_status.get("service_condition") != spec["service_conditions"][cell]
+            or observed_cell_status.get("service_rate") != int(spec["service_rates"][cell])
+            or observed_cell_status.get("author_child_exit_code") != status["author_workload_exit_codes"][cell]
+        ):
+            raise GateError("real child per-cell status binding mismatch")
+        frames = status["author_frames_completed"].get(cell)
+        if frames is not None and (
+            not isinstance(frames, dict)
+            or set(frames) != {"completed", "total"}
+            or any(type(frames[key]) is not int or frames[key] < 0 for key in frames)
+            or frames["completed"] > frames["total"]
+        ):
+            raise GateError("real child author frame status mismatch")
+    origins = status["import_origins"]
+    runtime_origin = origins.get("utils.async_deadline_runtime", {})
+    if runtime_origin.get("generated_root") != spec["generated_root"] or runtime_origin.get("module_name") != "utils.async_deadline_runtime":
+        raise GateError("real child generated runtime provenance mismatch")
+    try:
+        Path(runtime_origin["file"]).resolve().relative_to(Path(spec["generated_root"]).resolve())
+    except (KeyError, ValueError, TypeError):
+        raise GateError("real child generated runtime import origin missing")
+    if status["generated_runtime_origin"] != runtime_origin["file"]:
+        raise GateError("real child root runtime origin mismatch")
+    return status
 
 
 def recompute_real_mve_quantities(cell_evidence):
@@ -853,19 +959,7 @@ def _launch_real_c6_stage(spec):
         (output_root / "C6_CHILD_STDERR.txt").write_text(completed.stderr, encoding="utf-8")
         if completed.returncode != 0:
             raise GateError("real child exit code {}".format(completed.returncode))
-        child_status = _read_json(output_root / "C6_CHILD_STATUS.json")
-        if child_status.get("status") != "PASS" or child_status.get("tracking_outcome_read") is not False:
-            raise GateError("real child status is not PASS")
-        if tuple(child_status.get("cells", ())) != tuple(spec["cells"]):
-            raise GateError("real child cell terminal identity mismatch")
-        origins = child_status.get("import_origins", {})
-        runtime_origin = origins.get("utils.async_deadline_runtime", {})
-        if runtime_origin.get("generated_root") != spec["generated_root"] or runtime_origin.get("module_name") != "utils.async_deadline_runtime":
-            raise GateError("real child generated runtime provenance mismatch")
-        try:
-            Path(runtime_origin["file"]).resolve().relative_to(Path(spec["generated_root"]).resolve())
-        except (KeyError, ValueError, TypeError):
-            raise GateError("real child generated runtime import origin missing")
+        child_status = _validate_real_child_status(spec, output_root)
         evidence = [_validate_real_disk_cell(output_root, cell) for cell in spec["cells"]]
         reports = [row["report"] for row in evidence]
         aggregate = {"schema_version": "C6_MVE_MECHANICAL_AGGREGATION_V1", "cell": spec["cells"][0],

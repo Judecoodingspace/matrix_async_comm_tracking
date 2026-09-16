@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -29,6 +30,55 @@ def _write(path, value):
 def _load(path):
     with Path(path).open("r", encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def _observed_author_frames(cell_root, pair):
+    """Return the last progress counter written by the author workload, if any."""
+    log_path = Path(cell_root) / "mia" / "train_{}".format(pair) / "author.log"
+    if not log_path.is_file():
+        return None
+    matches = re.findall(r"(?<!\d)(\d+)/(\d+)(?!\d)", log_path.read_text(encoding="utf-8", errors="replace"))
+    if not matches:
+        return None
+    completed, total = matches[-1]
+    return {"completed": int(completed), "total": int(total)}
+
+
+def _root_status(spec, cell, cell_root, runtime_root, c6_root, cell_status_path, cell_status, completed, generated_root):
+    """Derive the sole root-level parent/child handoff record from observed facts."""
+    root = Path(spec["output_root"])
+    runtime_relative = str(runtime_root.relative_to(root))
+    c6_relative = str(c6_root.relative_to(root))
+    status_relative = str(cell_status_path.relative_to(root))
+    runtime_origin = cell_status["import_origins"]["utils.async_deadline_runtime"]
+    return {
+        "schema_version": "C6_MVE_REAL_CHILD_STATUS_V2",
+        "stage": spec["stage"],
+        "run_id": spec["run_id"],
+        "cells": [cell],
+        "cell_status_paths": {cell: status_relative},
+        "author_workload_exit_codes": {cell: completed.returncode},
+        "author_frames_completed": {cell: _observed_author_frames(cell_root, cell.split("__", 1)[0].split("_", 1)[1])},
+        "evidence_roots": {cell: {"runtime": runtime_relative, "c6": c6_relative}},
+        "generated_source_identity": {
+            "generated_root": str(generated_root),
+            "generated_manifest_sha256": spec["generated_manifest_sha256"],
+            "generated_qualification_seal_sha256": spec["generated_qualification_seal_sha256"],
+            "implementation_sha": spec["authorization"]["implementation_sha"],
+        },
+        "generated_root": str(generated_root),
+        "generated_runtime_origin": runtime_origin["file"],
+        "import_origins": cell_status["import_origins"],
+        "child_sys_path_inputs": cell_status["child_sys_path_inputs"],
+        "python_executable": spec["python_executable"],
+        "python_version": sys.version.split()[0],
+        "working_directory": str(ROOT),
+        "real_communication_side_only": True,
+        "synthetic_non_scientific": False,
+        "tracking_outcome_read": False,
+        "tracking_artifacts_not_read": True,
+        "status": "PASS" if cell_status["status"] == "PASS" else "FAIL",
+    }
 
 
 def _run(spec):
@@ -109,7 +159,12 @@ def _run(spec):
         "working_directory": str(ROOT),
         "tracking_artifacts_not_read": True,
     }
-    _write(cell_root / "C6_CHILD_CELL_STATUS.json", status)
+    cell_status_path = cell_root / "C6_CHILD_CELL_STATUS.json"
+    _write(cell_status_path, status)
+    _write(
+        output_root / "C6_CHILD_STATUS.json",
+        _root_status(spec, cell, cell_root, runtime_root, c6_root, cell_status_path, status, completed, generated_root),
+    )
     if completed.returncode != 0 or not evidence_present or not c6_present:
         return 1
     return 0
