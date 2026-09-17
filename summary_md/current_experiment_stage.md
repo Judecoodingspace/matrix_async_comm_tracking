@@ -4,6 +4,21 @@ This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
 
 ## Current Mainline
 
+### Latest Gate: C6 Formal Attempt4 Scientific Review (2026-09-17)
+
+- Attempt4 completed with `4/4` mechanically valid cells and reproducible Formal
+  and baseline seals; tracking outcomes remain unopened.
+- The primary cell supports the suppression mechanism with
+  `B_avoided=7,299,121`, but its serviceable ID-State delta is
+  `-3,221,174`; no cell has a positive redistribution delta.
+- Frozen decision: `MECHANISM_SUPPORTED_REDISTRIBUTION_NOT_SUPPORTED`;
+  C7 remains `CONDITIONAL_REVIEW` and is not authorized to run.
+- P44/P66 meet the preregistered forensic anomaly flag, and all treatment
+  first-service decisions are suppressed. Only a read-only existing-evidence
+  audit is currently in scope.
+- Analysis:
+  `summary_md/experiments/2026-9-17/exp_20260915_001_mdmt_mia_c6_pre_service_semantic_suppression_analysis.md`.
+
 ### Next Planned Gate: Non-Test Compensation Onset Validation (2026-08-17)
 
 - 新实验契约：`exp_20260817_001_mdmt_mia_candidate_compensation_onset_validation`。

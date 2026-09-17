@@ -1,6 +1,35 @@
 # Current Status
 
-Updated: 2026-09-16
+Updated: 2026-09-17
+
+## Latest C6 Formal scientific result review
+
+C6 Formal Attempt4 ended `FORMAL_RUN_END / PASS` with all four frozen cells
+`VALID`. Independent recomputation reproduced every cell's `B_avoided`,
+treatment serviceable ID-State bytes, and delta, as well as the Formal and
+baseline seals. Tracking outcomes were not read.
+
+The primary P23/FIFO-strong cell reports `B_avoided=7,299,121`, supporting the
+suppression mechanism, but treatment serviceable ID-State bytes are `0` versus
+the frozen baseline's `3,221,174`, producing a delta of `-3,221,174`. The exact
+preregistered decision is therefore:
+
+```text
+C6_STATUS = MECHANISM_SUPPORTED_REDISTRIBUTION_NOT_SUPPORTED
+C7_PROGRESS = CONDITIONAL_REVIEW
+```
+
+Every treatment first-service ID-State decision was suppressed in all four
+cells. P44 and P66 also exceed their frozen C5 descriptive opportunity
+references, triggering the preregistered forensic-only review. The next action
+is a read-only communication/service and predicate-evidence audit using existing
+artifacts. Any rerun, new tracing, predicate change, intervention, or C7 launch
+requires a new research decision and separate authorization.
+
+Results:
+`summary_md/experiments/2026-9-15/exp_20260915_001_mdmt_mia_c6_pre_service_semantic_suppression/FORMAL_ATTEMPT4_RESULTS.md`.
+Analysis:
+`summary_md/experiments/2026-9-17/exp_20260915_001_mdmt_mia_c6_pre_service_semantic_suppression_analysis.md`.
 
 ## Latest C6 Attempt2 post-corrective authorization decision
 

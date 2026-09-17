@@ -1,0 +1,10 @@
+flowchart TD
+    A["Attempt4 sealed evidence<br/>4 cells VALID"] --> B{"Mandatory validity gates pass?"}
+    B -- No --> X["MEASUREMENT_INVALID<br/>C7 BLOCKED"]
+    B -- Yes --> C{"Primary B_avoided > 0?"}
+    C -- No --> Y["MECHANISM_NOT_SUPPORTED<br/>C7 NOT_SUPPORTED"]
+    C -- Yes --> D{"Primary delta serviceable ID bytes > 0?"}
+    D -- Yes --> Z["MECHANISM_AND_REDISTRIBUTION_SUPPORTED<br/>C7 supported for a new research decision"]
+    D -- No --> E["MECHANISM_SUPPORTED<br/>REDISTRIBUTION_NOT_SUPPORTED"]
+    E --> F["C7 CONDITIONAL_REVIEW<br/>Read-only service decomposition"]
+    F --> G["Forensic flags<br/>P44 and P66 exceed C5 references"]
