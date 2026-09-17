@@ -40,7 +40,7 @@ MVE_CONDITION = "FIFO_strong"
 MVE_RATE = 16649
 CELL_ORDER = ("pair_23__FIFO_mild", "pair_23__FIFO_strong", "pair_44__FIFO_moderate", "pair_66__FIFO_mild")
 FORMAL_PACKAGE_PATH = ROOT / "summary_md/communication/c6_pre_formal_platform_qualification/C6_FORMAL_EXECUTION_PACKAGE.json"
-FORMAL_PACKAGE_SHA256 = "f2eb9c648f455bba3a7ee97ccf583beac26d4940fbdd584448995f608bb1d188"
+FORMAL_PACKAGE_SHA256 = "9eaeec40609f28004072fcbb0022c40de0395250c1988e5c2846a2cdc498bba2"
 PLATFORM_MANIFEST_PATH = ROOT / "summary_md/communication/c6_pre_formal_platform_qualification/C6_PLATFORM_QUALIFICATION_MANIFEST.json"
 PLATFORM_QUALIFICATION_AUTHORITY_SHA = "16c85908246cf433ec03d7b9aebe965cc58b59c9"
 FORMAL_ISSUANCE_AUTHORITY_PATH = ROOT / "summary_md/communication/c6_formal_authorization/C6_FORMAL_AUTHORIZATION_ISSUANCE.json"
@@ -1196,7 +1196,12 @@ def _execute_real_c6_cell(spec):
     """Execute one cell after the public launch_c6_stage contract validates it."""
     generic = spec["stage"] == REAL_CELL_STAGE
     synthetic_probe = generic and spec["authorization"]["execution_mode"] == "SYNTHETIC_NO_DATA"
-    output_root = Path(spec["output_root"])
+    raw_output_root = Path(spec["output_root"])
+    output_root = (
+        raw_output_root.resolve()
+        if raw_output_root.is_absolute()
+        else (Path(spec["working_directory"]) / raw_output_root).resolve()
+    )
     if output_root.exists():
         raise GateError("output root is not exclusive")
     output_root.mkdir(parents=True)

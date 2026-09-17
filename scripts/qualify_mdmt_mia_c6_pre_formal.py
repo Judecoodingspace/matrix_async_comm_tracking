@@ -39,7 +39,7 @@ def package():
     roots = []
     cells = []
     for ident, pair, condition, rate, role, baseline in CELLS:
-        root = "summary_md/communication/c6_formal/{}/attempt3".format(ident)
+        root = "summary_md/communication/c6_formal/{}/attempt4".format(ident)
         roots.append(root)
         cells.append({"cell": ident, "pair": pair, "service_condition": condition,
                       "service_rate": rate, "role": role,

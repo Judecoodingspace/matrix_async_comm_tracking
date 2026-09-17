@@ -20,6 +20,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _canonical_output_root(spec):
+    """Resolve the logical output root once at the real-child boundary."""
+    raw_root = Path(spec["output_root"])
+    return raw_root.resolve() if raw_root.is_absolute() else (ROOT / raw_root).resolve()
+
+
 def _write(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -58,7 +64,7 @@ def _observed_author_frames(cell_root, pair):
 
 def _root_status(spec, cell, cell_root, runtime_root, c6_root, cell_status_path, cell_status, completed, generated_root):
     """Derive the sole root-level parent/child handoff record from observed facts."""
-    root = Path(spec["output_root"])
+    root = _canonical_output_root(spec)
     runtime_relative = str(runtime_root.relative_to(root))
     c6_relative = str(c6_root.relative_to(root))
     status_relative = str(cell_status_path.relative_to(root))
@@ -94,7 +100,7 @@ def _root_status(spec, cell, cell_root, runtime_root, c6_root, cell_status_path,
 
 
 def _run(spec):
-    output_root = Path(spec["output_root"])
+    output_root = _canonical_output_root(spec)
     cell = spec["cells"][0]
     pair = cell.split("__", 1)[0].split("_", 1)[1]
     cell_root = output_root / "cells" / cell
@@ -192,7 +198,7 @@ def _run(spec):
 
 def _finalize_existing(spec):
     """Repair only the child-status bookkeeping after a completed author run."""
-    output_root = Path(spec["output_root"])
+    output_root = _canonical_output_root(spec)
     cell = spec["cells"][0]
     pair = cell.split("__", 1)[0].split("_", 1)[1]
     cell_root = output_root / "cells" / cell
@@ -251,7 +257,7 @@ def main(argv=None):
             return _finalize_existing(spec)
         return _run(spec)
     except Exception as exc:
-        output_root = Path(spec["output_root"])
+        output_root = _canonical_output_root(spec)
         cell = spec["cells"][0]
         try:
             _write(output_root / "cells" / cell / "C6_CHILD_CELL_STATUS.json", {
