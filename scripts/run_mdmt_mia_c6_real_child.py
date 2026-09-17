@@ -27,6 +27,13 @@ def _write(path, value):
         handle.write("\n")
 
 
+def _write_stream(path, value):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x", encoding="utf-8") as handle:
+        handle.write(value)
+
+
 def _load(path):
     with Path(path).open("r", encoding="utf-8") as handle:
         return json.load(handle)
@@ -123,6 +130,11 @@ def _run(spec):
     })
     command = ["bash", str(ROOT / "scripts" / "run_mdmt_mia_author_sync.sh"), "mia", "train", pair]
     completed = subprocess.run(command, cwd=str(ROOT), env=child_env, capture_output=True, text=True, check=False)
+    # The parent records only this wrapper's streams.  Preserve the nested
+    # author-wrapper streams here so a non-zero author exit remains diagnosable
+    # without reopening any tracking-result artifact.
+    _write_stream(cell_root / "C6_AUTHOR_WORKLOAD_STDOUT.txt", getattr(completed, "stdout", ""))
+    _write_stream(cell_root / "C6_AUTHOR_WORKLOAD_STDERR.txt", getattr(completed, "stderr", ""))
     required = [cell_root / "mia" / f"train_{pair}" / "results" / f"mia_train_{pair}", c6_root]
     runtime_root = required[0]
     communication_patterns = (

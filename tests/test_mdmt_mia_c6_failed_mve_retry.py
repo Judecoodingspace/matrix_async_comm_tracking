@@ -124,13 +124,20 @@ def test_wrong_or_missing_status_fails_closed(tmp_path):
 
 def test_nonzero_author_exit_fails_closed(monkeypatch, tmp_path):
     spec = _spec(tmp_path)
-    monkeypatch.setattr(child.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=7))
+    monkeypatch.setattr(
+        child.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=7, stdout="author diagnostic", stderr="author failure"),
+    )
     assert child._run(spec) == 1
+    cell_root = Path(spec["output_root"]) / "cells" / "pair_23__FIFO_strong"
     status = json.loads(
-        (Path(spec["output_root"]) / "cells" / "pair_23__FIFO_strong" / "C6_CHILD_CELL_STATUS.json").read_text()
+        (cell_root / "C6_CHILD_CELL_STATUS.json").read_text()
     )
     assert status["status"] == "FAIL"
     assert status["author_child_exit_code"] == 7
+    assert (cell_root / "C6_AUTHOR_WORKLOAD_STDOUT.txt").read_text() == "author diagnostic"
+    assert (cell_root / "C6_AUTHOR_WORKLOAD_STDERR.txt").read_text() == "author failure"
 
 
 def test_partial_author_evidence_fails_closed(monkeypatch, tmp_path):

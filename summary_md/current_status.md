@@ -2,6 +2,24 @@
 
 Updated: 2026-09-16
 
+## Latest C6 mechanical qualification
+
+The first C6 Formal live attempt failed closed at
+`pair_23__FIFO_strong/attempt1`; that root is quarantined, retained locally,
+and has no scientific standing. A logging-only repair now retains the nested
+author-wrapper stdout/stderr under the cell root on any future failure. It does
+not change the author command, scientific semantics, packet/service behavior,
+baselines, metrics, or tracking-result embargo.
+
+Mechanical qualification passed: the focused failure-path suite reported
+`25 passed`, and the isolated four-cell no-data Formal path ended
+`FORMAL_RUN_END` with all cells `VALID`. No real author workload or new Formal
+cell was launched during qualification. Details:
+`summary_md/communication/c6_formal_forensic_logging_qualification/C6_FORMAL_FORENSIC_LOGGING_QUALIFICATION_REPORT.md`.
+
+The next live action, if separately authorized, must use a fresh Formal
+authorization and a new attempt root; do not reuse or alter `attempt1`.
+
 ## Latest platform-core update
 
 C6 Formal execution authority has now been issued without starting execution.
