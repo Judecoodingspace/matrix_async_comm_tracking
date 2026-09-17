@@ -21,7 +21,7 @@ AUTHORITIES = {
     "generated_source_qualification_seal_sha256": "4e450083170193dc3fd3c1782e44a77cc68694eb2e61959ae5758ca23c73bceb",
     "e2e_authority_sha": "82e7c3231f539032ff396f8d7dc7a090e5512fd1",
     "mve_preflight_sha": "6039922fcfcc6984f6b613f6f17527c8a682cdfd",
-    "wrapper_status_contract_authority_sha": "47d20389363582e62676e547483547582c4d820c",
+    "wrapper_status_contract_authority_sha": "0054907da0af795a5ca1b8d2f90e8a3bacb20b6d",
     "attempt2_launcher_auth_schema_authority_sha": BASE,
 }
 CELLS = (
@@ -39,7 +39,7 @@ def package():
     roots = []
     cells = []
     for ident, pair, condition, rate, role, baseline in CELLS:
-        root = "summary_md/communication/c6_formal/{}/attempt2".format(ident)
+        root = "summary_md/communication/c6_formal/{}/attempt3".format(ident)
         roots.append(root)
         cells.append({"cell": ident, "pair": pair, "service_condition": condition,
                       "service_rate": rate, "role": role,
@@ -49,6 +49,7 @@ def package():
             "execution_authorized": False, "contract_sha": CONTRACT, "plan_sha": PLAN,
             "mve_attempt2_evidence_sha": MVE, "mve_execution_base_sha": BASE,
             "authorities": dict(AUTHORITIES,
+                author_wrapper_sha256=sha(ROOT / "scripts/run_mdmt_mia_author_sync.sh"),
                 real_child_sha256=sha(ROOT / "scripts/run_mdmt_mia_c6_real_child.py"),
                 forensic_logging_qualification_path="summary_md/communication/c6_formal_forensic_logging_qualification/C6_FORMAL_FORENSIC_LOGGING_QUALIFICATION_REPORT.md",
                 forensic_logging_qualification_sha256=sha(ROOT / "summary_md/communication/c6_formal_forensic_logging_qualification/C6_FORMAL_FORENSIC_LOGGING_QUALIFICATION_REPORT.md")), "cells": cells,
@@ -112,8 +113,9 @@ def main():
     components = ["BASE_SOURCE_AUTHORITY", "GENERATED_SOURCE_BUILDER", "PRODUCTION_LAUNCHER", "PRODUCTION_CHILD_WRAPPER", "AUTHORIZATION_SCHEMA", "PATH_CONTRACT", "STATUS_SCHEMA", "ENVIRONMENT_BINDING", "EVIDENCE_SCHEMA", "PROFILE_FRAMEWORK", "CENSUS_VALIDATOR", "DECISION_VALIDATOR", "LEDGER_VALIDATOR", "INVENTORY_ALGORITHM", "SEAL_ALGORITHM", "RUN_START_RUN_END_PROTOCOL", "SUBPROCESS_E2E_HARNESS"]
     regression_names = ["source-set completeness (439 vs 490)", "semantic dependency closure incompleteness", "malformed 38-char implementation SHA", "internal consistency versus external provenance", "in-process fake E2E", "tiny-cardinality assumption in real profile", "wrapper train_{} versus train_23 path", "parent/child root-status handoff", "truthiness status false-pass", "authorization/launcher schema mismatch", "attempt/run-id/output-root reuse", "workload success versus experiment validity"]
     manifest = {"schema_version": "C6_PLATFORM_QUALIFICATION_V1", "qualified_at_mve": MVE, "execution_base": BASE,
-                "environment": environment, "components": [{"component_name": x, "qualified_sha_or_version": BASE,
-                "qualification_evidence": AUTHORITIES["e2e_authority_sha"], "real_mve_validation_evidence": MVE,
+                "environment": environment, "components": [{"component_name": x,
+                "qualified_sha_or_version": AUTHORITIES["wrapper_status_contract_authority_sha"] if x == "PRODUCTION_CHILD_WRAPPER" else BASE,
+                "qualification_evidence": AUTHORITIES["wrapper_status_contract_authority_sha"] if x == "PRODUCTION_CHILD_WRAPPER" else AUTHORITIES["e2e_authority_sha"], "real_mve_validation_evidence": MVE,
                 "linked_negative_tests": ["R01-R12"], "reuse_condition": "hash/version unchanged and package validation passes",
                 "requalification_trigger": "scientific RED; mechanical/path/schema YELLOW; otherwise GREEN"} for x in components],
                 "team_b_trigger_policy": {"RED": ["scientific semantics", "intervention", "baseline formula", "metric semantics", "scheduler/service semantics", "new execution boundary", "Formal authorization"], "YELLOW": ["launcher/wrapper", "validator", "builder", "authority", "path/schema"], "GREEN": ["docs", "logging", "tests-only", "P3 wording", "exact qualified reuse"], "fallback": "YELLOW"},

@@ -8,6 +8,7 @@ evidence provenance and never opens tracking metric/result artifacts.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -37,6 +38,10 @@ def _write_stream(path, value):
 def _load(path):
     with Path(path).open("r", encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def _sha256(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 def _observed_author_frames(cell_root, pair):
@@ -96,6 +101,9 @@ def _run(spec):
     c6_root = cell_root / "c6"
     c6_root.mkdir(parents=True, exist_ok=False)
     generated_root = Path(spec["generated_root"]).resolve()
+    wrapper_path = Path(spec["author_wrapper_path"]).resolve()
+    if not wrapper_path.is_file() or _sha256(wrapper_path) != spec["author_wrapper_sha256"]:
+        raise RuntimeError("author wrapper source identity mismatch")
     mia_root = generated_root.parents[1]
     child_env = dict(os.environ)
     for key in tuple(child_env):
@@ -128,7 +136,7 @@ def _run(spec):
         "MPLCONFIGDIR": str(output_root / "_runtime_cache" / "matplotlib"),
         "PYTHONPATH": os.pathsep.join((str(generated_root), str(generated_root / "demo" / "utils"), str(ROOT))),
     })
-    command = ["bash", str(ROOT / "scripts" / "run_mdmt_mia_author_sync.sh"), "mia", "train", pair]
+    command = ["bash", str(wrapper_path), "mia", "train", pair]
     completed = subprocess.run(command, cwd=str(ROOT), env=child_env, capture_output=True, text=True, check=False)
     # The parent records only this wrapper's streams.  Preserve the nested
     # author-wrapper streams here so a non-zero author exit remains diagnosable

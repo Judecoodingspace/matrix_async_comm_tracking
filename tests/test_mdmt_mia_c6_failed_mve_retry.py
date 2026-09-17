@@ -21,6 +21,7 @@ child = _load("run_mdmt_mia_c6_real_child.py")
 runner = _load("run_mdmt_mia_c6_pre_service_semantic_suppression.py")
 e2e = _load("run_mdmt_mia_c6_e2e_qualification.py")
 mve = _load("run_mdmt_mia_c6_real_mve.py")
+AUTHOR_WRAPPER = ROOT / "scripts/run_mdmt_mia_author_sync.sh"
 
 
 def _spec(tmp_path):
@@ -37,6 +38,8 @@ def _spec(tmp_path):
         "generated_root": str(generated),
         "generated_manifest_sha256": "a" * 64,
         "generated_qualification_seal_sha256": "b" * 64,
+        "author_wrapper_path": str(AUTHOR_WRAPPER),
+        "author_wrapper_sha256": runner._sha256_file(AUTHOR_WRAPPER),
         "authorization": {"implementation_sha": "1e440166554e04d219291b1c3c6a8a1f5f6b88ff"},
         "python_executable": "python",
         "run_id": "synthetic-failed-mve-retry",

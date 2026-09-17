@@ -16,6 +16,7 @@ BASELINE_SEAL = ROOT / "summary_md/communication/c6_run004_serviceable_baseline_
 PLATFORM_MANIFEST = ROOT / "summary_md/communication/c6_pre_formal_platform_qualification/C6_PLATFORM_QUALIFICATION_MANIFEST.json"
 FORMAL_PACKAGE = ROOT / "summary_md/communication/c6_pre_formal_platform_qualification/C6_FORMAL_EXECUTION_PACKAGE.json"
 FORMAL_OPERATOR = ROOT / "scripts/run_mdmt_mia_c6_formal.py"
+AUTHOR_WRAPPER = ROOT / "scripts/run_mdmt_mia_author_sync.sh"
 
 
 def load(path, name):
@@ -89,6 +90,8 @@ def launch_spec(cell, output_root):
         "fixture_sha256": sha(FIXTURE),
         "production_launcher_path": str(RUNNER_PATH),
         "production_launcher_sha256": sha(RUNNER_PATH),
+        "author_wrapper_path": str(AUTHOR_WRAPPER),
+        "author_wrapper_sha256": sha(AUTHOR_WRAPPER),
         "orchestration_path": str(Path(__file__).resolve()),
         "orchestration_sha256": sha(Path(__file__).resolve()),
         "cells": [cell["cell"]],
@@ -190,6 +193,7 @@ def test_full_matrix_aggregate_invariant_is_unchanged():
         (lambda spec: spec.__setitem__("evidence_shape_profile", "TINY_SYNTHETIC"), "evidence profile"),
         (lambda spec: spec["authorization"].__setitem__("generated_source_manifest_sha256", "0" * 64), "source authority"),
         (lambda spec: spec.update(production_launcher_path=str(FIXTURE), production_launcher_sha256=sha(FIXTURE)), "launcher identity"),
+        (lambda spec: spec.__setitem__("author_wrapper_sha256", "0" * 64), "author wrapper identity"),
         (lambda spec: spec["child_environment"].__setitem__("PYTHONHASHSEED", "1"), "controlled child environment"),
         (lambda spec: spec.__setitem__("stage", "C6_WRONG"), "authorization authority"),
         (lambda spec: spec.__setitem__("schema_version", "WRONG"), "launch spec schema"),

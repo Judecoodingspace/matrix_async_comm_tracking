@@ -40,11 +40,12 @@ MVE_CONDITION = "FIFO_strong"
 MVE_RATE = 16649
 CELL_ORDER = ("pair_23__FIFO_mild", "pair_23__FIFO_strong", "pair_44__FIFO_moderate", "pair_66__FIFO_mild")
 FORMAL_PACKAGE_PATH = ROOT / "summary_md/communication/c6_pre_formal_platform_qualification/C6_FORMAL_EXECUTION_PACKAGE.json"
-FORMAL_PACKAGE_SHA256 = "ef6c78a8a96a7442c5b5343823c303c17ee642ce56290904c408b626c55e3390"
+FORMAL_PACKAGE_SHA256 = "f2eb9c648f455bba3a7ee97ccf583beac26d4940fbdd584448995f608bb1d188"
 PLATFORM_MANIFEST_PATH = ROOT / "summary_md/communication/c6_pre_formal_platform_qualification/C6_PLATFORM_QUALIFICATION_MANIFEST.json"
 PLATFORM_QUALIFICATION_AUTHORITY_SHA = "16c85908246cf433ec03d7b9aebe965cc58b59c9"
 FORMAL_ISSUANCE_AUTHORITY_PATH = ROOT / "summary_md/communication/c6_formal_authorization/C6_FORMAL_AUTHORIZATION_ISSUANCE.json"
 REAL_CHILD_PATH = ROOT / "scripts/run_mdmt_mia_c6_real_child.py"
+AUTHOR_WRAPPER_PATH = ROOT / "scripts/run_mdmt_mia_author_sync.sh"
 FORENSIC_LOGGING_QUALIFICATION_PATH = ROOT / "summary_md/communication/c6_formal_forensic_logging_qualification/C6_FORMAL_FORENSIC_LOGGING_QUALIFICATION_REPORT.md"
 SYNTHETIC_REAL_CELL_CHILD_PATH = ROOT / "tests/fixtures/run_mdmt_mia_c6_tiny_runtime.py"
 REAL_CELL_STAGE = "C6_REAL_CELL"
@@ -670,7 +671,7 @@ def _validate_launch_spec(spec):
         "working_directory", "child_environment", "fault", "prelaunch_negative_tests",
         "evidence_shape_profile",
     }
-    optional = {"expected_deterministic_core_sha256", "attempt"}
+    optional = {"expected_deterministic_core_sha256", "attempt", "author_wrapper_path", "author_wrapper_sha256"}
     if not required <= set(spec) or set(spec) - required - optional:
         raise GateError("launch spec key mismatch")
     if not isinstance(spec["stage"], str) or not spec["stage"].startswith("C6_"):
@@ -720,6 +721,11 @@ def _validate_launch_spec(spec):
             raise GateError("real-cell child boundary mismatch")
         if Path(spec["production_launcher_path"]).resolve() != Path(__file__).resolve():
             raise GateError("real-cell launcher identity mismatch")
+        if (
+            Path(spec.get("author_wrapper_path", "")).resolve() != AUTHOR_WRAPPER_PATH.resolve()
+            or spec.get("author_wrapper_sha256") != _sha256_file(AUTHOR_WRAPPER_PATH)
+        ):
+            raise GateError("real-cell author wrapper identity mismatch")
     else:
         if auth.get("contract_sha") != CONTRACT_SHA or auth.get("plan_sha") != PLAN_SHA:
             raise GateError("launch authorization authority mismatch")
@@ -748,6 +754,12 @@ def _validate_launch_spec(spec):
     ):
         if not Path(spec[path_key]).is_file() or _sha256_file(spec[path_key]) != spec[hash_key]:
             raise GateError("launch source identity mismatch")
+    if "author_wrapper_path" in spec or "author_wrapper_sha256" in spec:
+        if (
+            not Path(spec.get("author_wrapper_path", "")).is_file()
+            or _sha256_file(spec["author_wrapper_path"]) != spec.get("author_wrapper_sha256")
+        ):
+            raise GateError("author wrapper source identity mismatch")
     if not all(isinstance(value, bool) and value for value in spec["prelaunch_negative_tests"].values()):
         raise GateError("prelaunch negative gate failed")
     expected_core = spec.get("expected_deterministic_core_sha256", "")

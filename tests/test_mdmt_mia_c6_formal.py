@@ -172,6 +172,8 @@ def test_future_live_spec_exactly_binds_frozen_cell_and_real_child(cell, tmp_pat
     assert auth["forensic_logging_qualification_sha256"] == sha(runner.FORENSIC_LOGGING_QUALIFICATION_PATH)
     assert spec["fixture_path"] == str(runner.REAL_CHILD_PATH)
     assert spec["logical_output_root"] == cell["output_root"]
+    assert spec["author_wrapper_path"] == str(runner.AUTHOR_WRAPPER_PATH)
+    assert spec["author_wrapper_sha256"] == sha(runner.AUTHOR_WRAPPER_PATH)
     with pytest.raises(runner.GateError, match="Formal parent authorization path is not issued"):
         runner._validate_launch_spec(spec)
 

@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_PATH = ROOT / "summary_md/communication/c6_pre_formal_platform_qualification/C6_FORMAL_EXECUTION_PACKAGE.json"
 PLATFORM_MANIFEST_PATH = ROOT / "summary_md/communication/c6_pre_formal_platform_qualification/C6_PLATFORM_QUALIFICATION_MANIFEST.json"
 RUNNER_PATH = ROOT / "scripts/run_mdmt_mia_c6_pre_service_semantic_suppression.py"
+AUTHOR_WRAPPER_PATH = ROOT / "scripts/run_mdmt_mia_author_sync.sh"
 MANIFEST_PATH = ROOT / "summary_md/communication/c6_generated_author_source_qualification_corrective/C6_GENERATED_AUTHOR_SOURCE_MANIFEST.json"
 QUALIFICATION_SEAL_PATH = ROOT / "summary_md/communication/c6_generated_author_source_qualification_corrective/C6_GENERATED_AUTHOR_SOURCE_QUALIFICATION_SEAL.json"
 BASELINE_SEAL_PATH = ROOT / "summary_md/communication/c6_run004_serviceable_baseline_derivation/C6_RUN004_BASELINE_DERIVATION_SEAL.json"
@@ -316,6 +317,8 @@ def build_cell_launch_spec(mode, cell, output_root, authorization_path, runner=N
         "fixture_sha256": _sha256(fixture_path),
         "production_launcher_path": str(RUNNER_PATH),
         "production_launcher_sha256": _sha256(RUNNER_PATH),
+        "author_wrapper_path": str(AUTHOR_WRAPPER_PATH),
+        "author_wrapper_sha256": _sha256(AUTHOR_WRAPPER_PATH),
         "orchestration_path": str(Path(__file__).resolve()),
         "orchestration_sha256": _sha256(Path(__file__).resolve()),
         "cells": [cell["cell"]],
