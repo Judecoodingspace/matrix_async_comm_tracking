@@ -20,6 +20,7 @@ MANIFEST_PATH = ROOT / "summary_md/communication/c6_generated_author_source_qual
 QUALIFICATION_SEAL_PATH = ROOT / "summary_md/communication/c6_generated_author_source_qualification_corrective/C6_GENERATED_AUTHOR_SOURCE_QUALIFICATION_SEAL.json"
 BASELINE_SEAL_PATH = ROOT / "summary_md/communication/c6_run004_serviceable_baseline_derivation/C6_RUN004_BASELINE_DERIVATION_SEAL.json"
 PROGRESS_NAME = "C6_FORMAL_PROGRESS.json"
+RUN_ROOT_DIRECTORY = "_formal_runs"
 FORMAL_METRICS = (
     "B_avoided",
     "serviceable_id_state_serviced_bytes_treatment",
@@ -213,6 +214,23 @@ def _storage_preflight(package, roots):
         raise FormalGateError("insufficient free space for Formal execution")
 
 
+def _live_run_root(package):
+    """Derive one exclusive lifecycle root from the frozen cell attempt identity."""
+    resolved = [_resolved_root(cell["output_root"]) for cell in package["cells"]]
+    attempt_ids = {path.name for path in resolved}
+    cell_parents = {path.parent.parent for path in resolved}
+    expected_cells = {cell["cell"] for cell in package["cells"]}
+    observed_cells = {path.parent.name for path in resolved}
+    if (
+        len(attempt_ids) != 1
+        or len(cell_parents) != 1
+        or observed_cells != expected_cells
+        or any(not attempt or "/" in attempt or "\\" in attempt for attempt in attempt_ids)
+    ):
+        raise FormalGateError("Formal cell roots do not encode one coherent attempt identity")
+    return next(iter(cell_parents)) / RUN_ROOT_DIRECTORY / next(iter(attempt_ids))
+
+
 def _derive_roots(package, qualification_no_data, qualification_root=None):
     production_roots = [cell["output_root"] for cell in package["cells"]]
     if qualification_no_data:
@@ -225,11 +243,8 @@ def _derive_roots(package, qualification_no_data, qualification_root=None):
         if {_resolved_root(root) for root in cell_roots.values()} & {_resolved_root(root) for root in production_roots}:
             raise FormalGateError("qualification root aliases a production root")
     else:
-        resolved = [_resolved_root(root) for root in production_roots]
-        run_root = Path(os.path.commonpath([str(path) for path in resolved]))
+        run_root = _live_run_root(package)
         cell_roots = {cell["cell"]: cell["output_root"] for cell in package["cells"]}
-        if run_root in resolved:
-            raise FormalGateError("Formal run root collides with a cell root")
         if run_root.exists() or run_root.is_symlink():
             raise FormalGateError("Formal run root is occupied")
     _require_exclusive_roots(cell_roots.values())

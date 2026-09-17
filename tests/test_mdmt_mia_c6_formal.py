@@ -214,6 +214,55 @@ def test_live_preflight_rejects_an_occupied_production_cell_root(tmp_path):
         formal._derive_roots(package, False)
 
 
+def _attempt_package(tmp_path, attempt="attempt2"):
+    package = copy.deepcopy(formal.pkg())
+    base = tmp_path / "c6_formal"
+    for cell in package["cells"]:
+        cell["output_root"] = str(base / cell["cell"] / attempt)
+    package["roots"] = [cell["output_root"] for cell in package["cells"]]
+    return package, base
+
+
+def test_historical_quarantine_allows_a_distinct_attempt_scoped_run_root(tmp_path):
+    package, base = _attempt_package(tmp_path)
+    attempt1 = base / "C6_FORMAL_PROGRESS.json"
+    attempt1.parent.mkdir(parents=True)
+    attempt1.write_text('{"state":"FORMAL_FAILED_QUARANTINED"}\n', encoding="utf-8")
+    before = sha(attempt1)
+
+    run_root, cell_roots = formal._derive_roots(package, False)
+
+    assert run_root == base / formal.RUN_ROOT_DIRECTORY / "attempt2"
+    assert not run_root.exists()
+    assert set(cell_roots.values()) == set(package["roots"])
+    assert sha(attempt1) == before
+
+
+def test_live_preflight_rejects_an_occupied_attempt_scoped_run_root(tmp_path):
+    package, base = _attempt_package(tmp_path)
+    (base / formal.RUN_ROOT_DIRECTORY / "attempt2").mkdir(parents=True)
+
+    with pytest.raises(formal.FormalGateError, match="Formal run root is occupied"):
+        formal._derive_roots(package, False)
+
+
+def test_live_preflight_rejects_an_occupied_attempt2_cell_root(tmp_path):
+    package, _ = _attempt_package(tmp_path)
+    Path(package["cells"][0]["output_root"]).mkdir(parents=True)
+
+    with pytest.raises(formal.FormalGateError, match="Formal cell output root is occupied"):
+        formal._derive_roots(package, False)
+
+
+def test_live_attempt_identity_must_be_coherent(tmp_path):
+    package, _ = _attempt_package(tmp_path)
+    package["cells"][1]["output_root"] = str(tmp_path / "c6_formal" / package["cells"][1]["cell"] / "attempt3")
+    package["roots"] = [cell["output_root"] for cell in package["cells"]]
+
+    with pytest.raises(formal.FormalGateError, match="coherent attempt identity"):
+        formal._derive_roots(package, False)
+
+
 def _fake_success(spec):
     root = Path(spec["output_root"])
     root.mkdir(parents=True)
@@ -221,6 +270,7 @@ def _fake_success(spec):
     quantities = {
         "B_avoided": 0,
         "independent_B_avoided": 0,
+        "serviceable_id_state_serviced_bytes_treatment": 0,
         "synthetic_non_scientific": True,
     }
     write_json(root / "C6_REAL_CELL_VALIDATOR_OUTPUT.json", {
@@ -231,6 +281,41 @@ def _fake_success(spec):
     })
     write_json(root / "C6_RUN_TERMINAL.json", {"run_id": spec["run_id"], "state": "RUN_END"})
     return {"quantities": quantities, "evidence": []}
+
+
+def test_attempt2_synthetic_production_path_isolated_from_attempt1(tmp_path, monkeypatch):
+    package, base = _attempt_package(tmp_path)
+    attempt1 = base / "C6_FORMAL_PROGRESS.json"
+    attempt1.parent.mkdir(parents=True)
+    attempt1.write_text('{"state":"FORMAL_FAILED_QUARANTINED","sentinel":"attempt1"}\n', encoding="utf-8")
+    attempt1_before = sha(attempt1)
+    auth_path = tmp_path / "synthetic-live-shaped-authorization.json"
+    write_json(auth_path, {"test_only": True})
+    monkeypatch.setattr(formal, "validate", lambda authorization, live: package)
+    monkeypatch.setattr(formal, "_runtime_preflight", lambda environment: None)
+    monkeypatch.setattr(formal, "_storage_preflight", lambda package, roots: None)
+
+    result = formal.operator({"test_only": True}, auth_path, launcher=_fake_success)
+
+    attempt2_root = base / formal.RUN_ROOT_DIRECTORY / "attempt2"
+    assert Path(result["root"]) == attempt2_root
+    assert json.loads((attempt2_root / formal.PROGRESS_NAME).read_text(encoding="utf-8"))["state"] == "FORMAL_RUN_END"
+    run_start = json.loads((attempt2_root / "C6_FORMAL_RUN_START.json").read_text(encoding="utf-8"))
+    assert set(run_start["cell_roots"].values()) == set(package["roots"])
+    aggregation = json.loads((attempt2_root / "C6_FORMAL_AGGREGATION.json").read_text(encoding="utf-8"))
+    assert [row["cell"] for row in aggregation["cells"]] == [cell["cell"] for cell in package["cells"]]
+    assert sha(attempt1) == attempt1_before
+    assert not any("attempt1" in json.dumps(row, sort_keys=True) for row in aggregation["cells"])
+
+
+def test_progress_reads_only_the_requested_attempt_root(tmp_path):
+    attempt1 = tmp_path / "_formal_runs" / "attempt1"
+    attempt2 = tmp_path / "_formal_runs" / "attempt2"
+    write_json(attempt1 / formal.PROGRESS_NAME, {"state": "FORMAL_FAILED_QUARANTINED"})
+    write_json(attempt2 / formal.PROGRESS_NAME, {"state": "FORMAL_RUN_END"})
+
+    assert json.loads(formal._read_progress(attempt2))["state"] == "FORMAL_RUN_END"
+
 
 
 def test_second_cell_failure_is_quarantined_and_stops_later_cells(tmp_path, monkeypatch):
