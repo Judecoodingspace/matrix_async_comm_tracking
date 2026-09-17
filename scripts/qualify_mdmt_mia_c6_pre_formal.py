@@ -39,7 +39,7 @@ def package():
     roots = []
     cells = []
     for ident, pair, condition, rate, role, baseline in CELLS:
-        root = "summary_md/communication/c6_formal/{}/attempt1".format(ident)
+        root = "summary_md/communication/c6_formal/{}/attempt2".format(ident)
         roots.append(root)
         cells.append({"cell": ident, "pair": pair, "service_condition": condition,
                       "service_rate": rate, "role": role,
@@ -48,7 +48,10 @@ def package():
     return {"schema_version": "C6_FORMAL_EXECUTION_PACKAGE_V1", "stage": "C6_FORMAL",
             "execution_authorized": False, "contract_sha": CONTRACT, "plan_sha": PLAN,
             "mve_attempt2_evidence_sha": MVE, "mve_execution_base_sha": BASE,
-            "authorities": AUTHORITIES, "cells": cells,
+            "authorities": dict(AUTHORITIES,
+                real_child_sha256=sha(ROOT / "scripts/run_mdmt_mia_c6_real_child.py"),
+                forensic_logging_qualification_path="summary_md/communication/c6_formal_forensic_logging_qualification/C6_FORMAL_FORENSIC_LOGGING_QUALIFICATION_REPORT.md",
+                forensic_logging_qualification_sha256=sha(ROOT / "summary_md/communication/c6_formal_forensic_logging_qualification/C6_FORMAL_FORENSIC_LOGGING_QUALIFICATION_REPORT.md")), "cells": cells,
             "metrics": ["B_avoided", "serviceable_id_state_serviced_bytes_treatment",
                         "serviceable_id_state_serviced_bytes_baseline", "delta_B_serviceable"],
             "retry_policy": {"real_launch_consumes_authorization": True, "retry_requires_fresh_authorization": True,

@@ -61,6 +61,9 @@ def authorization(cell, logical_root):
         "implementation_sha": runner.MVE_IMPLEMENTATION_SHA,
         "generated_source_manifest_sha256": runner.MVE_GENERATED_MANIFEST_SHA256,
         "generated_source_qualification_seal_sha256": runner.MVE_GENERATED_QUALIFICATION_SEAL_SHA256,
+        "real_child_sha256": sha(runner.REAL_CHILD_PATH),
+        "forensic_logging_qualification_path": "summary_md/communication/c6_formal_forensic_logging_qualification/C6_FORMAL_FORENSIC_LOGGING_QUALIFICATION_REPORT.md",
+        "forensic_logging_qualification_sha256": sha(runner.FORENSIC_LOGGING_QUALIFICATION_PATH),
         "science_adaptation_allowed": False,
         "tracking_outcome_read_allowed": False,
         "formal_aggregation_allowed": False,
@@ -230,7 +233,7 @@ def test_real_mode_requires_bound_parent_and_uses_existing_wrapper(tmp_path, mon
     spec = launch_spec(cell, tmp_path / "future-formal")
     spec["authorization"]["parent_policy"] = "C6_FORMAL"
     spec["authorization"]["execution_mode"] = "REAL_CHILD"
-    with pytest.raises(runner.GateError, match="issuance authority artifact is missing"):
+    with pytest.raises(runner.GateError, match="Formal parent authorization artifact is required"):
         runner._validate_launch_spec(spec)
     bind_formal_parent(spec, tmp_path, monkeypatch)
     runner._validate_launch_spec(spec)

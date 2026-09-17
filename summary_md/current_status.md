@@ -20,6 +20,20 @@ cell was launched during qualification. Details:
 The next live action, if separately authorized, must use a fresh Formal
 authorization and a new attempt root; do not reuse or alter `attempt1`.
 
+## Latest C6 Formal reissuance
+
+A fresh C6 Formal authorization has been prepared for four new `attempt2`
+roots. It preserves the frozen cells, service rates, baselines, metrics, and
+tracking-result embargo, while binding the repaired real-child SHA-256
+`1f5aa228ad66059407444ea7dcc5f0212171ef7e86507fc566b63cc610c366c4`
+and the forensic-logging qualification record. The authorization SHA-256 is
+`c6bd3ac34eb0128a8f9a97d010150174778d9467be494f7430189068459e3f57`.
+
+The updated four-cell no-data qualification ended `FORMAL_RUN_END` with every
+cell `VALID`; no real author workload or tracking outcome was read. The next
+gate is independent review of the committed issuance anchor. Do not launch
+until that review completes.
+
 ## Latest platform-core update
 
 C6 Formal execution authority has now been issued without starting execution.

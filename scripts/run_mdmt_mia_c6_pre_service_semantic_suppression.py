@@ -40,11 +40,12 @@ MVE_CONDITION = "FIFO_strong"
 MVE_RATE = 16649
 CELL_ORDER = ("pair_23__FIFO_mild", "pair_23__FIFO_strong", "pair_44__FIFO_moderate", "pair_66__FIFO_mild")
 FORMAL_PACKAGE_PATH = ROOT / "summary_md/communication/c6_pre_formal_platform_qualification/C6_FORMAL_EXECUTION_PACKAGE.json"
-FORMAL_PACKAGE_SHA256 = "4a03629f989c33de970f5b74f7a683b08d521039069ffba965e893bcde1d2ae5"
+FORMAL_PACKAGE_SHA256 = "ef6c78a8a96a7442c5b5343823c303c17ee642ce56290904c408b626c55e3390"
 PLATFORM_MANIFEST_PATH = ROOT / "summary_md/communication/c6_pre_formal_platform_qualification/C6_PLATFORM_QUALIFICATION_MANIFEST.json"
 PLATFORM_QUALIFICATION_AUTHORITY_SHA = "16c85908246cf433ec03d7b9aebe965cc58b59c9"
 FORMAL_ISSUANCE_AUTHORITY_PATH = ROOT / "summary_md/communication/c6_formal_authorization/C6_FORMAL_AUTHORIZATION_ISSUANCE.json"
 REAL_CHILD_PATH = ROOT / "scripts/run_mdmt_mia_c6_real_child.py"
+FORENSIC_LOGGING_QUALIFICATION_PATH = ROOT / "summary_md/communication/c6_formal_forensic_logging_qualification/C6_FORMAL_FORENSIC_LOGGING_QUALIFICATION_REPORT.md"
 SYNTHETIC_REAL_CELL_CHILD_PATH = ROOT / "tests/fixtures/run_mdmt_mia_c6_tiny_runtime.py"
 REAL_CELL_STAGE = "C6_REAL_CELL"
 REAL_CELL_POLICIES = frozenset(("PLATFORM_QUALIFICATION", "C6_FORMAL"))
@@ -344,6 +345,7 @@ REAL_CELL_AUTHORIZATION_KEYS = frozenset((
     "serviceable_id_state_serviced_bytes_baseline", "evidence_shape_profile",
     "output_root", "formal_package_sha256", "implementation_sha",
     "generated_source_manifest_sha256", "generated_source_qualification_seal_sha256",
+    "real_child_sha256", "forensic_logging_qualification_path", "forensic_logging_qualification_sha256",
     "science_adaptation_allowed", "tracking_outcome_read_allowed",
     "formal_aggregation_allowed",
 ))
@@ -533,6 +535,16 @@ def validate_real_cell_authorization(authorization):
         or value["generated_source_qualification_seal_sha256"] != MVE_GENERATED_QUALIFICATION_SEAL_SHA256
     ):
         raise GateError("real-cell source authority mismatch")
+    package_authorities = _read_json(FORMAL_PACKAGE_PATH).get("authorities", {})
+    if (
+        value["real_child_sha256"] != _sha256_file(REAL_CHILD_PATH)
+        or value["real_child_sha256"] != package_authorities.get("real_child_sha256")
+        or value["forensic_logging_qualification_path"] != "summary_md/communication/c6_formal_forensic_logging_qualification/C6_FORMAL_FORENSIC_LOGGING_QUALIFICATION_REPORT.md"
+        or value["forensic_logging_qualification_path"] != package_authorities.get("forensic_logging_qualification_path")
+        or value["forensic_logging_qualification_sha256"] != _sha256_file(FORENSIC_LOGGING_QUALIFICATION_PATH)
+        or value["forensic_logging_qualification_sha256"] != package_authorities.get("forensic_logging_qualification_sha256")
+    ):
+        raise GateError("real-cell forensic logging qualification binding mismatch")
     if (
         not isinstance(value["output_root"], str) or not value["output_root"]
         or value["science_adaptation_allowed"] is not False

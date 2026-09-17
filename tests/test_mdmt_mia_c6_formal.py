@@ -95,7 +95,7 @@ def test_future_real_cli_qualification_uses_exact_four_cell_public_path(qualifie
     assert terminal["seal_sha256"] == sha(seal_path)
     assert terminal["tracking_outcome_read"] is False
     assert all(not formal._resolved_root(cell["output_root"]).exists() for cell in package["cells"])
-    assert not runner.FORMAL_ISSUANCE_AUTHORITY_PATH.exists()
+    assert runner.FORMAL_ISSUANCE_AUTHORITY_PATH.is_file()
 
 
 def test_old_e2e_substitution_and_alternate_synthetic_path_are_removed():
@@ -148,9 +148,12 @@ def test_future_live_spec_exactly_binds_frozen_cell_and_real_child(cell, tmp_pat
     assert auth["service_rate"] == cell["service_rate"]
     assert auth["service_condition"] == cell["service_condition"]
     assert auth["serviceable_id_state_serviced_bytes_baseline"] == cell["serviceable_id_state_serviced_bytes_baseline"]
+    assert auth["real_child_sha256"] == sha(runner.REAL_CHILD_PATH)
+    assert auth["forensic_logging_qualification_path"] == "summary_md/communication/c6_formal_forensic_logging_qualification/C6_FORMAL_FORENSIC_LOGGING_QUALIFICATION_REPORT.md"
+    assert auth["forensic_logging_qualification_sha256"] == sha(runner.FORENSIC_LOGGING_QUALIFICATION_PATH)
     assert spec["fixture_path"] == str(runner.REAL_CHILD_PATH)
     assert spec["logical_output_root"] == cell["output_root"]
-    with pytest.raises(runner.GateError, match="issuance authority artifact is missing"):
+    with pytest.raises(runner.GateError, match="Formal parent authorization path is not issued"):
         runner._validate_launch_spec(spec)
 
 
