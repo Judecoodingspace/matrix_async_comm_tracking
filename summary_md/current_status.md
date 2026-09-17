@@ -2,6 +2,28 @@
 
 Updated: 2026-09-16
 
+## Latest C6 Attempt2 post-corrective authorization decision
+
+After independent approval of the Attempt2 run-root isolation corrective at
+`03d75eed62c9ac127fb2d4114c02efe0ad99bf6e`, the existing canonical Formal
+authorization was revalidated and its fixed issuance trust anchor was
+reconfirmed. Its bytes remain the exact live-candidate bytes, so no artificial
+nonce, whitespace, field-order, or schema change was introduced. The
+authorization SHA-256 remains
+`c6bd3ac34eb0128a8f9a97d010150174778d9467be494f7430189068459e3f57`.
+
+The fresh governance decision is this descendant governance record, not a
+manufactured authorization-byte change. It binds the corrected operator's
+attempt-scoped lifecycle root
+`summary_md/communication/c6_formal/_formal_runs/attempt2`, while preserving
+the four frozen Attempt2 cell roots. Attempt1 remains FAILED / QUARANTINED,
+is not reusable, and cannot enter Attempt2 aggregation. No Formal operator,
+real child, scientific workload, or tracking-outcome read occurred.
+
+Next gate: `C6_ATTEMPT2_FINAL_PRE_RUN_CHECK`. Do not create any Attempt2
+production root or launch Formal before that read-only gate and an explicit
+human launch decision.
+
 ## Latest C6 mechanical qualification
 
 The first C6 Formal live attempt failed closed at
