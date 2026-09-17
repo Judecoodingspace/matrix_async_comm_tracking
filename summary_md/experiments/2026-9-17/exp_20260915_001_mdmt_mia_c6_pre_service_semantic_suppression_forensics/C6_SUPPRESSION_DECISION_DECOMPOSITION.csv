@@ -1,0 +1,5 @@
+analysis_classification,cell,total_first_service_decisions,suppressed,serviceable,suppression_rate,empty_task_effect_packet_count,version_reject_count,mixed_effect_packet_count,no_explanatory_flag_count,multi_reason_count,persisted_predicate_supported_count,persisted_predicate_evidence_insufficient_count,reconciliation_status
+POST_HOC_READ_ONLY_NON_PREREGISTERED_EXPLANATORY_ANALYSIS,pair_23__FIFO_strong,2097,2097,0,1.000000,1076,0,0,1021,0,1076,1021,PARTIAL
+POST_HOC_READ_ONLY_NON_PREREGISTERED_EXPLANATORY_ANALYSIS,pair_23__FIFO_mild,2097,2097,0,1.000000,1076,0,0,1021,0,1076,1021,PARTIAL
+POST_HOC_READ_ONLY_NON_PREREGISTERED_EXPLANATORY_ANALYSIS,pair_44__FIFO_moderate,1077,1077,0,1.000000,837,0,0,240,0,837,240,PARTIAL
+POST_HOC_READ_ONLY_NON_PREREGISTERED_EXPLANATORY_ANALYSIS,pair_66__FIFO_mild,897,897,0,1.000000,592,0,0,305,0,592,305,PARTIAL

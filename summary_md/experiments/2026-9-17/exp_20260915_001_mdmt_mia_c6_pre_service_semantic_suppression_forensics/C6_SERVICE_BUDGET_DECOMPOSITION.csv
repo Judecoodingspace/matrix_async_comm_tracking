@@ -1,0 +1,5 @@
+analysis_classification,cell,frame_count,R,total_frame_budget,id_state_obligation,id_state_suppressed_obligation,id_state_serviced,supplement_obligation,supplement_serviced,remaining_or_pending,other_accounted_bytes,derivable_idle_capacity,byte_conservation,frame_budget_conservation,work_conserving,service_accounting_reconciles
+POST_HOC_READ_ONLY_NON_PREREGISTERED_EXPLANATORY_ANALYSIS,pair_23__FIFO_strong,700,16649,11654300,7299121,7299121,0,5849749,5849749,0,0,5804551,YES,YES,YES,YES
+POST_HOC_READ_ONLY_NON_PREREGISTERED_EXPLANATORY_ANALYSIS,pair_23__FIFO_mild,700,31987,22390900,7299121,7299121,0,5849749,5849749,0,0,16541151,YES,YES,YES,YES
+POST_HOC_READ_ONLY_NON_PREREGISTERED_EXPLANATORY_ANALYSIS,pair_44__FIFO_moderate,360,26148,9413280,5619894,5619894,0,3832767,3832767,0,0,5580513,YES,YES,YES,YES
+POST_HOC_READ_ONLY_NON_PREREGISTERED_EXPLANATORY_ANALYSIS,pair_66__FIFO_mild,300,31987,9596100,5784574,5784574,0,4159747,4159747,0,0,5436353,YES,YES,YES,YES
