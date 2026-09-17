@@ -54,7 +54,10 @@ for required in "$V1_SOURCE" "$V2_SOURCE" "$V1_XML" "$V2_XML" "$CONFIG" "$CHECKP
   [[ -e "$required" ]] || { echo "Missing required path: $required" >&2; exit 1; }
 done
 
-mkdir -p "$RUN_INPUT/1" "$RUN_INPUT/2" "$RUN_ROOT" "$RUN_ROOT/view1" "$RUN_ROOT/view2"
+mkdir -p "$RUN_INPUT" "$RUN_ROOT"
+RUN_INPUT="$(cd "$RUN_INPUT" && pwd -P)"
+RUN_ROOT="$(cd "$RUN_ROOT" && pwd -P)"
+mkdir -p "$RUN_INPUT/1" "$RUN_INPUT/2" "$RUN_ROOT/view1" "$RUN_ROOT/view2"
 if [[ ! -e "$RUN_INPUT/1/$V1_SEQUENCE" ]]; then
   ln -s "$V1_SOURCE" "$RUN_INPUT/1/$V1_SEQUENCE"
 fi
@@ -93,8 +96,13 @@ PIPE_STATUSES=("${PIPESTATUS[@]}")
 set -e
 
 AUTHOR_STATUS="${PIPE_STATUSES[0]}"
+TEE_STATUS="${PIPE_STATUSES[1]}"
 if [[ "$AUTHOR_STATUS" -ne 0 ]]; then
   echo "[author-sync] failed stage=$STAGE status=$AUTHOR_STATUS log=$LOG_FILE" >&2
   exit "$AUTHOR_STATUS"
+fi
+if [[ "$TEE_STATUS" -ne 0 ]]; then
+  echo "[author-sync] log persistence failed stage=$STAGE status=$TEE_STATUS log=$LOG_FILE" >&2
+  exit "$TEE_STATUS"
 fi
 echo "[author-sync] complete stage=$STAGE log=$LOG_FILE"

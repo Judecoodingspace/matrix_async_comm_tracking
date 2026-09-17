@@ -36,12 +36,23 @@ def write_json(path, value):
     Path(path).write_text(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
 
 
+def path_state(path):
+    path = Path(path)
+    if not path.exists() and not path.is_symlink():
+        return {"exists": False, "is_symlink": False, "mtime_ns": None}
+    return {"exists": path.exists(), "is_symlink": path.is_symlink(), "mtime_ns": path.lstat().st_mtime_ns}
+
+
 @pytest.fixture(scope="module")
 def qualified_run(tmp_path_factory):
     temp = tmp_path_factory.mktemp("c6-formal-production-path")
     auth_path = temp / "test-only-non-live-formal-authorization.json"
     write_json(auth_path, formal.candidate(False))
     qualification_root = temp / "qualification-run"
+    production_root_states = {
+        cell["output_root"]: path_state(formal._resolved_root(cell["output_root"]))
+        for cell in formal.pkg()["cells"]
+    }
     environment = dict(os.environ)
     environment.update({"PYTHONNOUSERSITE": "1", "PYTHONHASHSEED": "0"})
     platform = formal.platform_environment()
@@ -60,7 +71,12 @@ def qualified_run(tmp_path_factory):
         check=False,
     )
     assert completed.returncode == 0, completed.stderr
-    return {"root": qualification_root, "auth": auth_path, "completed": completed}
+    return {
+        "root": qualification_root,
+        "auth": auth_path,
+        "completed": completed,
+        "production_root_states": production_root_states,
+    }
 
 
 def test_future_real_cli_qualification_uses_exact_four_cell_public_path(qualified_run):
@@ -94,7 +110,10 @@ def test_future_real_cli_qualification_uses_exact_four_cell_public_path(qualifie
     terminal = json.loads((root / "C6_FORMAL_RUN_END.json").read_text(encoding="utf-8"))
     assert terminal["seal_sha256"] == sha(seal_path)
     assert terminal["tracking_outcome_read"] is False
-    assert all(not formal._resolved_root(cell["output_root"]).exists() for cell in package["cells"])
+    assert {
+        cell["output_root"]: path_state(formal._resolved_root(cell["output_root"]))
+        for cell in package["cells"]
+    } == qualified_run["production_root_states"]
     assert runner.FORMAL_ISSUANCE_AUTHORITY_PATH.is_file()
 
 
