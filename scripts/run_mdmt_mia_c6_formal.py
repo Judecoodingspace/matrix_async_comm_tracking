@@ -232,8 +232,23 @@ def _live_run_root(package):
     return next(iter(cell_parents)) / RUN_ROOT_DIRECTORY / next(iter(attempt_ids))
 
 
-def _derive_roots(package, qualification_no_data, qualification_root=None):
+def _derive_roots(package, qualification_no_data, qualification_root=None, rehearsal=False):
     production_roots = [cell["output_root"] for cell in package["cells"]]
+    if rehearsal:
+        if qualification_root is None:
+            raise FormalGateError("rehearsal root is required")
+        logical_root = Path(qualification_root)
+        resolved_root = _resolved_root(logical_root)
+        if resolved_root.exists() or resolved_root.is_symlink():
+            raise FormalGateError("rehearsal root must not exist")
+        cell_roots = {
+            cell["cell"]: str(logical_root / "cells" / cell["cell"])
+            for cell in package["cells"]
+        }
+        if {_resolved_root(root) for root in cell_roots.values()} & {_resolved_root(root) for root in production_roots}:
+            raise FormalGateError("rehearsal root aliases a production root")
+        _require_exclusive_roots(cell_roots.values())
+        return resolved_root, cell_roots
     if qualification_no_data:
         if qualification_root is None:
             raise FormalGateError("qualification root is required")
@@ -252,19 +267,35 @@ def _derive_roots(package, qualification_no_data, qualification_root=None):
     return run_root, cell_roots
 
 
-def build_cell_launch_spec(mode, cell, output_root, authorization_path, runner=None):
-    if mode not in ("QUALIFICATION", "LIVE"):
+def build_cell_launch_spec(mode, cell, output_root, authorization_path, runner=None, rehearsal_context=None):
+    if mode not in ("QUALIFICATION", "REHEARSAL", "LIVE"):
         raise FormalGateError("unknown Formal operator mode")
     runner = runner or load_runner()
     package = pkg()
     environment = platform_environment()
     qualification = mode == "QUALIFICATION"
+    rehearsal = mode == "REHEARSAL"
     if qualification:
         parent_path = ""
         parent_sha = _sha256(PACKAGE_PATH)
         parent_policy = "PLATFORM_QUALIFICATION"
         execution_mode = "SYNTHETIC_NO_DATA"
         fixture_path = runner.SYNTHETIC_REAL_CELL_CHILD_PATH
+    elif rehearsal:
+        if not isinstance(rehearsal_context, dict):
+            raise FormalGateError("rehearsal context is required")
+        required = {
+            "generated_root", "generated_manifest_path", "generated_manifest_sha256",
+            "generated_qualification_seal_path", "generated_qualification_seal_sha256",
+            "mdmt_root", "author_record_root",
+        }
+        if set(rehearsal_context) != required:
+            raise FormalGateError("rehearsal context schema mismatch")
+        parent_path = ""
+        parent_sha = _sha256(PACKAGE_PATH)
+        parent_policy = "PLATFORM_REHEARSAL"
+        execution_mode = "REAL_CHILD_REHEARSAL"
+        fixture_path = runner.REAL_CHILD_PATH
     else:
         if authorization_path is None or not Path(authorization_path).is_file():
             raise FormalGateError("persisted live Formal authorization is required")
@@ -292,8 +323,14 @@ def build_cell_launch_spec(mode, cell, output_root, authorization_path, runner=N
         "output_root": str(output_root),
         "formal_package_sha256": _sha256(PACKAGE_PATH),
         "implementation_sha": package["authorities"]["implementation_sha"],
-        "generated_source_manifest_sha256": package["authorities"]["generated_source_manifest_sha256"],
-        "generated_source_qualification_seal_sha256": package["authorities"]["generated_source_qualification_seal_sha256"],
+        "generated_source_manifest_sha256": (
+            rehearsal_context["generated_manifest_sha256"] if rehearsal
+            else package["authorities"]["generated_source_manifest_sha256"]
+        ),
+        "generated_source_qualification_seal_sha256": (
+            rehearsal_context["generated_qualification_seal_sha256"] if rehearsal
+            else package["authorities"]["generated_source_qualification_seal_sha256"]
+        ),
         "real_child_sha256": package["authorities"]["real_child_sha256"],
         "forensic_logging_qualification_path": package["authorities"]["forensic_logging_qualification_path"],
         "forensic_logging_qualification_sha256": package["authorities"]["forensic_logging_qualification_sha256"],
@@ -308,11 +345,11 @@ def build_cell_launch_spec(mode, cell, output_root, authorization_path, runner=N
         "authorization": real_cell_authorization,
         "output_root": str(output_root),
         "logical_output_root": str(output_root),
-        "generated_root": environment["generated_root"],
-        "generated_manifest_path": str(MANIFEST_PATH),
-        "generated_manifest_sha256": _sha256(MANIFEST_PATH),
-        "generated_qualification_seal_path": str(QUALIFICATION_SEAL_PATH),
-        "generated_qualification_seal_sha256": _sha256(QUALIFICATION_SEAL_PATH),
+        "generated_root": rehearsal_context["generated_root"] if rehearsal else environment["generated_root"],
+        "generated_manifest_path": rehearsal_context["generated_manifest_path"] if rehearsal else str(MANIFEST_PATH),
+        "generated_manifest_sha256": rehearsal_context["generated_manifest_sha256"] if rehearsal else _sha256(MANIFEST_PATH),
+        "generated_qualification_seal_path": rehearsal_context["generated_qualification_seal_path"] if rehearsal else str(QUALIFICATION_SEAL_PATH),
+        "generated_qualification_seal_sha256": rehearsal_context["generated_qualification_seal_sha256"] if rehearsal else _sha256(QUALIFICATION_SEAL_PATH),
         "fixture_path": str(fixture_path),
         "fixture_sha256": _sha256(fixture_path),
         "production_launcher_path": str(RUNNER_PATH),
@@ -327,9 +364,13 @@ def build_cell_launch_spec(mode, cell, output_root, authorization_path, runner=N
         "expected_baseline_derivation_seal_sha256": _sha256(BASELINE_SEAL_PATH),
         "python_executable": environment["python_executable"],
         "working_directory": environment["cwd"],
-        "child_environment": {"PYTHONNOUSERSITE": "1", "PYTHONHASHSEED": "0"},
+        "child_environment": ({
+            "PYTHONNOUSERSITE": "1", "PYTHONHASHSEED": "0",
+            "MDMT_ROOT": rehearsal_context["mdmt_root"],
+            "FAKE_C6_AUTHOR_RECORD": str(Path(rehearsal_context["author_record_root"]) / (cell["cell"] + ".json")),
+        } if rehearsal else {"PYTHONNOUSERSITE": "1", "PYTHONHASHSEED": "0"}),
         "fault": "",
-        "prelaunch_negative_tests": {"formal_operator_preflight": True},
+        "prelaunch_negative_tests": {"formal_operator_preflight": True, **({"platform_rehearsal": True} if rehearsal else {})},
         "evidence_shape_profile": "REAL_C6_CELL",
         "expected_deterministic_core_sha256": "",
     }
@@ -388,29 +429,43 @@ def _validated_cell_result(runner, result, spec, cell, mode):
     }
 
 
-def operator(authorization, authorization_path, qualification_no_data=False, qualification_root=None, launcher=None):
-    mode = "QUALIFICATION" if qualification_no_data else "LIVE"
-    package = validate(authorization, live=not qualification_no_data)
+def operator(authorization, authorization_path, qualification_no_data=False, qualification_root=None, launcher=None, rehearsal=False, rehearsal_context=None):
+    if rehearsal and qualification_no_data:
+        raise FormalGateError("rehearsal and qualification modes are exclusive")
+    mode = "REHEARSAL" if rehearsal else "QUALIFICATION" if qualification_no_data else "LIVE"
+    package = validate(authorization, live=mode == "LIVE")
     environment = platform_environment()
     _runtime_preflight(environment)
-    run_root, cell_roots = _derive_roots(package, qualification_no_data, qualification_root)
-    if not qualification_no_data:
+    run_root, cell_roots = _derive_roots(package, qualification_no_data, qualification_root, rehearsal=rehearsal)
+    if mode == "LIVE":
         _storage_preflight(package, cell_roots.values())
     run_root.mkdir(parents=True)
-    progress_path = run_root / PROGRESS_NAME
+    if rehearsal:
+        start_path = run_root / "run" / "C6_FORMAL_RUN_START.json"
+        progress_path = run_root / "progress" / PROGRESS_NAME
+        aggregation_path = run_root / "aggregation" / "C6_FORMAL_AGGREGATION.json"
+        seal_path = run_root / "terminal" / "C6_FORMAL_SEAL.json"
+        terminal_path = run_root / "terminal" / "C6_FORMAL_RUN_END.json"
+    else:
+        start_path = run_root / "C6_FORMAL_RUN_START.json"
+        progress_path = run_root / PROGRESS_NAME
+        aggregation_path = run_root / "C6_FORMAL_AGGREGATION.json"
+        seal_path = run_root / "C6_FORMAL_SEAL.json"
+        terminal_path = run_root / "C6_FORMAL_RUN_END.json"
+    progress_path.parent.mkdir(parents=True, exist_ok=True)
     order = [cell["cell"] for cell in package["cells"]]
     progress = {
         "schema_version": "C6_FORMAL_PROGRESS_V2", "mode": mode, "state": "", "current_cell": "",
         "cell_order": order, "cells": {cell: "NOT_STARTED" for cell in order}, "history": [], "detail": "",
-        "tracking_outcome_read": False, "synthetic_non_scientific": qualification_no_data,
+        "tracking_outcome_read": False, "synthetic_non_scientific": mode != "LIVE",
     }
     auth_sha = _sha256(authorization_path)
     start = {
         "schema_version": "C6_FORMAL_RUN_START_V1", "mode": mode, "authorization_sha256": auth_sha,
         "cell_order": order, "cell_roots": cell_roots, "tracking_outcome_read": False,
-        "synthetic_non_scientific": qualification_no_data, "status": "STARTED",
+        "synthetic_non_scientific": mode != "LIVE", "status": "STARTED",
     }
-    _write_exclusive(run_root / "C6_FORMAL_RUN_START.json", start)
+    _write_exclusive(start_path, start)
     _write_progress(progress_path, progress, "FORMAL_RUN_START")
     runner = load_runner()
     launch = launcher or runner.launch_c6_stage
@@ -420,7 +475,7 @@ def operator(authorization, authorization_path, qualification_no_data=False, qua
         for cell in package["cells"]:
             current_cell = cell["cell"]
             _write_progress(progress_path, progress, "FORMAL_CELL_RUNNING", current_cell, "RUNNING")
-            spec = build_cell_launch_spec(mode, cell, cell_roots[current_cell], authorization_path, runner)
+            spec = build_cell_launch_spec(mode, cell, cell_roots[current_cell], authorization_path, runner, rehearsal_context)
             result = launch(spec)
             _write_progress(progress_path, progress, "FORMAL_CELL_CHILD_COMPLETED", current_cell, "CHILD_COMPLETED")
             _write_progress(progress_path, progress, "FORMAL_CELL_VALIDATING", current_cell, "VALIDATING")
@@ -431,12 +486,12 @@ def operator(authorization, authorization_path, qualification_no_data=False, qua
         aggregation = {
             "schema_version": "C6_FORMAL_AGGREGATION_V1", "mode": mode, "metrics": list(package["metrics"]),
             "cell_order": order, "cells": rows, "mechanical_validity": "PASS", "tracking_outcome_read": False,
-            "synthetic_non_scientific": qualification_no_data, "status": "PASS",
+            "synthetic_non_scientific": mode != "LIVE", "status": "PASS",
         }
-        aggregation_path = _write_exclusive(run_root / "C6_FORMAL_AGGREGATION.json", aggregation)
+        aggregation_path = _write_exclusive(aggregation_path, aggregation)
         seal_payload = {
             "schema_version": "C6_FORMAL_SEAL_PAYLOAD_V1", "mode": mode, "authorization_sha256": auth_sha,
-            "run_start_sha256": _sha256(run_root / "C6_FORMAL_RUN_START.json"),
+            "run_start_sha256": _sha256(start_path),
             "aggregation_sha256": _sha256(aggregation_path),
             "cell_terminal_sha256": {
                 cell["cell"]: _sha256(_resolved_root(cell_roots[cell["cell"]]) / "C6_RUN_TERMINAL.json")
@@ -445,14 +500,14 @@ def operator(authorization, authorization_path, qualification_no_data=False, qua
             "tracking_outcome_read": False, "status": "PASS",
         }
         seal = {"schema_version": "C6_FORMAL_SEAL_V1", "sealed_payload": seal_payload, "seal_sha256": _digest(seal_payload)}
-        seal_path = _write_exclusive(run_root / "C6_FORMAL_SEAL.json", seal)
+        seal_path = _write_exclusive(seal_path, seal)
         _write_progress(progress_path, progress, "FORMAL_VALID")
         terminal = {
             "schema_version": "C6_FORMAL_RUN_END_V1", "mode": mode, "state": "FORMAL_RUN_END", "status": "PASS",
             "cell_order": order, "seal_sha256": _sha256(seal_path), "tracking_outcome_read": False,
-            "synthetic_non_scientific": qualification_no_data,
+            "synthetic_non_scientific": mode != "LIVE",
         }
-        _write_exclusive(run_root / "C6_FORMAL_RUN_END.json", terminal)
+        _write_exclusive(terminal_path, terminal)
         _write_progress(progress_path, progress, "FORMAL_RUN_END")
         return {"root": str(run_root), "progress": progress, "aggregation": aggregation, "seal": seal, "terminal": terminal}
     except Exception as exc:
@@ -481,10 +536,11 @@ def main(argv=None):
     parser.add_argument("--authorization")
     parser.add_argument("--qualification-no-data", action="store_true")
     parser.add_argument("--qualification-root")
+    parser.add_argument("--rehearsal-root")
     parser.add_argument("--progress")
     args = parser.parse_args(argv)
     if args.progress:
-        if args.authorization or args.qualification_no_data or args.qualification_root:
+        if args.authorization or args.qualification_no_data or args.qualification_root or args.rehearsal_root:
             parser.error("--progress cannot be combined with execution arguments")
         sys.stdout.buffer.write(_read_progress(args.progress))
         return 0
@@ -492,6 +548,8 @@ def main(argv=None):
         parser.error("--authorization is required")
     if bool(args.qualification_no_data) != bool(args.qualification_root):
         parser.error("qualification mode requires both --qualification-no-data and --qualification-root")
+    if args.rehearsal_root:
+        parser.error("--rehearsal-root is internal; use scripts/run_harness_v2.py qualify")
     authorization_path = Path(args.authorization)
     authorization = _read_json(authorization_path, "Formal authorization")
     result = operator(

@@ -49,8 +49,8 @@ AUTHOR_WRAPPER_PATH = ROOT / "scripts/run_mdmt_mia_author_sync.sh"
 FORENSIC_LOGGING_QUALIFICATION_PATH = ROOT / "summary_md/communication/c6_formal_forensic_logging_qualification/C6_FORMAL_FORENSIC_LOGGING_QUALIFICATION_REPORT.md"
 SYNTHETIC_REAL_CELL_CHILD_PATH = ROOT / "tests/fixtures/run_mdmt_mia_c6_tiny_runtime.py"
 REAL_CELL_STAGE = "C6_REAL_CELL"
-REAL_CELL_POLICIES = frozenset(("PLATFORM_QUALIFICATION", "C6_FORMAL"))
-REAL_CELL_EXECUTION_MODES = frozenset(("SYNTHETIC_NO_DATA", "REAL_CHILD"))
+REAL_CELL_POLICIES = frozenset(("PLATFORM_QUALIFICATION", "PLATFORM_REHEARSAL", "C6_FORMAL"))
+REAL_CELL_EXECUTION_MODES = frozenset(("SYNTHETIC_NO_DATA", "REAL_CHILD_REHEARSAL", "REAL_CHILD"))
 EVIDENCE_SHAPE_PROFILES = frozenset(("TINY_SYNTHETIC", "REAL_C6_CELL"))
 C4_SERVICE_STATUS_ALLOWED = frozenset(("COMPLETE",))
 # Frozen generated author runtime: async_deadline_runtime.py emits an integer
@@ -514,6 +514,8 @@ def validate_real_cell_authorization(authorization):
         raise GateError("real-cell parent authority identity mismatch")
     if value["parent_policy"] == "PLATFORM_QUALIFICATION" and value["execution_mode"] != "SYNTHETIC_NO_DATA":
         raise GateError("platform qualification must be synthetic/no-data")
+    if value["parent_policy"] == "PLATFORM_REHEARSAL" and value["execution_mode"] != "REAL_CHILD_REHEARSAL":
+        raise GateError("platform rehearsal must use the real child rehearsal mode")
     if value["parent_policy"] == "C6_FORMAL" and value["execution_mode"] != "REAL_CHILD":
         raise GateError("Formal real-cell binding must use the real child")
     frozen = _frozen_formal_cells().get(value["cell"])
@@ -532,7 +534,10 @@ def validate_real_cell_authorization(authorization):
     if (
         value["formal_package_sha256"] != FORMAL_PACKAGE_SHA256
         or value["implementation_sha"] != MVE_IMPLEMENTATION_SHA
-        or value["generated_source_manifest_sha256"] != MVE_GENERATED_MANIFEST_SHA256
+    ):
+        raise GateError("real-cell source authority mismatch")
+    if value["parent_policy"] != "PLATFORM_REHEARSAL" and (
+        value["generated_source_manifest_sha256"] != MVE_GENERATED_MANIFEST_SHA256
         or value["generated_source_qualification_seal_sha256"] != MVE_GENERATED_QUALIFICATION_SEAL_SHA256
     ):
         raise GateError("real-cell source authority mismatch")
@@ -934,14 +939,14 @@ def _validate_real_c6_seal(c6_root, decisions, cell):
     return {"path": seal_path, "seal": seal}
 
 
-def _validate_real_disk_cell(root, cell):
+def _validate_real_disk_cell(root, cell, rehearsal=False):
     """Validate communication-side evidence from one real author subprocess."""
     cell_root = Path(root) / "cells" / cell
     pair = str(cell).split("__", 1)[0].split("_", 1)[1]
     runtime_root = cell_root / "mia" / f"train_{pair}" / "results" / f"mia_train_{pair}"
     c6_root = cell_root / "c6"
     status = _read_json(cell_root / "C6_CHILD_CELL_STATUS.json")
-    if status.get("status") != "PASS" or status.get("synthetic_non_scientific") is not False or status.get("tracking_outcome_read") is not False:
+    if status.get("status") != "PASS" or status.get("synthetic_non_scientific") is not rehearsal or status.get("tracking_outcome_read") is not False:
         raise GateError("real child cell terminal is not PASS")
     emissions = _read_jsonl(_one_glob(runtime_root, "packet_census_emissions_*.jsonl"))
     terminals = _read_jsonl(_one_glob(runtime_root, "packet_census_terminals_*.jsonl"))
@@ -989,7 +994,7 @@ def _validate_real_disk_cell(root, cell):
         "same_frame_reuse": "PASS",
         "supplement_ungated": "PASS",
         "evidence_families": "COMPLETE",
-        "synthetic_non_scientific": False,
+        "synthetic_non_scientific": rehearsal,
         "tracking_outcome_read": False,
     })
     return {
@@ -1009,7 +1014,7 @@ def _validate_real_disk_cell(root, cell):
     }
 
 
-def _validate_real_child_status(spec, output_root):
+def _validate_real_child_status(spec, output_root, rehearsal=False):
     """Validate the sole root-level status handoff emitted by real child _run()."""
     output_root = Path(output_root)
     try:
@@ -1034,7 +1039,7 @@ def _validate_real_child_status(spec, output_root):
         raise GateError("real child cell terminal identity mismatch")
     if status["status"] != "PASS" or status["tracking_outcome_read"] is not False:
         raise GateError("real child status is not PASS")
-    if status["synthetic_non_scientific"] is not False or status["real_communication_side_only"] is not True:
+    if status["synthetic_non_scientific"] is not rehearsal or status["real_communication_side_only"] is not True:
         raise GateError("real child root status execution scope mismatch")
     if status["tracking_artifacts_not_read"] is not True:
         raise GateError("real child root status tracking-artifact guard mismatch")
@@ -1196,6 +1201,7 @@ def _execute_real_c6_cell(spec):
     """Execute one cell after the public launch_c6_stage contract validates it."""
     generic = spec["stage"] == REAL_CELL_STAGE
     synthetic_probe = generic and spec["authorization"]["execution_mode"] == "SYNTHETIC_NO_DATA"
+    rehearsal_probe = generic and spec["authorization"]["execution_mode"] == "REAL_CHILD_REHEARSAL"
     raw_output_root = Path(spec["output_root"])
     output_root = (
         raw_output_root.resolve()
@@ -1274,10 +1280,10 @@ def _execute_real_c6_cell(spec):
         quantities = recompute_synthetic_b_avoided(evidence) if synthetic_probe else recompute_real_mve_quantities(evidence)
         validator_output = {"schema_version": "C6_REAL_CELL_VALIDATOR_OUTPUT_V1" if generic else "C6_MVE_VALIDATOR_OUTPUT_V1", "cells": reports,
                             "child_status": child_status, "status": "PASS", "tracking_outcome_read": False,
-                            "synthetic_non_scientific": synthetic_probe}
+                            "synthetic_non_scientific": synthetic_probe or rehearsal_probe}
         aggregation_output = {"schema_version": "C6_REAL_CELL_AGGREGATION_OUTPUT_V1" if generic else "C6_MVE_AGGREGATION_OUTPUT_V1", "aggregate": aggregate,
                               "quantities": quantities, "status": "PASS", "tracking_outcome_read": False,
-                              "synthetic_non_scientific": synthetic_probe}
+                              "synthetic_non_scientific": synthetic_probe or rehearsal_probe}
         if not generic:
             validator_output.pop("synthetic_non_scientific")
             aggregation_output.pop("synthetic_non_scientific")
@@ -1292,7 +1298,7 @@ def _execute_real_c6_cell(spec):
                   "validator_output": validator_output, "aggregation_output": aggregation_output,
                   "child_exit_code": completed.returncode}
         if generic:
-            result.update(terminal=terminal, synthetic_non_scientific=synthetic_probe)
+            result.update(terminal=terminal, synthetic_non_scientific=synthetic_probe or rehearsal_probe)
         return result
     except Exception as exc:
         if not terminal_written:
