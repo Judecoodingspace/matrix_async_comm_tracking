@@ -205,11 +205,17 @@ def compute_platform_identity(
     if set(component_paths) != required:
         raise HarnessError("PLATFORM_COMPONENT_SET_INVALID")
     digests: dict[str, Any] = {}
-    for key in sorted(required - {"validator_sources"}):
+    for key in sorted(required - {"validator_sources", "harness_core"}):
         path = Path(component_paths[key])
         if not path.is_file():
             raise HarnessError("PLATFORM_COMPONENT_MISSING")
         digests["{}_sha256".format(key)] = sha256_file(path)
+    harness_paths = [Path(item) for item in str(component_paths["harness_core"]).split("\n") if item]
+    if not harness_paths or any(not item.is_file() for item in harness_paths):
+        raise HarnessError("PLATFORM_COMPONENT_MISSING")
+    digests["harness_core_sha256"] = _sha256_bytes(
+        _canonical(sorted(sha256_file(path) for path in harness_paths)).encode("utf-8")
+    )
     validator_value = component_paths["validator_sources"]
     validator_paths = [Path(item) for item in str(validator_value).split("\n") if item]
     if not validator_paths or any(not item.is_file() for item in validator_paths):

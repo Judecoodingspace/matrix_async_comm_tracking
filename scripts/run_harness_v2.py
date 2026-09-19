@@ -62,7 +62,7 @@ def platform_components() -> dict[str, str]:
         "launcher": str(RUNNER_PATH),
         "real_child": str(CHILD_PATH),
         "wrapper": str(WRAPPER_PATH),
-        "harness_core": str(ROOT / "src/tracking/harness_v2.py"),
+        "harness_core": "{}\n{}".format(ROOT / "src/tracking/harness_v2.py", ROOT / "scripts/run_harness_v2.py"),
         "validator_sources": str(RUNNER_PATH),
     }
 
@@ -222,7 +222,8 @@ def qualify(args: argparse.Namespace) -> int:
     if platform != current:
         raise HarnessError("PLATFORM_AUTHORITY_INVALID")
     binding = _candidate_binding(science_path, platform, candidate_path, args.attempt_id)
-    evidence = _read_object(QUALIFICATION_EVIDENCE_PATH, "PLATFORM_QUALIFICATION_EVIDENCE") if QUALIFICATION_EVIDENCE_PATH.is_file() else None
+    evidence_path = Path(args.platform_qualification_evidence) if args.platform_qualification_evidence else QUALIFICATION_EVIDENCE_PATH
+    evidence = _read_object(evidence_path, "PLATFORM_QUALIFICATION_EVIDENCE") if evidence_path.is_file() else None
     attempt_root = ROOT / "formal_attempts" / args.attempt_id
     state = classify_repository_state(
         ROOT,
@@ -252,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     command.add_argument("--science-authority", required=True)
     command.add_argument("--platform-authority", default=str(PLATFORM_AUTHORITY_PATH))
     command.add_argument("--formal-authorization-candidate", required=True)
+    command.add_argument("--platform-qualification-evidence")
     command.add_argument("--attempt-id", required=True)
     command.add_argument("--rehearsal-root")
     args = parser.parse_args(argv)

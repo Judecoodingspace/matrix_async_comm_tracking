@@ -105,6 +105,26 @@ def test_platform_identity_excludes_test_and_rehearsal_provenance(tmp_path):
     assert changed["platform_v2_sha"] != baseline
 
 
+def test_harness_cli_bytes_are_part_of_stable_harness_runtime_identity(tmp_path):
+    identity, paths = _identity(tmp_path)
+    cli = _write(tmp_path / "harness_cli.py", "cli-v1")
+    with_cli = harness.compute_platform_identity({
+        "operator": paths["operator"], "launcher": paths["launcher"],
+        "real_child": paths["real_child"], "wrapper": paths["wrapper"],
+        "harness_core": "{}\n{}".format(paths["harness_core"], cli),
+        "validator_sources": paths["validator"],
+    })
+    _write(cli, "cli-v2")
+    changed = harness.compute_platform_identity({
+        "operator": paths["operator"], "launcher": paths["launcher"],
+        "real_child": paths["real_child"], "wrapper": paths["wrapper"],
+        "harness_core": "{}\n{}".format(paths["harness_core"], cli),
+        "validator_sources": paths["validator"],
+    })
+    assert identity["platform_v2_sha"] != with_cli["platform_v2_sha"]
+    assert with_cli["platform_v2_sha"] != changed["platform_v2_sha"]
+
+
 def test_r13_readiness_needs_pass_evidence_bound_to_current_platform(tmp_path):
     platform, _paths = _identity(tmp_path)
     binding = harness.AuthorityBinding("a" * 64, platform["platform_v2_sha"], "fresh")
