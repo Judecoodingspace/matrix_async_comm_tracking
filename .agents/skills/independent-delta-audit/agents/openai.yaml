@@ -1,0 +1,4 @@
+interface:
+  display_name: "Independent Delta Audit"
+  short_description: "Audit a delta’s minimum requalification scope"
+  default_prompt: "Use $independent-delta-audit to independently review this BASE_SHA-to-HEAD_SHA delta."

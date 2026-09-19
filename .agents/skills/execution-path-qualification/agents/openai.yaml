@@ -1,0 +1,4 @@
+interface:
+  display_name: "Execution Path Qualification"
+  short_description: "Check Harness v2 pre-Formal mechanics"
+  default_prompt: "Use $execution-path-qualification to assess this attempt’s mechanical readiness before Formal execution."
