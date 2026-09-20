@@ -1,0 +1,14 @@
+{
+  "schema_version": "C7_PRE_CENSUS_SPECIFICATION_PROVENANCE_V1",
+  "document_role": "C7_PRE_CENSUS_SPECIFICATION_PROVENANCE",
+  "contract_content_authority_commit": "131bc41d22f919be24f63ae5f963ba94538daa19",
+  "contract_sha256": "044fe9d3538704bace3faa692ddb24d8bff9b0dd0541ed8ac145dbeaed897ec9",
+  "approval_record_commit": "6a8a802828731f20fcfa55a88c8419ca7a72926c",
+  "input_evidence_audit_path": "summary_md/experiments/2026-9-20/exp_20260920_001_mdmt_mia_c7_outcome_blind_eligibility_census/C7_PRE_CENSUS_INPUT_EVIDENCE_AUDIT.md",
+  "input_evidence_audit_sha256": "d0074016e6a311b04e53c245e43f954f6c7fba764f5e0275555ed8eb6b4ad302",
+  "pre_census_specification_path": "summary_md/experiments/2026-9-20/exp_20260920_001_mdmt_mia_c7_outcome_blind_eligibility_census/C7_PRE_CENSUS_SPECIFICATION.md",
+  "pre_census_specification_sha256": "f120a75088910524b1c268bc7258f8386800ed1c1d1caf015c342f22ca5b5797",
+  "capacity_derivation_authority_commit": "24778f49ec9c913aadf95199343b12a75fd4078d",
+  "threshold_calibration_authority": "NOT_ESTABLISHED",
+  "spec_status": "DRAFT"
+}
