@@ -1,6 +1,6 @@
 # C7 Outcome-Blind Eligibility Census Implementation Plan
 
-Status: `READY_FOR_INDEPENDENT_CORRECTIVE_DELTA_AUDIT`
+Status: `READY_FOR_INDEPENDENT_CORRECTIVE_REVISION_2_DELTA_AUDIT`
 
 This document is an implementation plan only. It does not authorize or contain an implementation, qualification execution, census execution, outcome read, or scientific decision revision.
 
@@ -69,6 +69,26 @@ Revision parent: `73c8a2b555e6f99ec0d2f431ccf77f43697f5953`. Previous Plan SHA-2
 | P2-5 | Later MVE slice choice lacked an explicit outcome-blind selection rule. | Require a pre-execution engineering/availability-only selection rationale and forbid prevalence/opportunity-based choice. | 13, 22 | NO | NO | Authorization-schema allowlist/forbidden-rationale tests | RESOLVED |
 | P2-6 | Aggregate nested-count invariants were implicit. | Require `0 <= N_eligible <= N_stale <= N_all` before qualification and add fail-closed mutations. | 6, 8, 11, 17 | NO | NO | Negative/over-nested/duplicate/domain/invalid-window tests | RESOLVED |
 
+### 1.2 Corrective Revision 2 disposition
+
+```text
+CORRECTIVE_REVISION = #2
+PARENT_PLAN_COMMIT = 56966b9256f761983870c2b1db285a050ba62a57
+PARENT_PLAN_SHA256 = e7136af31310bccc4b163920e5c67d0552041c47ff179638868c7107876b32aa
+TRIGGER = TEAM_B_CORRECTIVE_PLAN_DELTA_AUDIT
+P0_FIXED = 0
+P1_FIXED = 1
+P2_FIXED = 0
+FINDING = P1-CR1-01
+RESOLUTION = SEPARATE_SOURCE_REMOVABLE_WORK_FROM_RELEASED_CAPACITY_CREDIT
+NEW_RESEARCH_DECISION = NO
+OQ1_REOPENED = NO
+SCIENTIFIC_SEMANTICS_CHANGED = NO
+FROZEN_SPEC_CHANGED = NO
+```
+
+This correction restores fidelity to the already-frozen rule: capacity released inside one frame may be reused by later legal FIFO work in that same frame, but never carried across frames. Source removable-work bounds answer which stale work is legally removable; they do not define the lifetime of capacity credit already released from that work.
+
 ## 2 Frozen scientific boundary
 
 The following requirements are immutable implementation inputs.
@@ -125,19 +145,51 @@ until the next real baseline receiver-state transition
 
 A real baseline state transition changes serviceability immediately for subsequent query points. No synthetic true-first-service event, permanent arrival-time classification, frame-end-only state, future event, counterfactual receiver state, or conditional replay may supply an interval state.
 
-A stale source is classified only at its own true first-service event after FIFO selection and before its first service byte. Once classified `SUPPRESSIBLE_STALE`, the classification persists with that same unfinished logical packet. Its removable accounting interval is per frame:
+A stale source is classified only at its own true first-service event after FIFO selection and before its first service byte. Once classified `SUPPRESSIBLE_STALE`, the classification persists with that same unfinished logical packet. Conditional accounting represents two distinct states.
 
-- if classification occurs in the current frame, start at the valid true-first-service stale-classification event;
-- if classification occurred in an earlier frame and its unfinished residual obligation is present in the current baseline trajectory, start at current frame open or the first current-frame presence of that persisted residual obligation;
-- end at the earlier of baseline exhaustion/completion of that packet's relevant logical service obligation or frame close.
+State A, `SOURCE_REMOVABLE_WORK`, answers which stale logical work is legally removable. Its source-side accounting interval is per frame:
+
+- if classification occurs in the current frame, `SOURCE_REMOVABLE_WORK_START` is the valid true-first-service stale-classification event;
+- if classification occurred in an earlier frame and its unfinished residual obligation exists in the current-frame baseline trajectory, the start is current frame open or the first current-frame presence of that persisted residual obligation;
+- the removable amount is limited to authorized stale logical work belonging to the current-frame frozen baseline service trajectory;
+- `SOURCE_REMOVABLE_WORK_END` is the earlier of exhaustion/completion of that relevant stale baseline obligation or frame close.
+
+State B, `RELEASED_CAPACITY_CREDIT`, is created when authorized stale work is removed from conditional accounting. Credit creation is byte-conservative:
+
+```text
+released_capacity_credit += authorized_stale_work_removed_bytes
+```
+
+This credit has an independent lifetime. It does not expire when the source reaches its real baseline exhaustion/completion event. Once created in a frame, unused credit remains available to subsequent legal FIFO work until it is fully consumed or that frame closes. Only `FULLY_CONSUMED` and `FRAME_CLOSE` are valid expiration reasons; `SOURCE_BASELINE_COMPLETED` is forbidden. Remaining credit expires unused at frame close and never seeds the next frame.
 
 ```text
 STALE_CLASSIFICATION_CAN_PERSIST_ACROSS_FRAMES = YES
-CAPACITY_CREDIT_CAN_CARRY_ACROSS_FRAMES = NO
+SOURCE_BASELINE_COMPLETION != RELEASED_CREDIT_EXPIRATION
+INTRA_FRAME_UNUSED_RELEASED_CREDIT_REUSABLE = YES
+INTER_FRAME_RELEASED_CREDIT_CARRYOVER = NO
 CURRENT_FRAME_REMOVABLE_WORK = only unfinished stale logical obligation present in the current-frame frozen baseline service trajectory
 ```
 
-Removed accounting propagates strictly through frozen baseline FIFO order. Every preceding valid packet consumes available accounting before a later packet can receive any residual; there is no preferred-recipient assignment, FIFO skip, reranking, or rescheduling. An opportunity exists only where recipient serviceability interval, same-frame stale-removable interval, and FIFO-reachable capacity temporally overlap, and only when baseline recipient completion is `NO` while conditional completion is `YES` with the baseline receiver-state/serviceability trajectory, arrivals, FIFO/event order, and frame budget fixed.
+Credit propagates strictly through subsequent valid work in frozen baseline FIFO order. At every FIFO step, `consumed = min(credit_before, valid_fifo_work)` and `credit_after = credit_before - consumed`. Every preceding valid obligation consumes first; there is no preferred-recipient assignment, FIFO skip, reranking, or rescheduling.
+
+An opportunity therefore requires temporal overlap of the recipient serviceability interval with the released-credit-available interval and FIFO reachability, with enough remaining credit for logical completion. It does not require overlap with the source removable-work interval after credit has already been created. Baseline recipient completion must be `NO`, conditional completion must be `YES`, and the baseline receiver-state/serviceability trajectory, arrivals, FIFO/event order, and frame budget remain fixed.
+
+Mechanical example:
+
+```text
+same frame
+e10: A reaches true first service, is classified SUPPRESSIBLE_STALE,
+     60 bytes of authorized work are removed, credit = 60
+e20: A reaches real baseline completion; unused credit remains 60
+e25: B becomes FIFO-reachable and serviceable; B needs 40 bytes
+e30: frame close
+
+SOURCE_REMOVABLE_WORK_INTERVAL = [e10, e20]
+RELEASED_CREDIT_AVAILABLE_INTERVAL = [e10, e30) or until consumed
+B_SERVICEABLE_INTERVAL includes e25 onward
+```
+
+The source interval and B's serviceable interval need not intersect. Because the released-credit interval and B's serviceable interval do intersect and `60 >= 40`, B is not rejected merely because A's source removable-work interval ended at `e20`. This remains same-frame accounting; no credit crosses `e30`.
 
 ### 2.5 Qualification and selection separation
 
@@ -211,10 +263,11 @@ No experiment output, tracking outcome, C7 outcome, or C6 formal scientific outc
 | Ordered event, FIFO, and receiver-state trajectory | C4 event ordinal and queue | `src/tracking/mdmt_mia_async_deadline_runtime.py` passive `PROPOSED_NEW: _notify_c7_event` | Immutable event data, queue view, and real baseline state transitions | Ordered per-event snapshots and event-bounded receiver-state intervals | Check ordinal continuity, transition legality, and no-lookahead interval bounds | Queue corruption and future-state injection negatives | Window/cell invalid |
 | True first service after select/before byte | `_start_next` then `_serve`; C5 timing pattern | Passive callback to `PROPOSED_NEW: C7CensusObserver.observe_true_first_service` | Packet, pre-byte residual, receiver snapshot | Once-only classification record | Verify no prior served bytes; uniqueness; packet digest | Timing boundary unit tests | Cell invalid on absent/duplicate/late record |
 | Sticky authorized stale proof | Existing pure applicability concepts | `src/tracking/mdmt_mia_c7_census.py` `PROPOSED_NEW: classify_authorized_stale_once` | ID-State payload, event-local state, authority rule ID | Predicate inputs, booleans, reason code | Recompute from raw fields; ignore producer label | stale/non-stale/future-state mutation cases | Invalid evidence, never inferred zero |
-| Same-packet residual and removable-interval linkage | C4 `remaining_service_bytes`, packet ID/digest | `PROPOSED_NEW: derive_same_packet_release` | True-first record, persisted stale identity, frame-open presence, and baseline service events | source packet ID/digest, pre/post residual, per-frame start/end, released bytes | Cross-check all bytes and interval bounds against that packet's ledger; reject cross-frame credit | cross-packet, late-start, overrun, and cross-frame-carry negatives | Window invalid |
+| Same-packet residual and source removable-work linkage | C4 `remaining_service_bytes`, packet ID/digest | `PROPOSED_NEW: derive_source_removable_work` | True-first record, persisted stale identity, frame-open presence, and baseline service events | source packet/digest, stale event, removable bytes/start/end, baseline completion event | Cross-check legal removable work and source-side interval against that packet's current-frame baseline ledger | cross-packet, early-start, overrun, and source-bound negatives | Window invalid |
+| Released-capacity-credit ledger | C4 event ordinal, service bytes, FIFO order, and frame close | `PROPOSED_NEW: propagate_released_capacity_credit` | Authorized removed bytes plus subsequent frozen FIFO obligations | creation event/amount, per-step before/consumer/consumed/after, expiration reason/event | Independently reconstruct credit without using source completion as expiration; enforce same-frame conservation | source-completion-survival, intervening-consumer, premature/late creation, negative/over-credit, frame-carry negatives | Window invalid |
 | Recipient type and trajectory serviceability | Packet type; baseline state snapshots/transitions | `PROPOSED_NEW: evaluate_recipient_serviceability` | Later immutable FIFO entry and event-bounded observed baseline receiver-state trajectory | ID-State type, interval bounds, source event ordinals, raw applicability/serviceability fields | Recompute intervals from real transitions; reject future/counterfactual/synthetic-event evidence | type cases plus `recipient_interval_future_state_injection` variants | Window invalid if proof absent or temporally invalid |
 | Baseline incomplete due binding capacity | Frame budget, residual, queue, completion ledger | `PROPOSED_NEW: prove_capacity_caused_incompletion` | Frame close ledger and recipient residual | budget exhaustion, bytes needed, baseline completion=false | Check capacity conservation and distinguish waiting-only | capacity exhausted vs waiting-only cases | Predicate false or invalid if evidence incomplete |
-| Conditional accounting only | No existing treatment-safe C7 evaluator | `src/tracking/mdmt_mia_c7_census.py` `PROPOSED_NEW: evaluate_window_accounting` | Frozen baseline ledger, FIFO order, state/serviceability intervals, and removable intervals only | stepwise FIFO propagation, released/consumed/residual bytes, overlap proof, no-mutation proof | Independently recompute every FIFO hop and temporal overlap from raw baseline evidence | intervening-packet consumption, no-skip, determinism, no-replay, no-state-mutation tests | Window invalid on non-conservation, changed order, or direct recipient assignment |
+| Conditional accounting only | No existing treatment-safe C7 evaluator | `src/tracking/mdmt_mia_c7_census.py` `PROPOSED_NEW: evaluate_window_accounting` | Frozen baseline ledger/FIFO/state intervals, source removable-work records, and independent credit ledger | stepwise FIFO credit propagation, recipient overlap with credit availability, and no-mutation proof | Recompute every FIFO hop; require credit-availability/recipient overlap rather than source-interval/recipient overlap, and accept later same-frame use of existing credit | two corrective tiny-E2E cases, no-skip, determinism, no-replay, no-state-mutation tests | Window invalid on non-conservation, changed order, direct assignment, or incorrect credit lifetime |
 | Same-window completion flip | C4 logical completion semantics | `PROPOSED_NEW: evaluate_completion_flip` | Baseline residual and conditional allocation | baseline complete=false, conditional complete=true, exact logical boundary | Recompute residual arithmetic; partial is false | exact/one-byte-short/partial cases | Predicate false; invalid on inconsistent arithmetic |
 | Conservation completeness | `seal_evidence` | Existing seal plus C7 validator invariants | Per-event and per-window bytes/work | baseline and conditional conservation blocks | Full independent sum/reconciliation | missing/duplicate/corrupt event negatives | Cell invalid |
 | Valid zero, nested counts, and invalid | Strict reader patterns | `PROPOSED_NEW: aggregate_cell` | Complete validated one-frame window set | validity enum, counts including zero, nesting attestation, invalid reason list | Require expected frame-domain bijection and `0 <= N_eligible <= N_stale <= N_all` before qualification | valid-zero, negative/over-nested/duplicate/domain/invalid-window tests | Invalid never serialized as zero-qualified |
@@ -275,16 +328,19 @@ Each window record must include:
 - ordered arrivals and ordered FIFO/in-service snapshots with packet ID, packet sequence, packet type, sender/recipient, wire digest, wire bytes, residual bytes, and event ordinal;
 - baseline service events with bytes before/served/after, true-first-service flag, completion flag, and logical completion event;
 - true-first-service stale proof with raw predicate inputs, rule/version identity, classification event, and a once-only persistence key;
-- same-packet release proof with the stale source packet ID/digest, classification frame, current-frame presence, exact per-frame removable start/end event, and residual/service arithmetic;
+- source removable-work proof with `source_packet_id`, `source_wire_digest`, `stale_classification_event`, `source_removable_work_bytes`, `source_removable_start_event`, `source_removable_end_event`, `source_baseline_completion_event`, classification frame, and current-frame presence;
+- a distinct released-credit ledger with `released_credit_created`, `credit_creation_event`, and, for each frozen FIFO step, `credit_balance_before_fifo_step`, `fifo_consumer_packet_id`, `credit_consumed_by_step`, and `credit_balance_after_step`, followed by `credit_expiration_reason` and `credit_expiration_event`;
 - every real baseline receiver-state transition needed to derive event-bounded recipient serviceability intervals, including source event ordinal and raw applicability fields;
 - later recipient proof with ID-State type, ordering relation, queried interval/event, event-local serviceability inputs/reason, baseline residual, and baseline logical completion state;
 - capacity-caused-incompletion proof distinguishing exhausted binding capacity from mere FIFO waiting;
-- conditional-accounting steps over immutable baseline order, with every intervening packet, temporal-overlap proof, consumed/released/remaining bytes, and recipient residual bytes;
+- conditional-accounting steps over immutable baseline order, with every intervening packet, recipient overlap with the released-credit-available interval, consumed/released/remaining bytes, and recipient residual bytes;
 - the individual `WINDOW_ELIGIBLE` predicates, an evidence-complete bit, and reason-coded failure/invalid states;
 - baseline and conditional conservation equations;
 - a recursive key inventory attesting that forbidden outcome fields are absent.
 
 Producer-derived booleans are conveniences, not authority. Raw evidence sufficient for independent recomputation is mandatory.
+
+The source removable-work record and released-credit ledger are independently reconstructable. Credit creation cannot precede authorized removal and cannot exceed removed stale work. Its only permitted expiration reasons are `FULLY_CONSUMED` and `FRAME_CLOSE`; `SOURCE_BASELINE_COMPLETED` is invalid. Source baseline completion may end source-side removability but cannot erase credit already created.
 
 ### 6.2 Aggregate, qualification, and selection separation
 
@@ -330,14 +386,15 @@ The validator is fail closed and operates on files reread from disk, not in-memo
 3. exact manifest bijection and authorized frame-domain checks;
 4. packet identity, wire digest, sequence, and event ordinal reconciliation;
 5. FIFO transition and true-first-service timing/uniqueness checks;
-6. independent stale, same-packet, recipient type/serviceability-interval, removable-interval, temporal-overlap, capacity-cause, and completion-flip recomputation;
-7. baseline and conditional byte/work conservation;
-8. no-lookahead validation that every recipient interval state comes from the latest real baseline transition at or before its query point, with event ordinal continuity and rejection of future snapshot/applicability/transition evidence;
-9. independent `N_all`, `N_stale`, `N_eligible`, frame-domain bijection, nesting, threshold, and cross-product recomputation before qualification;
-10. valid-zero versus invalid separation;
-11. forbidden outcome field/path/environment/static-schema scans;
-12. atomic terminal marker, inventory, digest, and seal verification;
-13. for package selection, independent all-21 completeness, reconstruction of the qualified subset, zero-qualified stop behavior, and exact count/Pareto/stable-order recomputation.
+6. independent stale, same-packet, recipient type/serviceability-interval, source removable-work, released-credit availability, FIFO reachability, capacity-cause, and completion-flip recomputation;
+7. independent credit-ledger validation rejecting credit disappearance at source completion, credit before authorized removal, credit greater than removed work, FIFO skipping, negative credit, direct preferred-recipient assignment, insufficient-credit completion, credit after frame close, or next-frame carryover;
+8. baseline and conditional byte/work conservation using a non-double-counting ledger: before close, `total released = total consumed + current balance`; at close, the terminal balance is reclassified once as `expired unused`, so `total released = total consumed + expired unused` and post-close balance is zero;
+9. no-lookahead validation that every recipient interval state comes from the latest real baseline transition at or before its query point, with event ordinal continuity and rejection of future snapshot/applicability/transition evidence;
+10. independent `N_all`, `N_stale`, `N_eligible`, frame-domain bijection, nesting, threshold, and cross-product recomputation before qualification;
+11. valid-zero versus invalid separation;
+12. forbidden outcome field/path/environment/static-schema scans;
+13. atomic terminal marker, inventory, digest, and seal verification;
+14. for package selection, independent all-21 completeness, reconstruction of the qualified subset, zero-qualified stop behavior, and exact count/Pareto/stable-order recomputation.
 
 The validator rejects producer labels that disagree with raw evidence. A missing record, duplicate packet classification, unknown packet type, discontinuous ordinal, changed FIFO order, cross-packet byte release, partial-as-complete claim, outcome key, stale digest, extra cell, or unexpected file invalidates the affected cell or whole package as appropriate.
 
@@ -390,7 +447,9 @@ The required four-layer pyramid is:
 - observed-baseline recipient serviceability interval construction and transition boundaries;
 - `recipient_interval_future_state_injection`, distinct from source sticky classification, covering future receiver-state snapshot, future applicability field, future serviceability transition, and event-ordinal mismatch/lookahead;
 - same-packet residual linkage;
-- same-frame removable-interval start/end, persisted prior-frame residual start, and no cross-frame capacity credit;
+- source removable-work start/end and amount, independently from released-credit creation/balance/expiration;
+- released credit surviving source baseline completion until consumption or frame close, plus forbidden source-completion expiration;
+- credit creation only after authorized removal, byte upper bound, non-negativity, frame-close expiry, and no cross-frame carryover;
 - permitted recipient type and serviceability proof;
 - capacity-caused incomplete versus waiting-only;
 - strict FIFO propagation through intervening packets and temporal-overlap gating;
@@ -430,8 +489,9 @@ Required deterministic cases:
 - waiting-only: capacity-cause predicate remains false;
 - source future-state mutation: sticky first-service stale class is unchanged;
 - recipient future-state injection: a query at `e_k` rejects receiver-state, applicability, or serviceability-transition evidence from `e_(k+1)` or later, including ordinal mismatch/lookahead; eligibility is not derivable and the affected window/cell fails closed under the schema contract;
-- interval boundaries: same-frame classification, prior-frame persisted residual, obligation exhaustion, frame close, and forbidden cross-frame capacity credit;
-- FIFO propagation: an intervening valid packet consumes released accounting before a later recipient;
+- source/credit boundaries: same-frame classification, prior-frame persisted residual, source-obligation exhaustion, independent credit lifetime, frame-close expiry, and forbidden cross-frame credit;
+- `released_credit_survives_source_baseline_completion`: in one frame, at `e10` A is classified `SUPPRESSIBLE_STALE`, 60 authorized bytes are removed, and credit becomes 60; A reaches real baseline completion at `e20`; with no intervening consumer, at `e25` serviceable FIFO-reachable B needs 40 bytes before frame close `e30`. Assert source removable-work ends at `e20`, credit at `e25` remains 60, baseline B completion is `NO`, conditional B completion is `YES`, and B is not rejected because the source interval ended;
+- `released_credit_consumed_by_intervening_fifo_work`: A creates 60 credit; later valid FIFO packet C needs and consumes 50 before B; credit reaching serviceable B is 10 while B needs 20. Assert no FIFO skip, conditional B completion is `NO`, completion flip is `NO`, and B cannot make the window eligible;
 - fault injection: missing event, duplicate classification, altered digest, cross-packet release, reordered FIFO, partial-as-complete, outcome-key injection, and interrupted write;
 - aggregate fault injection: negative count, `N_stale > N_all`, `N_eligible > N_stale`, duplicate window, frame-domain mismatch, and invalid window included as valid;
 - resume: an already sealed matching cell is verified and skipped; an incomplete staged cell is quarantined and recomputed.
@@ -522,7 +582,8 @@ Controls:
 | 3. Cross-packet residual attribution | Bind release to packet ID + wire digest | Ledger reconciliation | Invalidate window/cell | substituted packet negative |
 | 4. Ineligible recipient type | Explicit ID-State enum allowlist | Independent packet decode | Predicate false or invalid on unknown | Supplement/local/homography cases |
 | 5. Serviceability interval misconstruction | Apply the governed observed-baseline trajectory-interval model in Section 2 | Validator recomputation from raw real transitions | Invalidate affected window/cell | queued-unserved recipient interval-boundary cases |
-| 5a. Removable interval or cross-frame credit drift | Bind per-frame start/end and current-frame stale obligation; reset credit at frame close | Packet/frame ledger and interval-bound checks | Invalidate window/cell | current-frame, persisted-residual, exhaustion, close, and carryover negatives |
+| 5a. Source work and credit lifetime conflation | Model source removable work and released credit as separate ledgers; source completion is not a credit expiry | Independent reconstruction across source completion | Invalidate window/cell | `released_credit_survives_source_baseline_completion` and forbidden expiry reason |
+| 5b. Credit creation/consumption/carryover corruption | Bind creation to removed bytes, propagate every FIFO step, expire remainder only at close | Byte conservation, FIFO sequence, non-negativity, frame-bound checks | Invalidate window/cell | premature/over-credit, intervening-consumer, negative, direct-assignment, and cross-frame negatives |
 | 6. Waiting mistaken for capacity loss | Require exhausted budget plus exact residual/cause proof | Budget/work equation | Predicate false | waiting-only case |
 | 7. Conditional accounting becomes replay/treatment | Pure function over frozen evidence; no runtime callback/import | dependency/static scan and baseline digest comparison | Abort qualification | mutation/reordering spies |
 | 8. Partial bytes counted complete | Logical residual must reach exactly zero | Independent arithmetic | Predicate false/invalid | one-byte-short test |
@@ -542,7 +603,7 @@ Controls:
 | M1 | Declarative schema, manifest, and frozen constants | Schema review proves every required field and exact rule is representable |
 | M2 | Passive runtime observation hooks | Existing C4 behavior tests unchanged; hook timing/immutability proven |
 | M3 | Predicate, sticky classification, and governed recipient-interval core | All source and recipient temporal predicate tests pass with OQ-1 closed |
-| M4 | Conditional accounting and conservation | Pure accounting and independent recomputation agree on exhaustive fixtures |
+| M4 | Separate source-removable-work and released-credit accounting plus conservation | Pure accounting and independent recomputation agree, including both corrective tiny-E2E cases |
 | M5 | Aggregation and exact four-gate qualification | Valid-zero/invalid separation and all integer boundary vectors pass |
 | M6 | Cross-cell selection | All-21 gate and count/Pareto/stable ordering pass exhaustive tie cases |
 | M7 | Evidence writer, provenance, inventory, seals, and real launcher path | interruption/tamper/resume matrix and canonical path/source binding pass |
@@ -562,7 +623,7 @@ Every milestone requires separate implementation authorization. “Scientific re
 | M1 | New C7 schema/constants module and schema tests | runtime behavior; launcher execution | schema/manifest/threshold unit tests | NO | NO | representational completeness |
 | M2 | Minimal additive edits to async deadline runtime; hook tests | C6 treatment reuse; FIFO/state changes | existing C4 regressions + timing tests | NO | NO | behavioral parity |
 | M3 | C7 predicate and observed-trajectory interval functions/tests | accounting replay; synthetic first-service events; future/counterfactual state; outcome imports | exhaustive source/recipient temporal predicate cases | NO | NO | governed interval model and tests pass |
-| M4 | Pure conditional-accounting functions/tests | packet reschedule, AoI/predictive/RL, treatment | conservation/determinism/mutation tests | NO | NO | accounting semantics proven |
+| M4 | Pure source-removable-work and released-credit ledger functions/tests | source-completion credit expiry, packet reschedule, AoI/predictive/RL, treatment | conservation/determinism, credit-lifetime, FIFO-consumption, and mutation tests | NO | NO | separate-state accounting semantics proven |
 | M5 | Aggregate and qualification functions/tests | selection; launcher execution | valid-zero/invalid + four-gate exact boundaries | NO | NO | exact qualification complete |
 | M6 | Selection function/schema/tests | selection before all 21 valid/qualified; weights | count/Pareto/stable-order exhaustive cases | NO | NO | deterministic selection contract |
 | M7 | Writer/manifest/seal utilities, new C7 parent/child, path tests | census launch; overwrite; C6 treatment config | fault/tamper/resume + synthetic canonical path | NO | NO | atomic real path proven |
@@ -590,7 +651,7 @@ No milestone may modify `EXPERIMENT_CONTRACT.md`, either corrective specificatio
 
 ## 21 Implementation authorization boundary
 
-This plan does not authorize implementation. `IMPLEMENTATION_AUTHORIZED=NO`. After this corrective commit, the only permitted next step is `INDEPENDENT_C7_CORRECTIVE_PLAN_DELTA_AUDIT`.
+This plan does not authorize implementation. `IMPLEMENTATION_AUTHORIZED=NO`. After Corrective Revision 2, the only permitted next step is `INDEPENDENT_C7_CORRECTIVE_REVISION_2_DELTA_AUDIT`.
 
 Implementation may begin only after an independent audit explicitly approves this exact plan commit or an audited corrective plan supersedes it. Implementation authorization must name the exact implementation base, allowed files, allowed milestone(s), verification commands, outcome-firewall preflight, and stopping condition. Authorization for one milestone does not imply authorization for later milestones, MVE, qualification, census, or selection.
 
@@ -625,7 +686,7 @@ The OQ-1 closure is a governance clarification of the frozen mechanics, not a ne
 
 The independent auditor should receive:
 
-- this exact corrective Plan commit, its clean delta from parent Plan commit `73c8a2b555e6f99ec0d2f431ccf77f43697f5953`, and the full Plan lineage from freeze `0eda32c58871c1ec4b5b194c0c33608d7dd2a777`;
+- this exact Corrective Revision 2 Plan commit, its clean delta from parent Plan commit `56966b9256f761983870c2b1db285a050ba62a57`, and the full Plan lineage from freeze `0eda32c58871c1ec4b5b194c0c33608d7dd2a777`;
 - the frozen authority files and verified hashes from Section 1;
 - the complete specification-to-code traceability table;
 - the architecture and producer/validator separation;
@@ -633,7 +694,7 @@ The independent auditor should receive:
 - the four-layer test plan, risk register, and M0–M12 boundaries;
 - the complete inspected-path inventory;
 - explicit confirmation that no forbidden outcome material was read;
-- the eight-finding Corrective Revision 1 disposition table and OQ-1 closed-state encoding.
+- the eight-finding Corrective Revision 1 disposition table, the `P1-CR1-01` Corrective Revision 2 record, and OQ-1 closed-state encoding.
 
 Audit questions:
 
@@ -645,6 +706,8 @@ Audit questions:
 6. Are production-path parity, atomicity, resume, provenance, and outcome firewall sufficiently fail closed?
 7. Does the corrected Plan faithfully encode the already-issued OQ-1 governance clarification without reopening it or creating a new RD?
 8. Is the upstream `C7 -> candidate -> separately governed real Formal -> causal H_R evaluation` claim boundary explicit and preserved?
+9. Are source removable work and released capacity credit independently reconstructable, with source completion unable to expire already released same-frame credit?
+10. Do the credit ledger, validator, and two tiny-E2E cases prove strict FIFO consumption, sufficient-credit completion, frame-close expiry, and no cross-frame carryover?
 
 The author must not perform this independent audit. After committing this plan, work stops.
 
@@ -658,6 +721,17 @@ OQ1_REOPENED = NO
 OQ1_STATUS = CLOSED_BY_GOVERNANCE_CLARIFICATION
 OQ1_REQUIRES_NEW_RD = NO
 THIRD_PARTY_FINDINGS_DISPOSITIONED = 8/8
+P1_CR1_01_STATUS = RESOLVED
+SOURCE_REMOVABLE_WORK_DISTINCT_FROM_RELEASED_CREDIT = YES
+SOURCE_BASELINE_COMPLETION_EXPIRES_CREDIT = NO
+RELEASED_CREDIT_PERSISTS_UNTIL_CONSUMED_OR_FRAME_CLOSE = YES
+RELEASED_CREDIT_EXPIRES_AT = FULL_CONSUMPTION_OR_FRAME_CLOSE
+CROSS_FRAME_CREDIT_CARRYOVER = NO
+FIFO_PROPAGATION_PRESERVED = YES
+DIRECT_RECIPIENT_ASSIGNMENT = NO
+LATE_SAME_FRAME_RECIPIENT_CAN_USE_PREVIOUSLY_RELEASED_UNUSED_CREDIT = YES
+TINY_E2E_CREDIT_SURVIVES_SOURCE_COMPLETION_PLANNED = YES
+TINY_E2E_INTERVENING_FIFO_CONSUMES_CREDIT_PLANNED = YES
 P1_1_INHERITED_FROM_UPSTREAM_AUTHORITY = YES
 P1_1_REQUIRES_NEW_RD = NO
 RECIPIENT_TRAJECTORY_FUTURE_STATE_NEGATIVE_TEST_PLANNED = YES
