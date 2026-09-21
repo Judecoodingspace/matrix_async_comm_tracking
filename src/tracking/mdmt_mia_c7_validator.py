@@ -490,10 +490,14 @@ def validate_core_evidence(evidence: Mapping[str, Any]) -> dict[str, Any]:
     raw_current_service = raw_removable - raw_close_residual
     if raw_current_service < 0:
         raise C7ValidationError("raw source residual increases inside frame")
+    raw_source_slice_bytes = sum(row[1] for row in raw_source["service_slices"])
+    if raw_source_slice_bytes != raw_current_service:
+        raise C7ValidationError(
+            "raw source service slices disagree with displaced frame service")
 
     source_start = _integer(source.get("source_removable_start_event"), "source removable start", 1)
     source_end = _integer(source.get("source_removable_end_event"), "source removable end", 1)
-    removable_bytes = _integer(source.get("source_removable_work_bytes"), "source removable bytes", 1)
+    removable_bytes = _integer(source.get("source_removable_work_bytes"), "source removable bytes")
     if _integer(source.get("stale_classification_event"), "source stale event", 1) != class_event:
         raise C7ValidationError("source removable work cites a different stale event")
     expected_source = {
@@ -508,8 +512,9 @@ def validate_core_evidence(evidence: Mapping[str, Any]) -> dict[str, Any]:
         "original_logical_bytes": wire_bytes,
         "prior_service_bytes": raw_prior_service,
         "opening_or_presence_residual_bytes": raw_removable,
+        "frame_close_residual_bytes": raw_close_residual,
         "current_frame_baseline_service_bytes": raw_current_service,
-        "source_removable_work_bytes": raw_removable,
+        "source_removable_work_bytes": raw_current_service,
         "source_removable_start_event": expected_start,
         "source_removable_end_event": expected_end,
         "source_baseline_completion_event": completion,
@@ -518,10 +523,10 @@ def validate_core_evidence(evidence: Mapping[str, Any]) -> dict[str, Any]:
         raise C7ValidationError("source removable work is not raw-baseline-derived")
 
     credit = evidence.get("released_credit", {})
-    created = _integer(credit.get("released_credit_created"), "released credit", 1)
+    created = _integer(credit.get("released_credit_created"), "released credit")
     creation_event = _integer(credit.get("credit_creation_event"), "credit creation event", 1)
     if created != removable_bytes:
-        raise C7ValidationError("released credit differs from raw-derived removed stale work")
+        raise C7ValidationError("released credit differs from raw-derived displaced frame service")
     if not source_start <= creation_event < source_end:
         raise C7ValidationError("credit appears before/outside authorized stale removal")
     if creation_event != source_start:
@@ -615,28 +620,31 @@ def validate_core_evidence(evidence: Mapping[str, Any]) -> dict[str, Any]:
     balance = created
     expected_steps = []
     recipient_consumed = 0
-    for position, event, work, identity, raw in parsed_fifo:
-        before = balance
-        consumed = min(before, work)
-        balance -= consumed
-        expected_steps.append({
-            "fifo_position": position,
-            "fifo_consumer_packet_id": raw.get("packet_id"),
-            "fifo_consumer_wire_digest": str(raw.get("wire_digest", "")),
-            "fifo_consumer_channel": str(raw.get("channel", "")),
-            "event_ordinal": event,
-            "credit_balance_before_fifo_step": before,
-            "credit_consumed_by_step": consumed,
-            "credit_balance_after_step": balance,
-        })
-        if identity == recipient_identity:
-            recipient_consumed = consumed
-        if balance == 0:
-            break
+    if balance != 0:
+        for position, event, work, identity, raw in parsed_fifo:
+            before = balance
+            consumed = min(before, work)
+            balance -= consumed
+            expected_steps.append({
+                "fifo_position": position,
+                "fifo_consumer_packet_id": raw.get("packet_id"),
+                "fifo_consumer_wire_digest": str(raw.get("wire_digest", "")),
+                "fifo_consumer_channel": str(raw.get("channel", "")),
+                "event_ordinal": event,
+                "credit_balance_before_fifo_step": before,
+                "credit_consumed_by_step": consumed,
+                "credit_balance_after_step": balance,
+            })
+            if identity == recipient_identity:
+                recipient_consumed = consumed
+            if balance == 0:
+                break
     if list(credit.get("credit_steps", ())) != expected_steps:
         raise C7ValidationError("released-credit steps do not match frozen FIFO recomputation")
     expected_reason = "FULLY_CONSUMED" if balance == 0 else "FRAME_CLOSE"
-    expected_expiration_event = expected_steps[-1]["event_ordinal"] if balance == 0 else frame_close
+    expected_expiration_event = (
+        expected_steps[-1]["event_ordinal"] if expected_steps and balance == 0
+        else creation_event if balance == 0 else frame_close)
     if credit.get("credit_expiration_reason") not in CREDIT_EXPIRATION_REASONS:
         raise C7ValidationError("forbidden released-credit expiration reason")
     if credit.get("credit_expiration_reason") != expected_reason:
@@ -689,7 +697,7 @@ def validate_core_evidence(evidence: Mapping[str, Any]) -> dict[str, Any]:
     if evidence.get("evidence_valid") is not True or evidence.get("invalid_reason") != "":
         raise C7ValidationError("producer marked complete evidence invalid or reasoned")
     return {
-        "schema_version": "C7_CORE_VALIDATION_V2",
+        "schema_version": "C7_CORE_VALIDATION_V3",
         "status": "PASS",
         "source_packet_id": source_ref.get("packet_id"),
         "released_credit_created": created,

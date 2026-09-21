@@ -16,7 +16,7 @@ from types import MappingProxyType
 from typing import Any, Mapping, Optional, Sequence, Tuple
 
 
-SCHEMA_VERSION = "C7_CORE_SEMANTICS_V2"
+SCHEMA_VERSION = "C7_CORE_SEMANTICS_V3"
 EFFECTIVE_SERVICE_WINDOW = "ONE_FRAME"
 PARTIAL_BYTES_HAVE_SEMANTIC_EFFECT = False
 SEMANTIC_COMMIT = "LOGICAL_PACKET_COMPLETION"
@@ -678,6 +678,7 @@ class SourceRemovableWork:
     original_logical_bytes: int
     prior_service_bytes: int
     opening_or_presence_residual_bytes: int
+    frame_close_residual_bytes: int
     current_frame_baseline_service_bytes: int
     source_removable_work_bytes: int
     source_removable_start_event: int
@@ -697,6 +698,7 @@ class SourceRemovableWork:
             "original_logical_bytes": self.original_logical_bytes,
             "prior_service_bytes": self.prior_service_bytes,
             "opening_or_presence_residual_bytes": self.opening_or_presence_residual_bytes,
+            "frame_close_residual_bytes": self.frame_close_residual_bytes,
             "current_frame_baseline_service_bytes": self.current_frame_baseline_service_bytes,
             "source_removable_work_bytes": self.source_removable_work_bytes,
             "source_removable_start_event": self.source_removable_start_event,
@@ -752,10 +754,13 @@ def derive_source_removable_work(
     current_service = amount - close_residual
     if current_service < 0:
         raise C7EvidenceError("source raw service exceeds opening/presence residual")
+    source_slice_bytes = sum(row[1] for row in facts["service_slices"])
+    if source_slice_bytes != current_service:
+        raise C7EvidenceError("source service slices disagree with displaced frame service")
     return SourceRemovableWork(
         classification.source, frame, frame_open, frame_close,
         classification.event_ordinal, presence, logical, prior_service, amount,
-        current_service, amount, start, end, completion)
+        close_residual, current_service, current_service, start, end, completion)
 
 
 @dataclass(frozen=True)
@@ -880,10 +885,10 @@ def _evaluate_fifo_conditional_accounting(
     baseline_recipient_residual_bytes: int,
 ) -> ConditionalAccountingResult:
     """Apply same-frame released credit through every frozen FIFO obligation."""
-    created = _int(removed_stale_bytes, "removed stale bytes", 1)
+    created = _int(removed_stale_bytes, "removed stale bytes")
     creation_event = _int(credit_creation_event, "credit creation event", 1)
-    if created > source_work.source_removable_work_bytes:
-        raise C7EvidenceError("released credit exceeds authorized removable work")
+    if created != source_work.current_frame_baseline_service_bytes:
+        raise C7EvidenceError("released credit must equal displaced current-frame service")
     if not source_work.source_removable_start_event <= creation_event < source_work.source_removable_end_event:
         raise C7EvidenceError("released credit created outside source removable-work interval")
     if recipient.channel != "id_state":
@@ -926,18 +931,22 @@ def _evaluate_fifo_conditional_accounting(
     recipient_consumed = 0
     expiration_reason = ""
     expiration_event = source_work.frame_close_event
-    for item in ordered:
-        before = balance
-        consumed = min(before, item.logical_work_bytes)
-        balance -= consumed
-        steps.append(CreditStep(
-            item.fifo_position, item.packet, item.event_ordinal, before, consumed, balance))
-        if item.packet == recipient:
-            recipient_consumed = consumed
-        if balance == 0:
-            expiration_reason = "FULLY_CONSUMED"
-            expiration_event = item.event_ordinal
-            break
+    if balance == 0:
+        expiration_reason = "FULLY_CONSUMED"
+        expiration_event = creation_event
+    else:
+        for item in ordered:
+            before = balance
+            consumed = min(before, item.logical_work_bytes)
+            balance -= consumed
+            steps.append(CreditStep(
+                item.fifo_position, item.packet, item.event_ordinal, before, consumed, balance))
+            if item.packet == recipient:
+                recipient_consumed = consumed
+            if balance == 0:
+                expiration_reason = "FULLY_CONSUMED"
+                expiration_event = item.event_ordinal
+                break
     if not expiration_reason:
         expiration_reason = "FRAME_CLOSE"
         expiration_event = source_work.frame_close_event
@@ -1079,7 +1088,7 @@ def evaluate_window_from_raw_baseline(
         raw_baseline=raw_baseline,
         source_work=source_work,
         capacity_cause=capacity,
-        removed_stale_bytes=source_work.source_removable_work_bytes,
+        removed_stale_bytes=source_work.current_frame_baseline_service_bytes,
         credit_creation_event=source_work.source_removable_start_event,
         fifo_items=fifo_items,
         recipient=recipient,
