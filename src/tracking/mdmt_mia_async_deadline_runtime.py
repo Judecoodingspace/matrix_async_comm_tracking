@@ -891,6 +891,45 @@ class _C4SharedLogicalServer(object):
         active = 0 if self._in_service is None else int(self._in_service["remaining_service_bytes"])
         return waiting + active
 
+    def _c7_fifo_snapshot(self):
+        """Return a detached FIFO view; observers can never mutate service state."""
+        ordered = ([] if self._in_service is None else [self._in_service]) + list(self._queue)
+        return tuple({
+            "packet_id": copy.deepcopy(item["packet_id"]),
+            "wire_digest": str(item["wire_digest"]),
+            "channel": str(item["channel"]),
+            "packet_sequence": int(item["packet_sequence"]),
+            "remaining_service_bytes": int(item["remaining_service_bytes"]),
+            "bytes_served_total": int(item["bytes_served_total"]),
+            "location": "in_service" if item is self._in_service else "waiting",
+        } for item in ordered)
+
+    @staticmethod
+    def _c7_receiver_snapshot(context_provider, item, frame):
+        if context_provider is None:
+            return None
+        packet_id = None if item is None else item["packet_id"]
+        try:
+            return copy.deepcopy(context_provider(packet_id, int(frame)))
+        except Exception:
+            # Evidence becomes incomplete/fail-closed in the observer, while the
+            # binding C4 server remains behaviorally untouched.
+            return None
+
+    @staticmethod
+    def _notify_c7(observer, method, **payload):
+        """Failure-isolated, deep-copy-only C7 observation boundary."""
+        if observer is None:
+            return
+        try:
+            callback = getattr(observer, method)
+            callback(**copy.deepcopy(payload))
+        except Exception as exc:
+            try:
+                observer._failure(method, exc)
+            except Exception:
+                pass
+
     def _event(self, event_type, item=None, **updates):
         event = {
             "record_type": "C4_SERVICE_EVENT",
@@ -947,7 +986,7 @@ class _C4SharedLogicalServer(object):
                 self.io_failure = "{}".format(type(exc).__name__)
         return event
 
-    def _close_frame(self):
+    def _close_frame(self, c7_observer=None):
         if self._current_frame < 0:
             return
         summary = {
@@ -963,28 +1002,38 @@ class _C4SharedLogicalServer(object):
             "queue_backlog_bytes": self._backlog_bytes(),
         }
         self._frame_summaries.append(summary)
-        self._event("frame_summary", bytes_served=int(self._frame_served),
-                    frame_unused_budget=self._frame_service_budget)
+        event = self._event("frame_summary", bytes_served=int(self._frame_served),
+                            frame_unused_budget=self._frame_service_budget)
+        self._notify_c7(
+            c7_observer, "observe_frame_close", event=event,
+            fifo_snapshot=self._c7_fifo_snapshot())
 
     def begin_frame(self, frame_id, shadow_observer=None, shadow_context_provider=None,
-                    suppression_gate=None, suppression_context_provider=None):
+                    suppression_gate=None, suppression_context_provider=None,
+                    c7_observer=None, c7_context_provider=None):
         frame_id = int(frame_id)
         if frame_id <= self._current_frame:
             raise ValueError("C4 service frames must be strictly increasing")
         if self._current_frame >= 0 and frame_id != self._current_frame + 1:
             raise ValueError("C4 service frames must be consecutive")
-        self._close_frame()
+        self._close_frame(c7_observer)
         self._current_frame = frame_id
         self._frame_service_budget = None if self.mode == "unlimited" else int(self.rate)
         self._frame_served = 0
-        self._event("frame_open")
-        self._serve(shadow_observer, shadow_context_provider, suppression_gate, suppression_context_provider)
+        event = self._event("frame_open")
+        self._notify_c7(
+            c7_observer, "observe_frame_open", event=event,
+            fifo_snapshot=self._c7_fifo_snapshot(),
+            receiver_state=self._c7_receiver_snapshot(c7_context_provider, None, frame_id))
+        self._serve(shadow_observer, shadow_context_provider, suppression_gate,
+                    suppression_context_provider, c7_observer, c7_context_provider)
         return self.take_completed()
 
     def admit(self, channel, frame_id, wire, encoded, wire_digest,
               census_emission=None, semantic_array_raw_bytes=0,
               shadow_observer=None, shadow_context_provider=None,
-              suppression_gate=None, suppression_context_provider=None):
+              suppression_gate=None, suppression_context_provider=None,
+              c7_observer=None, c7_context_provider=None):
         channel = str(channel)
         frame_id = int(frame_id)
         if channel not in C4_CONSTRAINED_CHANNELS:
@@ -1023,8 +1072,13 @@ class _C4SharedLogicalServer(object):
         }
         self._items.append(item)
         self._queue.append(item)
-        self._event("enqueue", item, bytes_offered=cost)
-        self._serve(shadow_observer, shadow_context_provider, suppression_gate, suppression_context_provider)
+        event = self._event("enqueue", item, bytes_offered=cost)
+        self._notify_c7(
+            c7_observer, "observe_enqueue", item=item, event=event,
+            fifo_snapshot=self._c7_fifo_snapshot(),
+            receiver_state=self._c7_receiver_snapshot(c7_context_provider, item, frame_id))
+        self._serve(shadow_observer, shadow_context_provider, suppression_gate,
+                    suppression_context_provider, c7_observer, c7_context_provider)
         if item["terminal_disposition"] == "suppressed":
             return item
         for index, completed in enumerate(self._completed):
@@ -1033,7 +1087,8 @@ class _C4SharedLogicalServer(object):
         return None
 
     def _start_next(self, shadow_observer=None, shadow_context_provider=None,
-                    suppression_gate=None, suppression_context_provider=None):
+                    suppression_gate=None, suppression_context_provider=None,
+                    c7_observer=None, c7_context_provider=None):
         if self._in_service is not None or not self._queue:
             return False
         self._in_service = self._queue.popleft()
@@ -1051,7 +1106,12 @@ class _C4SharedLogicalServer(object):
                 self._in_service = None
                 return False
         self._in_service["service_start_frame"] = int(self._current_frame)
-        self._event("service_start", self._in_service)
+        event = self._event("service_start", self._in_service)
+        self._notify_c7(
+            c7_observer, "observe_true_first_service", item=self._in_service,
+            event=event, fifo_snapshot=self._c7_fifo_snapshot(),
+            receiver_state=self._c7_receiver_snapshot(
+                c7_context_provider, self._in_service, self._current_frame))
         # This is intentionally after FIFO selection and before the first byte.
         # Catch only the supplied Shadow observer, never baseline service code.
         if shadow_observer is not None:
@@ -1064,27 +1124,32 @@ class _C4SharedLogicalServer(object):
                     pass
         return True
 
-    def _complete_current(self):
+    def _complete_current(self, c7_observer=None):
         item = self._in_service
         item["service_completion_frame"] = int(self._current_frame)
         item["availability_frame"] = int(self._current_frame)
-        self._event("completion", item)
+        event = self._event("completion", item)
         self._completed.append(item)
         self._in_service = None
+        self._notify_c7(
+            c7_observer, "observe_completion", item=item, event=event,
+            fifo_snapshot=self._c7_fifo_snapshot())
 
     def _serve(self, shadow_observer=None, shadow_context_provider=None,
-               suppression_gate=None, suppression_context_provider=None):
+               suppression_gate=None, suppression_context_provider=None,
+               c7_observer=None, c7_context_provider=None):
         while self._in_service is not None or self._queue:
             if self.mode == "fifo" and int(self._frame_service_budget) <= 0:
                 return
             if self._in_service is None:
                 started = self._start_next(shadow_observer, shadow_context_provider,
-                                           suppression_gate, suppression_context_provider)
+                                           suppression_gate, suppression_context_provider,
+                                           c7_observer, c7_context_provider)
                 if not started:
                     continue
             item = self._in_service
             if int(item["remaining_service_bytes"]) == 0:
-                self._complete_current()
+                self._complete_current(c7_observer)
                 continue
             amount = int(item["remaining_service_bytes"]) if self.mode == "unlimited" else min(
                 int(self._frame_service_budget), int(item["remaining_service_bytes"]))
@@ -1094,11 +1159,14 @@ class _C4SharedLogicalServer(object):
             self._frame_served += amount
             if self.mode == "fifo":
                 self._frame_service_budget -= amount
-            self._event("service_slice", item, bytes_served=amount,
-                        frame_budget_before=before,
-                        frame_unused_budget=self._frame_service_budget)
+            event = self._event("service_slice", item, bytes_served=amount,
+                                frame_budget_before=before,
+                                frame_unused_budget=self._frame_service_budget)
+            self._notify_c7(
+                c7_observer, "observe_service_slice", item=item, event=event,
+                fifo_snapshot=self._c7_fifo_snapshot())
             if int(item["remaining_service_bytes"]) == 0:
-                self._complete_current()
+                self._complete_current(c7_observer)
 
     def take_completed(self):
         completed = list(self._completed)
@@ -1124,11 +1192,11 @@ class _C4SharedLogicalServer(object):
             updates["supplement_terminal_consequence"] = str(semantic_consequence)
         self._event("terminal", item, **updates)
 
-    def finalize_pending(self, frame_id):
+    def finalize_pending(self, frame_id, c7_observer=None):
         if self._sealed:
             raise ValueError("C4 shared server already finalized")
         if self._current_frame >= 0:
-            self._close_frame()
+            self._close_frame(c7_observer)
         pending = []
         if self._in_service is not None:
             item = self._in_service
@@ -1274,13 +1342,14 @@ class PacketRuntime(object):
     represented as monotonic remap events and may only affect live future state.
     """
 
-    def __init__(self, result_dir, method, sequence_name, active_stages=""):
+    def __init__(self, result_dir, method, sequence_name, active_stages="", c7_observer=None):
         self.output_dir = Path(result_dir) / str(method)
         self.sequence_name = str(sequence_name)
         self.delays = _parse_delays(os.environ.get("MIA_ASYNC_CHANNEL_DELAYS", ""))
         self.c4_service_config = _parse_c4_service_config(os.environ.get("MIA_C4_SERVICE_CONFIG", ""))
         self.c5_shadow_config = _parse_c5_shadow_config(os.environ.get("MIA_C5_SHADOW_CONFIG", ""))
         self.c6_suppression_config = _parse_c6_suppression_config(os.environ.get("MIA_C6_SUPPRESSION_CONFIG", ""))
+        self._c7_observer = c7_observer
         if self.c4_service_config["mode"] != "disabled" and any(self.delays.values()):
             raise ValueError("Unlimited/FIFO requires zero exogenous delay for all channels")
         if self.c5_shadow_config["enabled"] and self.c4_service_config["mode"] == "disabled":
@@ -1384,6 +1453,7 @@ class PacketRuntime(object):
                 sum(int(np.ascontiguousarray(value).nbytes) for value in census_arrays),
                 self._c5_shadow, shadow_context_provider,
                 self._c6_suppression, shadow_context_provider,
+                self._c7_observer, shadow_context_provider,
             )
             for suppressed in self._c4_service.take_suppressed():
                 self._census.terminal(suppressed["census_emission"], "SUPPRESSED",
@@ -1506,7 +1576,8 @@ class PacketRuntime(object):
         if self._c4_service is not None:
             context_provider = self._c5_context_provider(rows1, rows2, confirmed_ids)
             for item in self._c4_service.begin_frame(frame_id, self._c5_shadow, context_provider,
-                                                      self._c6_suppression, context_provider):
+                                                      self._c6_suppression, context_provider,
+                                                      self._c7_observer, context_provider):
                 self._queue_sequence += 1
                 queued = (int(frame_id), self._queue_sequence, item["wire"], item["encoded"])
                 if self._census.enabled:
@@ -1675,7 +1746,8 @@ class PacketRuntime(object):
     def finalize(self):
         if self._c4_service is not None:
             finalization_frame = self._current_frame if self._current_frame >= 0 else 0
-            for item in self._c4_service.finalize_pending(finalization_frame):
+            for item in self._c4_service.finalize_pending(
+                    finalization_frame, self._c7_observer):
                 self.expired_count += 1
                 self._record(item["channel"], item["wire"]["capture_frame"], finalization_frame,
                              packet_action="pending_at_end",
