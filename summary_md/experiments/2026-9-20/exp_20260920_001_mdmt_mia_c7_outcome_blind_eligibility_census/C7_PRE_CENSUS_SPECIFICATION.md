@@ -3,8 +3,8 @@
 ```text
 DOCUMENT_ROLE = C7_PRE_CENSUS_SPECIFICATION
 EXPERIMENT_ID = exp_20260920_001_mdmt_mia_c7_outcome_blind_eligibility_census
-CORRECTIVE_REVISION = 1
-SPEC_STATUS = READY_FOR_INDEPENDENT_CORRECTIVE_AUDIT
+CORRECTIVE_REVISION = 2
+SPEC_STATUS = READY_FOR_TEAM_B_DELTA_AUDIT
 SPECIFICATION_EXECUTION_AUTHORIZATION = NOT_AUTHORIZED
 IMPLEMENTATION_AUTHORIZATION = NOT_AUTHORIZED
 QUALIFICATION_AUTHORIZATION = NOT_AUTHORIZED
@@ -196,17 +196,23 @@ deleted or rewritten.
 
 ### 7.2 Frozen corrective decisions
 
-`CSD-C7-01` through `CSD-C7-08` are frozen and introduce no change to the
-Contract's scientific scope:
+`CSD-C7-01` through `CSD-C7-09` are frozen and introduce no change to the
+Contract's scientific scope. `CSD-C7-01` through `CSD-C7-08` retain the
+Revision #1 threshold derivation, while `CSD-C7-09` clarifies its logical
+interpretation:
 
 - Exposure is used only for fairness and feasibility; different registered
   trajectory lengths are not structurally penalized by one high raw-count
   threshold.
-- `T_count` remains a minimum recurrence count: an eligible redistribution
-  opportunity must recur enough to exceed a one- or two-event accident. It is
-  not `alpha * trajectory_length`.
-- Stale-present support is an independent gate, with `T_den > T_count`, so a
-  high conditional fraction on a thin denominator cannot qualify.
+- `T_count` remains an explicit minimum-recurrence invariant: fewer than five
+  eligible redistribution opportunities can never qualify. It is not
+  `alpha * trajectory_length`. Its semantic role is explicit and traceable,
+  but it is mathematically redundant over the current frozen registered
+  domain.
+- Stale-present support remains a separate, substantively distinct criterion,
+  with `T_den > T_count`, so a high conditional fraction on a thin denominator
+  cannot qualify. This inequality does not establish that every gate is
+  mathematically non-redundant.
 - The two integer thresholds have distinct mechanical sources:
   `T_count` comes from minimum recurrence and `T_den` from conditional-rate
   resolution. The historical unified ruler is not restored.
@@ -217,6 +223,10 @@ Contract's scientific scope:
   shortest trajectory has 300 frames. Therefore `T_global = 5/300 = 1/60`.
   The canonical comparison value is exactly `1/60`, not rounded `1.67%`.
 - `T_cond = 5/20 = 1/4`, stored and compared canonically as exactly `1/4`.
+- `CSD-C7-09` intentionally retains `T_count=5` as the visible
+  minimum-recurrence invariant even though `G1` is implied both by `G3` and by
+  `G2 AND G4` throughout the current frozen registered domain. Mathematical
+  non-redundancy is not required.
 
 The global gate mechanically implies minimum eligible counts of 5 for P66,
 6 for P44, and 12 for P23. These are consequences of the single `1/60` gate,
@@ -228,9 +238,13 @@ T_den = 20
 T_global = 1/60
 T_cond = 1/4
 THRESHOLD_DERIVATION_STATUS = FROZEN_BY_CORRECTIVE_SPECIFICATION_DECISIONS
+CSD_C7_09 = FROZEN
+T_COUNT_ROLE = MINIMUM_RECURRENCE_INVARIANT
+T_COUNT_MATHEMATICALLY_REDUNDANT_OVER_FROZEN_DOMAIN = YES
+T_COUNT_REDUNDANCY_INTENTIONAL = YES
 ```
 
-### 7.3 Four distinct conjunctive gates
+### 7.3 Four conjunctive criteria and their explanatory roles
 
 Every valid cell qualifies only if all four gates pass:
 
@@ -241,11 +255,13 @@ AND N_eligible_windows / N_all_windows >= 1/60
 AND N_eligible_windows / N_stale_present_windows >= 1/4
 ```
 
-All comparisons use `>=`; equality passes. The gates remain scientifically
-distinct:
+All comparisons use `>=`; equality passes. The criteria have distinct
+scientific and explanatory roles. This does not mean that all four have
+mathematically independent exclusion power over the current frozen domain:
 
-1. `N_eligible_windows >= 5` protects against qualification from only one or
-   two accidental opportunities.
+1. `N_eligible_windows >= 5` states the explicit minimum-recurrence invariant:
+   fewer than five opportunities are categorically insufficient. In the
+   current domain it does not independently change PASS/FAIL.
 2. `N_stale_present_windows >= 20` protects against a conditional rate built
    on extremely thin stale-context support.
 3. `N_eligible_windows / N_all_windows >= 1/60` prevents a longer trajectory
@@ -256,6 +272,55 @@ distinct:
 
 The four gates are conjunctive and unweighted. Ranking and Pareto comparison
 occur only after qualification and cannot substitute for any gate.
+
+#### 7.3.1 Gate redundancy audit
+
+Within the frozen registered domain, `N_all_windows` is one of
+`{300, 360, 700}`. The following outcome-free implications are exact:
+
+```text
+G2: N_stale_present_windows >= 20
+G4: N_eligible_windows / N_stale_present_windows >= 1/4
+
+G2 AND G4
+=> N_eligible_windows >= 20 * 1/4
+=> N_eligible_windows >= 5
+=> G1
+```
+
+Independently, the global-frequency gate implies:
+
+```text
+G3 at N_all_windows = 300 => integer N_eligible_windows >= 5
+G3 at N_all_windows = 360 => integer N_eligible_windows >= 6
+G3 at N_all_windows = 700 => integer N_eligible_windows >= 12
+
+therefore G3 => G1 for every frozen registered trajectory
+```
+
+```text
+GATE_REDUNDANCY_AUDIT = PASS
+T_COUNT_REDUNDANT_OVER_FROZEN_DOMAIN = YES
+T_COUNT_REDUNDANCY_INTENTIONAL = YES
+T_COUNT_RETAINED_AS_EXPLICIT_INVARIANT = YES
+G2_AND_G4_IMPLIES_G1 = YES
+G3_IMPLIES_G1_OVER_REGISTERED_DOMAIN = YES
+```
+
+Retaining `T_count=5` is deliberate: it preserves the frozen
+minimum-recurrence scientific statement; makes the rule “fewer than five is
+unacceptable” directly visible to reviewers; prevents that semantic invariant
+from silently disappearing if a future registered domain or threshold is
+changed through separate formal governance; and preserves traceability to
+`CSD-C7-02` and `CSD-C7-05`. It remains explicitly evaluated and reported, but
+no claim is made that it currently changes PASS/FAIL independently.
+
+```text
+THRESHOLD_VALUES_CHANGED = NO
+QUALIFICATION_FUNCTION_CHANGED = NO
+QUALIFICATION_BEHAVIOR_CHANGED = NO
+BOUNDARY_OPERATOR_CHANGED = NO
+```
 
 ### 7.4 Boundary and zero-denominator handling
 
@@ -346,8 +411,8 @@ This corrective specification is not approved and cannot authorize
 implementation. The historical calibration block has been resolved only by
 the separately governed outcome-blind `CSD-C7-01` through `CSD-C7-08`; it was
 not resolved from any C7 or tracking outcome. The document is ready for an
-independent corrective audit, which remains mandatory before any later
-authorization stage.
+Team B delta audit of the `CSD-C7-09` gate-redundancy clarification, which
+remains mandatory before any later authorization stage.
 
 ## 13. Provenance and validation checklist
 
@@ -360,17 +425,21 @@ INPUT_EVIDENCE_AUDIT_SHA256 = d0074016e6a311b04e53c245e43f954f6c7fba764f5e027555
 THRESHOLD_RECOVERY_AUDIT_PATH = summary_md/experiments/2026-9-20/exp_20260920_001_mdmt_mia_c7_outcome_blind_eligibility_census/C7_THRESHOLD_CALIBRATION_AUTHORITY_RECOVERY_AUDIT.md
 THRESHOLD_RECOVERY_AUDIT_SHA256 = 95064461a4bab68d1c38e2b941f94dd9f3a928df2c10697ce54563ef0fba4d78
 SUPERSEDED_PRE_CENSUS_SPEC_SHA256 = f120a75088910524b1c268bc7258f8386800ed1c1d1caf015c342f22ca5b5797
+REVISION_1_CANDIDATE_COMMIT = 73386375eaccb2fdf6cb20ad8c3a5cced82ff714
+REVISION_1_SPEC_SHA256 = 5b9321d1757934629873c9c1788a2067af8b9c0e3c4214563d18cd70445b5da1
+REVISION_1_RECORD_SHA256 = 126f1e9a6a6b7d32fd0df7d8a1557689c66d7790ad77085cb16068351bde47f1
 PRE_CENSUS_SPEC_PATH = summary_md/experiments/2026-9-20/exp_20260920_001_mdmt_mia_c7_outcome_blind_eligibility_census/C7_PRE_CENSUS_SPECIFICATION.md
 PRE_CENSUS_SPEC_SHA256 = BOUND_BY_EXTERNAL_PROVENANCE_RECORD
 CAPACITY_DERIVATION_AUTHORITY = 24778f49ec9c913aadf95199343b12a75fd4078d
-THRESHOLD_DERIVATION_AUTHORITY = CSD_C7_01_THROUGH_CSD_C7_08
+THRESHOLD_DERIVATION_AUTHORITY = CSD_C7_01_THROUGH_CSD_C7_09
 THRESHOLD_DERIVATION_STATUS = FROZEN_BY_CORRECTIVE_SPECIFICATION_DECISIONS
-SPEC_STATUS = READY_FOR_INDEPENDENT_CORRECTIVE_AUDIT
+SPEC_STATUS = READY_FOR_TEAM_B_DELTA_AUDIT
 ```
 
 Checklist: Contract identity verified; no Research Decision or frozen
 Specification Decision changed; exact grid recomputed; no C7 outcome read; no
 tracking outcome read; no historical quantity created; no rate copied across
 definitions; historical P20 architecture retained as superseded provenance; no
-adaptive grid/threshold action; no invalid evidence coerced to zero; and no H_R
-causal claim.
+adaptive grid/threshold action; no invalid evidence coerced to zero; no H_R
+causal claim; and Revision #2 changes neither threshold values nor
+qualification behavior.

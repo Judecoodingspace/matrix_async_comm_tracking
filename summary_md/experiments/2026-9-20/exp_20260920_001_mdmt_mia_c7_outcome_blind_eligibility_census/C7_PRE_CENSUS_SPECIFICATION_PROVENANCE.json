@@ -1,7 +1,7 @@
 {
-  "schema_version": "C7_PRE_CENSUS_SPECIFICATION_PROVENANCE_V2",
+  "schema_version": "C7_PRE_CENSUS_SPECIFICATION_PROVENANCE_V3",
   "document_role": "C7_PRE_CENSUS_SPECIFICATION_PROVENANCE",
-  "corrective_revision": 1,
+  "corrective_revision": 2,
   "contract_content_authority_commit": "131bc41d22f919be24f63ae5f963ba94538daa19",
   "contract_sha256": "044fe9d3538704bace3faa692ddb24d8bff9b0dd0541ed8ac145dbeaed897ec9",
   "approval_record_commit": "6a8a802828731f20fcfa55a88c8419ca7a72926c",
@@ -10,9 +10,19 @@
   "threshold_recovery_audit_path": "summary_md/experiments/2026-9-20/exp_20260920_001_mdmt_mia_c7_outcome_blind_eligibility_census/C7_THRESHOLD_CALIBRATION_AUTHORITY_RECOVERY_AUDIT.md",
   "threshold_recovery_audit_sha256": "95064461a4bab68d1c38e2b941f94dd9f3a928df2c10697ce54563ef0fba4d78",
   "superseded_pre_census_spec_sha256": "f120a75088910524b1c268bc7258f8386800ed1c1d1caf015c342f22ca5b5797",
-  "corrected_pre_census_specification_path": "summary_md/experiments/2026-9-20/exp_20260920_001_mdmt_mia_c7_outcome_blind_eligibility_census/C7_PRE_CENSUS_SPECIFICATION.md",
-  "corrected_pre_census_specification_sha256": "5b9321d1757934629873c9c1788a2067af8b9c0e3c4214563d18cd70445b5da1",
+  "revision_1_candidate_commit": "73386375eaccb2fdf6cb20ad8c3a5cced82ff714",
+  "revision_1_specification_path": "summary_md/experiments/2026-9-20/exp_20260920_001_mdmt_mia_c7_outcome_blind_eligibility_census/C7_PRE_CENSUS_SPECIFICATION.md",
+  "revision_1_spec_sha256": "5b9321d1757934629873c9c1788a2067af8b9c0e3c4214563d18cd70445b5da1",
+  "revision_1_record_path": "summary_md/experiments/2026-9-20/exp_20260920_001_mdmt_mia_c7_outcome_blind_eligibility_census/C7_PRE_CENSUS_SPECIFICATION_CORRECTIVE_REVISION_1.md",
+  "revision_1_record_sha256": "126f1e9a6a6b7d32fd0df7d8a1557689c66d7790ad77085cb16068351bde47f1",
+  "revision_1_provenance_sha256": "13a6929d18f01c941142c5f70a7b1885d01a7807bdb3d90a5d2ff1d392ef7a05",
+  "revision_2_decision_authority": "CSD-C7-09",
+  "revision_2_reason": "TEAM_B_P1_GATE_REDUNDANCY_CLARIFICATION",
+  "corrected_revision_2_specification_path": "summary_md/experiments/2026-9-20/exp_20260920_001_mdmt_mia_c7_outcome_blind_eligibility_census/C7_PRE_CENSUS_SPECIFICATION.md",
+  "corrected_revision_2_spec_sha256": "37733d47553ef9cd36fb9fef56bf6450bb800d83f69a4eea706cbee9df038299",
+  "corrective_revision_2_record_path": "summary_md/experiments/2026-9-20/exp_20260920_001_mdmt_mia_c7_outcome_blind_eligibility_census/C7_PRE_CENSUS_SPECIFICATION_CORRECTIVE_REVISION_2.md",
+  "corrective_revision_2_record_sha256": "70db89e502a9c9a3ae4322a2387b5693ca2c1600663ade39d947c3c11525fbbb",
   "capacity_derivation_authority_commit": "24778f49ec9c913aadf95199343b12a75fd4078d",
-  "threshold_derivation_authority": "CSD_C7_01_THROUGH_CSD_C7_08",
-  "spec_status": "READY_FOR_INDEPENDENT_CORRECTIVE_AUDIT"
+  "threshold_derivation_authority": "CSD_C7_01_THROUGH_CSD_C7_09",
+  "spec_status": "READY_FOR_TEAM_B_DELTA_AUDIT"
 }
