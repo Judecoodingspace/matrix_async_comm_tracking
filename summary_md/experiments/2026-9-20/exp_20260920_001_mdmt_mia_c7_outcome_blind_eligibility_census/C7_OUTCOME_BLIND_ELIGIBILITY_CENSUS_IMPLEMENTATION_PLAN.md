@@ -1,12 +1,33 @@
 # C7 Outcome-Blind Eligibility Census Implementation Plan
 
-Status: `READY_FOR_INDEPENDENT_PLAN_AUDIT`
+Status: `READY_FOR_INDEPENDENT_CORRECTIVE_DELTA_AUDIT`
 
 This document is an implementation plan only. It does not authorize or contain an implementation, qualification execution, census execution, outcome read, or scientific decision revision.
 
 ## 1 Purpose and authority
 
 The purpose of this plan is to translate the frozen C7 corrective pre-census specification into an auditable implementation path for an outcome-blind, observational eligibility census. The implementation must determine whether an authorized suppressible stale ID-State packet creates a same-window, same-packet-residual opportunity for a later serviceable ID-State packet to complete under conditional accounting, while leaving the real baseline runtime unchanged.
+
+C7 is a testability/mechanistic-opportunity census, not a causal test of `H_R`. Its downstream evidentiary chain is frozen as:
+
+```text
+C7 census
+  -> absolute qualification and selection
+  -> one mechanistic H_R test candidate, if any
+  -> separately governed real-suppression Formal
+  -> only that later Formal may evaluate causal H_R
+```
+
+If zero cells qualify, the current frozen workload family provides no qualified `H_R` test regime: emit `NO_CELL_SELECTED`, stop, and do not expand the grid in the same census. If one or more cells qualify, select exactly one under the frozen hierarchy and request separate governance for a later real-suppression Formal. The selected cell is only a candidate for that later Formal.
+
+```text
+C7_CENSUS_EVALUATES_H_R = NO
+C7_QUALIFICATION_ROLE = TESTABILITY / MECHANISTIC-OPPORTUNITY EVIDENCE
+SELECTED_CELL_ROLE = CANDIDATE_FOR_LATER_REAL_H_R_FORMAL
+SELECTED_CELL_IS_H_R_EVIDENCE = NO
+C7_QUALIFIED != H_R_SUPPORTED
+C7_SELECTED != REAL_REDISTRIBUTION_DEMONSTRATED
+```
 
 The exact authority chain for this plan is:
 
@@ -33,6 +54,21 @@ Change classification for all future work described here:
 | Validation and qualification | Future, separately authorized; qualification remains distinct from census selection |
 | Documentation and provenance | This plan now; later manifests, seals, and audit records only under explicit authorization |
 
+### 1.1 Corrective Revision 1 disposition
+
+Revision parent: `73c8a2b555e6f99ec0d2f431ccf77f43697f5953`. Previous Plan SHA-256: `3d3ab6a349afa4058da4a9138d17acd57aa3c2a6afc420df94319e2e2e8e4a4f`. This revision dispositions exactly the eight third-party findings without a new research decision.
+
+| FINDING_ID | ORIGINAL_ISSUE | DISPOSITION | PLAN_SECTIONS_CHANGED | NEW_RD_REQUIRED | SCIENTIFIC_SEMANTICS_CHANGED | TEST_ADDED_OR_CHANGED | STATUS |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| P1-1 | Whether C7 itself evaluates `H_R` was not explicit. | Propagate the frozen upstream chain: C7 supplies mechanistic testability only; a separately governed real-suppression Formal alone may evaluate causal `H_R`. | 1, 10, 20, 23 | NO | NO | Claim-boundary documentation checks | RESOLVED_BY_UPSTREAM_AUTHORITY_PROPAGATION |
+| P1-2 | No adversarial test prevented future baseline information from entering recipient serviceability intervals. | Add raw-evidence future-state injection negatives independently of source sticky-classification testing. | 4, 6, 8, 11, 12, 17 | NO | NO | `recipient_interval_future_state_injection` and four required fault variants | RESOLVED |
+| P2-1 | Effective service window lacked an exact mechanical boundary. | Define one window as exactly one frame index from frame-open ordinal through frame-close boundary. | 2, 6, 8 | NO | NO | Frame-boundary/domain tests | RESOLVED |
+| P2-2 | Stale removable interval start/end and cross-frame behavior were ambiguous. | Encode governed per-frame start/end rules, persistent classification, and no cross-frame capacity credit. | 2, 4, 6, 11, 17 | NO | NO | Same-frame and persisted-residual interval-boundary tests | RESOLVED |
+| P2-3 | Downstream estimand/claim caveat was insufficiently explicit. | State that qualified/selected C7 opportunity is neither causal `H_R` evidence nor demonstrated real redistribution/tracking improvement. | 1, 20, 23 | NO | NO | Claim-boundary documentation checks | RESOLVED |
+| P2-4 | Real-input MVE embargo did not explicitly cover internal artifacts and logs. | Extend embargo to intermediate/temp/debug/cache/log/exception channels and allow only structural operator-visible status. | 11, 13, 16, 17 | NO | NO | MVE artifact/log/stdout/stderr leakage negatives | RESOLVED |
+| P2-5 | Later MVE slice choice lacked an explicit outcome-blind selection rule. | Require a pre-execution engineering/availability-only selection rationale and forbid prevalence/opportunity-based choice. | 13, 22 | NO | NO | Authorization-schema allowlist/forbidden-rationale tests | RESOLVED |
+| P2-6 | Aggregate nested-count invariants were implicit. | Require `0 <= N_eligible <= N_stale <= N_all` before qualification and add fail-closed mutations. | 6, 8, 11, 17 | NO | NO | Negative/over-nested/duplicate/domain/invalid-window tests | RESOLVED |
+
 ## 2 Frozen scientific boundary
 
 The following requirements are immutable implementation inputs.
@@ -44,6 +80,8 @@ The following requirements are immutable implementation inputs.
 - Binding capacities: `16649`, `20147`, `25456`, `26148`, `28109`, `29620`, `31987`.
 - The census manifest is the immutable Cartesian product of the three pair/frame definitions and seven capacities: exactly 21 cells.
 - Cell identity is a stable tuple `(pair_id, capacity_bytes_per_frame, frame_count)` plus a deterministic `cell_id`.
+- `EFFECTIVE_SERVICE_WINDOW = EXACTLY_ONE_FRAME_INDEX`.
+- Each window begins at that frame's frame-open event ordinal and ends at that frame's frame-close boundary. `N_all`, `N_stale`, and `N_eligible` count only these one-frame windows in the frozen authorized frame domain.
 
 ### 2.2 Exact thresholds
 
@@ -76,9 +114,34 @@ Packet completion is logical whole-packet completion. Partial bytes do not count
 
 The true first service event is defined after FIFO selection and before the first byte of the selected packet is served. Classification is computed exactly once per packet, persisted, and never recomputed from future state. Conditional accounting is not replay: it cannot invoke tracking, reschedule packets, mutate AoI, add predictive logic, add RL, or apply treatment.
 
-### 2.4 Qualification and selection separation
+### 2.4 Governed temporal mechanics
 
-Per-cell qualification is evaluated independently. Cross-cell selection is forbidden until all 21 manifest cells are present, valid, and qualification-complete. Selection then uses this exact ordering:
+OQ-1 is closed by governance clarification. For a candidate ID-State recipient resident in the real baseline FIFO but not yet at its own true first service, serviceability is represented over its FIFO residence by event-bounded intervals derived exclusively from the observed baseline receiver-state trajectory:
+
+```text
+[e_i, e_(i+1)) uses receiver_state after real baseline event e_i
+until the next real baseline receiver-state transition
+```
+
+A real baseline state transition changes serviceability immediately for subsequent query points. No synthetic true-first-service event, permanent arrival-time classification, frame-end-only state, future event, counterfactual receiver state, or conditional replay may supply an interval state.
+
+A stale source is classified only at its own true first-service event after FIFO selection and before its first service byte. Once classified `SUPPRESSIBLE_STALE`, the classification persists with that same unfinished logical packet. Its removable accounting interval is per frame:
+
+- if classification occurs in the current frame, start at the valid true-first-service stale-classification event;
+- if classification occurred in an earlier frame and its unfinished residual obligation is present in the current baseline trajectory, start at current frame open or the first current-frame presence of that persisted residual obligation;
+- end at the earlier of baseline exhaustion/completion of that packet's relevant logical service obligation or frame close.
+
+```text
+STALE_CLASSIFICATION_CAN_PERSIST_ACROSS_FRAMES = YES
+CAPACITY_CREDIT_CAN_CARRY_ACROSS_FRAMES = NO
+CURRENT_FRAME_REMOVABLE_WORK = only unfinished stale logical obligation present in the current-frame frozen baseline service trajectory
+```
+
+Removed accounting propagates strictly through frozen baseline FIFO order. Every preceding valid packet consumes available accounting before a later packet can receive any residual; there is no preferred-recipient assignment, FIFO skip, reranking, or rescheduling. An opportunity exists only where recipient serviceability interval, same-frame stale-removable interval, and FIFO-reachable capacity temporally overlap, and only when baseline recipient completion is `NO` while conditional completion is `YES` with the baseline receiver-state/serviceability trajectory, arrivals, FIFO/event order, and frame budget fixed.
+
+### 2.5 Qualification and selection separation
+
+Per-cell qualification is evaluated independently. Cross-cell selection is forbidden until all 21 manifest cells are present, valid, and qualification-complete. The selector reconstructs the qualified subset itself. If that subset is empty, it emits `NO_CELL_SELECTED`, emits no ranking winner, does not expand the grid, and stops. Otherwise selection uses this exact ordering inside the qualified subset:
 
 1. maximum `N_eligible`;
 2. on count ties, Pareto comparison of the exact global and conditional rates;
@@ -107,7 +170,7 @@ No weighted score is permitted.
 | `scripts/run_mdmt_mia_c6_pre_service_semantic_suppression.py` | Demonstrates exclusive root creation, launch authorization, subprocess execution, disk reread, validation, inventory, and seal. | Packaging pattern only; no C6 treatment semantics or result constants |
 | `src/tracking/packet_census_run_tools.py` | Provides strict JSON/JSONL read patterns, canonical hashing, atomic writes, manifest freeze/verify, and pollution checks. | Reuse/refactor generic utilities only; do not reuse historical manifest constants |
 
-The current C4 ledger proves many byte and identity invariants but does not yet record every ordered FIFO snapshot or complete event-local serviceability evidence for every possible later ID-State recipient. This is the principal implementation gap. It must be closed observationally without changing the binding server's scheduling or state transitions.
+The current C4 ledger proves many byte and identity invariants but does not yet record every ordered FIFO snapshot, receiver-state transition, or governed serviceability interval for every possible later ID-State recipient. This is the principal implementation gap. Governance has fixed the required representation as observed-baseline trajectory intervals; implementation must add that evidence observationally without changing the binding server's scheduling or state transitions.
 
 ### 3.2 Paths inspected during plan authoring
 
@@ -145,16 +208,16 @@ No experiment output, tracking outcome, C7 outcome, or C6 formal scientific outc
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Authority lock and 21-cell immutable manifest | Launcher patterns; canonical hash utilities | `scripts/run_mdmt_mia_c7_outcome_blind_census.py` `PROPOSED_NEW: build_frozen_manifest`, `verify_launch_authorization` | Frozen authority hashes, pair/frame table, capacities | `C7_CENSUS_MANIFEST.json` | Rebuild Cartesian product and hash; reject additions/omissions/order drift | Manifest unit + mutation negatives | Abort before child launch |
 | Binding finite FIFO baseline | `_C4SharedLogicalServer` | Existing `admit`, `_start_next`, `_serve`, `_complete_current` | Real packet arrivals and capacity | Baseline event ledger | Reconcile bytes, order, sequence, digest, budget | Existing C4 tests plus C7 path contract | Cell invalid |
-| Ordered event and FIFO snapshot | C4 event ordinal and queue | `src/tracking/mdmt_mia_async_deadline_runtime.py` passive `PROPOSED_NEW: _notify_c7_event` | Immutable event data and queue view | Ordered per-event snapshots | Check ordinal continuity and transition legality | Queue corruption negatives | Window/cell invalid |
+| Ordered event, FIFO, and receiver-state trajectory | C4 event ordinal and queue | `src/tracking/mdmt_mia_async_deadline_runtime.py` passive `PROPOSED_NEW: _notify_c7_event` | Immutable event data, queue view, and real baseline state transitions | Ordered per-event snapshots and event-bounded receiver-state intervals | Check ordinal continuity, transition legality, and no-lookahead interval bounds | Queue corruption and future-state injection negatives | Window/cell invalid |
 | True first service after select/before byte | `_start_next` then `_serve`; C5 timing pattern | Passive callback to `PROPOSED_NEW: C7CensusObserver.observe_true_first_service` | Packet, pre-byte residual, receiver snapshot | Once-only classification record | Verify no prior served bytes; uniqueness; packet digest | Timing boundary unit tests | Cell invalid on absent/duplicate/late record |
 | Sticky authorized stale proof | Existing pure applicability concepts | `src/tracking/mdmt_mia_c7_census.py` `PROPOSED_NEW: classify_authorized_stale_once` | ID-State payload, event-local state, authority rule ID | Predicate inputs, booleans, reason code | Recompute from raw fields; ignore producer label | stale/non-stale/future-state mutation cases | Invalid evidence, never inferred zero |
-| Same-packet residual linkage | C4 `remaining_service_bytes`, packet ID/digest | `PROPOSED_NEW: derive_same_packet_release` | True-first record and baseline service events | source packet ID/digest, pre/post residual, released bytes | Cross-check all bytes against that packet's ledger | cross-packet substitution negative | Window invalid |
-| Recipient type and serviceability | Packet type; baseline state snapshots | `PROPOSED_NEW: evaluate_recipient_serviceability` | Later immutable FIFO entry and event-local baseline snapshot | packet type, reason-coded serviceability proof | Recompute type and predicate fields | Supplement/local/homography rejection; serviceability cases | Window invalid if proof absent |
+| Same-packet residual and removable-interval linkage | C4 `remaining_service_bytes`, packet ID/digest | `PROPOSED_NEW: derive_same_packet_release` | True-first record, persisted stale identity, frame-open presence, and baseline service events | source packet ID/digest, pre/post residual, per-frame start/end, released bytes | Cross-check all bytes and interval bounds against that packet's ledger; reject cross-frame credit | cross-packet, late-start, overrun, and cross-frame-carry negatives | Window invalid |
+| Recipient type and trajectory serviceability | Packet type; baseline state snapshots/transitions | `PROPOSED_NEW: evaluate_recipient_serviceability` | Later immutable FIFO entry and event-bounded observed baseline receiver-state trajectory | ID-State type, interval bounds, source event ordinals, raw applicability/serviceability fields | Recompute intervals from real transitions; reject future/counterfactual/synthetic-event evidence | type cases plus `recipient_interval_future_state_injection` variants | Window invalid if proof absent or temporally invalid |
 | Baseline incomplete due binding capacity | Frame budget, residual, queue, completion ledger | `PROPOSED_NEW: prove_capacity_caused_incompletion` | Frame close ledger and recipient residual | budget exhaustion, bytes needed, baseline completion=false | Check capacity conservation and distinguish waiting-only | capacity exhausted vs waiting-only cases | Predicate false or invalid if evidence incomplete |
-| Conditional accounting only | No existing treatment-safe C7 evaluator | `src/tracking/mdmt_mia_c7_census.py` `PROPOSED_NEW: evaluate_window_accounting` | Frozen baseline ledger/snapshots only | accounting steps, released/allocated bytes, no mutation proof | Independently recompute from raw baseline evidence | determinism, no replay, no state mutation tests | Window invalid on non-conservation or changed order |
+| Conditional accounting only | No existing treatment-safe C7 evaluator | `src/tracking/mdmt_mia_c7_census.py` `PROPOSED_NEW: evaluate_window_accounting` | Frozen baseline ledger, FIFO order, state/serviceability intervals, and removable intervals only | stepwise FIFO propagation, released/consumed/residual bytes, overlap proof, no-mutation proof | Independently recompute every FIFO hop and temporal overlap from raw baseline evidence | intervening-packet consumption, no-skip, determinism, no-replay, no-state-mutation tests | Window invalid on non-conservation, changed order, or direct recipient assignment |
 | Same-window completion flip | C4 logical completion semantics | `PROPOSED_NEW: evaluate_completion_flip` | Baseline residual and conditional allocation | baseline complete=false, conditional complete=true, exact logical boundary | Recompute residual arithmetic; partial is false | exact/one-byte-short/partial cases | Predicate false; invalid on inconsistent arithmetic |
 | Conservation completeness | `seal_evidence` | Existing seal plus C7 validator invariants | Per-event and per-window bytes/work | baseline and conditional conservation blocks | Full independent sum/reconciliation | missing/duplicate/corrupt event negatives | Cell invalid |
-| Valid zero vs invalid | Strict reader patterns | `PROPOSED_NEW: aggregate_cell` | Complete validated window set | validity enum, counts including zero, invalid reason list | Require complete expected frame domain before counts | valid-zero and missing-evidence tests | Invalid never serialized as zero-qualified |
+| Valid zero, nested counts, and invalid | Strict reader patterns | `PROPOSED_NEW: aggregate_cell` | Complete validated one-frame window set | validity enum, counts including zero, nesting attestation, invalid reason list | Require expected frame-domain bijection and `0 <= N_eligible <= N_stale <= N_all` before qualification | valid-zero, negative/over-nested/duplicate/domain/invalid-window tests | Invalid never serialized as zero-qualified |
 | Exact thresholds | None C7-specific | `PROPOSED_NEW: qualify_cell` | integer `N_all`, `N_stale`, `N_eligible` | four gate booleans, including `T_count` and `T_den`, and exact cross-products | Recompute integer formulas | boundary vectors for 4/5, 19/20, 59/60, 3/4 and exact passes | Qualification invalid on bad denominators/schema |
 | Qualification before selection | Existing packaging pattern only | `PROPOSED_NEW: validate_all_cells_qualified` | frozen manifest and 21 cell qualification records | completeness record | Exact manifest bijection | missing/extra/duplicate cell tests | No selection artifact written |
 | Count/Pareto/stable selection | None C7-specific | `PROPOSED_NEW: select_qualified_cell` | 21 valid qualification records | separate `C7_SELECTION.json` with comparison trace | Independent sort/Pareto recomputation | count, Pareto, incomparable/stable tie cases | Fail closed on ambiguity or weights |
@@ -162,7 +225,7 @@ No experiment output, tracking outcome, C7 outcome, or C6 formal scientific outc
 | Atomic writes and resume | `_atomic_write`, exclusive writes | C7 writer `PROPOSED_NEW: write_cell_transaction` | validated staged artifacts | temp-to-final commit marker, digest inventory | Verify marker last and all digests | interruption/resume tests | Quarantine/recompute incomplete cell |
 | Authority/config/provenance sealing | Generated/runtime manifests and C6 packaging pattern | `PROPOSED_NEW: seal_census_package` | source/config/input/output/schema/validator hashes | canonical inventory and seal | Independent seal reproduction | tamper every binding class | Package invalid |
 
-The mapping is complete at plan level: every frozen predicate, aggregation rule, qualification rule, selection rule, and firewall constraint has an implementation point, evidence field family, validator action, test family, and fail-closed behavior. One event-timing issue remains explicitly governed in Section 22; it is not silently resolved here.
+The mapping is complete at plan level: every frozen predicate, aggregation rule, qualification rule, selection rule, and firewall constraint has an implementation point, evidence field family, validator action, test family, and fail-closed behavior. The former OQ-1 event-timing issue is closed by the governed observed-baseline trajectory-interval model in Sections 2 and 22.
 
 ## 5 Proposed implementation architecture
 
@@ -207,15 +270,16 @@ All schemas are versioned, strict, and reject unknown fields unless a future ver
 Each window record must include:
 
 - schema version, run/cell/pair/capacity/frame identities;
-- frame-open and frame-close event ordinal bounds;
+- the exact one-frame window identity, frame-open event ordinal, and frame-close boundary;
 - binding budget, bytes served, unused bytes, and backlog/residual totals;
 - ordered arrivals and ordered FIFO/in-service snapshots with packet ID, packet sequence, packet type, sender/recipient, wire digest, wire bytes, residual bytes, and event ordinal;
 - baseline service events with bytes before/served/after, true-first-service flag, completion flag, and logical completion event;
 - true-first-service stale proof with raw predicate inputs, rule/version identity, classification event, and a once-only persistence key;
-- same-packet release proof with the stale source packet ID/digest and exact residual/service arithmetic;
-- later recipient proof with ID-State type, ordering relation, event-local serviceability inputs/reason, baseline residual, and baseline logical completion state;
+- same-packet release proof with the stale source packet ID/digest, classification frame, current-frame presence, exact per-frame removable start/end event, and residual/service arithmetic;
+- every real baseline receiver-state transition needed to derive event-bounded recipient serviceability intervals, including source event ordinal and raw applicability fields;
+- later recipient proof with ID-State type, ordering relation, queried interval/event, event-local serviceability inputs/reason, baseline residual, and baseline logical completion state;
 - capacity-caused-incompletion proof distinguishing exhausted binding capacity from mere FIFO waiting;
-- conditional-accounting steps over immutable baseline order, with released, allocated, remaining, and recipient residual bytes;
+- conditional-accounting steps over immutable baseline order, with every intervening packet, temporal-overlap proof, consumed/released/remaining bytes, and recipient residual bytes;
 - the individual `WINDOW_ELIGIBLE` predicates, an evidence-complete bit, and reason-coded failure/invalid states;
 - baseline and conditional conservation equations;
 - a recursive key inventory attesting that forbidden outcome fields are absent.
@@ -227,9 +291,9 @@ Producer-derived booleans are conveniences, not authority. Raw evidence sufficie
 Four artifact families remain distinct:
 
 1. `windows.jsonl`: raw per-window baseline and accounting evidence.
-2. `cell_aggregate.json`: validity, expected/observed frame domain, `N_all`, `N_stale`, `N_eligible`, exact numerator/denominator pairs, and conservation totals.
-3. `cell_qualification.json`: `T_count`, global, and conditional threshold booleans plus integer cross-products and overall qualification.
-4. `C7_SELECTION.json`: written only after all 21 cells validate and qualify; includes the ordered comparison trace and no weighted score.
+2. `cell_aggregate.json`: validity, expected/observed frame domain, `N_all`, `N_stale`, `N_eligible`, nested-count attestation, exact numerator/denominator pairs, and conservation totals.
+3. `cell_qualification.json`: the four named booleans `count_pass`, `denominator_pass`, `global_pass`, and `conditional_pass`, their exact threshold identities and integer cross-products, plus overall qualification.
+4. `C7_SELECTION.json`: written only after all 21 cells validate and are qualification-evaluated; selection then operates only on the independently reconstructed qualified subset and includes the ordered comparison trace with no weighted score.
 
 Required denominator handling:
 
@@ -237,6 +301,7 @@ Required denominator handling:
 - `N_stale` is the count of those windows containing the exact authorized stale predicate.
 - `N_eligible` is the count satisfying every frozen eligibility predicate.
 - If `N_stale == 0`, the conditional rate is recorded as `N/A`, its gate is false, and the separately evaluated `T_den` gate is also false. The cell remains a valid measured cell if all evidence is complete.
+- Before any qualification gate runs, aggregation and independent validation must prove `0 <= N_eligible <= N_stale <= N_all`, an exact bijection with the authorized one-frame domain, no duplicate contributing window, and no invalid window included in valid counts. Negative counts, `N_stale > N_all`, `N_eligible > N_stale`, frame-domain mismatch, duplication, or invalid-window inclusion makes the cell invalid.
 
 ## 7 Manifest / provenance / sealing
 
@@ -265,13 +330,14 @@ The validator is fail closed and operates on files reread from disk, not in-memo
 3. exact manifest bijection and authorized frame-domain checks;
 4. packet identity, wire digest, sequence, and event ordinal reconciliation;
 5. FIFO transition and true-first-service timing/uniqueness checks;
-6. independent stale, same-packet, recipient type/serviceability, capacity-cause, and completion-flip recomputation;
+6. independent stale, same-packet, recipient type/serviceability-interval, removable-interval, temporal-overlap, capacity-cause, and completion-flip recomputation;
 7. baseline and conditional byte/work conservation;
-8. independent `N_all`, `N_stale`, `N_eligible`, threshold, and cross-product recomputation;
-9. valid-zero versus invalid separation;
-10. forbidden outcome field/path/environment/static-schema scans;
-11. atomic terminal marker, inventory, digest, and seal verification;
-12. for package selection, independent all-21 completeness and exact count/Pareto/stable-order recomputation.
+8. no-lookahead validation that every recipient interval state comes from the latest real baseline transition at or before its query point, with event ordinal continuity and rejection of future snapshot/applicability/transition evidence;
+9. independent `N_all`, `N_stale`, `N_eligible`, frame-domain bijection, nesting, threshold, and cross-product recomputation before qualification;
+10. valid-zero versus invalid separation;
+11. forbidden outcome field/path/environment/static-schema scans;
+12. atomic terminal marker, inventory, digest, and seal verification;
+13. for package selection, independent all-21 completeness, reconstruction of the qualified subset, zero-qualified stop behavior, and exact count/Pareto/stable-order recomputation.
 
 The validator rejects producer labels that disagree with raw evidence. A missing record, duplicate packet classification, unknown packet type, discontinuous ordinal, changed FIFO order, cross-packet byte release, partial-as-complete claim, outcome key, stale digest, extra cell, or unexpected file invalidates the affected cell or whole package as appropriate.
 
@@ -301,11 +367,14 @@ Selection is a separate command/function and cannot run until the validator prov
 
 Algorithm:
 
-1. retain the maximum `N_eligible` set;
-2. compare tied cells using exact rational cross multiplication on global and conditional numerator/denominator pairs;
-3. remove a tied cell only when another is no worse on both rates and strictly better on at least one;
-4. if a Pareto set remains, apply stable pair order `P23`, `P44`, `P66`, then the frozen ascending capacity order, then lexical stable `cell_id`;
-5. emit the full comparison trace, candidate set after each step, and selected manifest identity.
+1. assert exactly 21 authorized cells are present and every cell is valid and qualification-evaluated;
+2. independently reconstruct `qualified_candidates = [cell for cell in cells if CELL_QUALIFIED == YES]` from raw counts and the four gates;
+3. if the qualified subset is empty, emit `NO_CELL_SELECTED`, emit no ranking winner, do not expand the grid, and stop;
+4. otherwise retain only qualified candidates with the maximum `N_eligible`;
+5. compare only that count-tied set using exact rational cross multiplication on global and conditional numerator/denominator pairs;
+6. remove a count-tied cell only when another is no worse on both rates and strictly better on at least one;
+7. if a Pareto tradeoff/tie remains, apply stable pair order `P23`, `P44`, `P66`, then the frozen ascending capacity order, then lexical stable `cell_id`;
+8. emit the full comparison trace, qualified subset, candidate set after each step, and selected manifest identity.
 
 The implementation contains no weight parameter, score field, normalization, or configurable tie-break. Static tests reject those schema keys.
 
@@ -316,16 +385,23 @@ The required four-layer pyramid is:
 ### Layer 1: unit tests
 
 - exact stale predicate and once-only persistence;
+- exact one-frame window boundaries from frame-open ordinal through frame-close and authorized-domain bijection;
 - true-first-service timing boundary;
+- observed-baseline recipient serviceability interval construction and transition boundaries;
+- `recipient_interval_future_state_injection`, distinct from source sticky classification, covering future receiver-state snapshot, future applicability field, future serviceability transition, and event-ordinal mismatch/lookahead;
 - same-packet residual linkage;
+- same-frame removable-interval start/end, persisted prior-frame residual start, and no cross-frame capacity credit;
 - permitted recipient type and serviceability proof;
 - capacity-caused incomplete versus waiting-only;
+- strict FIFO propagation through intervening packets and temporal-overlap gating;
 - logical completion versus partial bytes;
 - accounting conservation and immutable ordering/state inputs;
-- valid zero versus invalid;
+- valid zero versus invalid and `0 <= N_eligible <= N_stale <= N_all` with all fail-closed count/domain mutations;
 - exact qualification integer boundaries;
-- count/Pareto/stable selection;
+- qualified-subset reconstruction, zero-qualified no-selection/stop, and count/Pareto/stable selection;
 - manifest, hash, schema, and forbidden-key validation.
+- MVE structural-status allowlist across artifacts/temp/debug/cache/log/stdout/stderr/exception/diagnostic channels, with injected count/rate/qualification/ranking leakage;
+- MVE authorization rationale allowlist and rejection of outcome-informed slice-selection fields.
 
 ### Layer 2: tiny synthetic E2E
 
@@ -352,15 +428,19 @@ Required deterministic cases:
 - one-byte-short: conditional recipient remains incomplete;
 - wrong recipient type: Supplement/local/homography cannot qualify;
 - waiting-only: capacity-cause predicate remains false;
-- future-state mutation: sticky first-service class is unchanged;
+- source future-state mutation: sticky first-service stale class is unchanged;
+- recipient future-state injection: a query at `e_k` rejects receiver-state, applicability, or serviceability-transition evidence from `e_(k+1)` or later, including ordinal mismatch/lookahead; eligibility is not derivable and the affected window/cell fails closed under the schema contract;
+- interval boundaries: same-frame classification, prior-frame persisted residual, obligation exhaustion, frame close, and forbidden cross-frame capacity credit;
+- FIFO propagation: an intervening valid packet consumes released accounting before a later recipient;
 - fault injection: missing event, duplicate classification, altered digest, cross-packet release, reordered FIFO, partial-as-complete, outcome-key injection, and interrupted write;
+- aggregate fault injection: negative count, `N_stale > N_all`, `N_eligible > N_stale`, duplicate window, frame-domain mismatch, and invalid window included as valid;
 - resume: an already sealed matching cell is verified and skipped; an incomplete staged cell is quarantined and recomputed.
 
 The fixture must demonstrate that the exact same launcher/child/wrapper/runtime/writer/validator components are used by later production execution. Only the synthetic packet source and tiny frame domain differ.
 
 ## 13 Outcome-blind MVE
 
-The MVE is a separately authorized path qualification step, not a scientific census or selection. Before it runs, its launch record must bind one registered pair, an explicitly authorized tiny frame prefix, one frozen capacity, all source/schema/validator hashes, and an isolated `MVE_ONLY` output root. Its cell identity is forbidden from the 21-cell manifest.
+The MVE is a separately authorized path qualification step, not a scientific census or selection. `MVE_IS_CENSUS_CELL=NO`, `MVE_SCIENTIFIC_INTERPRETATION=FORBIDDEN`, `MVE_SELECTION=FORBIDDEN`, and `MVE_CELL_QUALIFICATION=FORBIDDEN`. Before it runs, its launch record must bind one registered pair, an explicitly authorized tiny frame prefix, one frozen capacity, all source/schema/validator hashes, and an isolated `MVE_ONLY` output root. Its cell identity is forbidden from the 21-cell manifest.
 
 Success criteria:
 
@@ -373,7 +453,9 @@ Success criteria:
 - validator and seal reproduction pass;
 - deliberate negative controls fail closed.
 
-The exact real pair/frame prefix must be named by the later MVE authorization; this plan does not silently choose it.
+The MVE embargo covers intermediate artifacts, temporary files, debug output, stdout/stderr, operator-visible logs, exception dumps, diagnostic tables, and cached intermediate summaries. Operator-visible output is allowlisted to structural/path status such as `PATH_VALID`, `SCHEMA_VALID`, `VALIDATOR_PASS`, `FIREWALL_PASS`, `SEAL_REPRODUCED`, and `DETERMINISTIC_RERUN_PASS`. It must not expose `N_eligible`, `N_stale`, either opportunity frequency, `would_qualify`, selected/not-selected state, cell ranking, or preliminary scientific interpretation. Mechanically necessary internal values must remain access-controlled, non-authoritative, and unavailable as an informal pre-census observation channel.
+
+The exact real pair/frame prefix must be named by the later MVE authorization; this plan does not silently choose it. The authorization must record its selection criterion before execution. Permitted criteria are engineering/availability only: smallest available valid prefix, runtime affordability, input availability, path coverage, deterministic fixture compatibility, or operational convenience. Prior or preliminary stale prevalence, recipient coexistence, `N_stale`, `N_eligible`, opportunity/conditional rates, `would_qualify`, or scientific desirability are forbidden selection inputs.
 
 ## 14 Qualification path
 
@@ -426,6 +508,8 @@ Controls:
 - exception text is sanitized to avoid dumping arbitrary payloads;
 - output root pollution and unexpected file checks fail closed;
 - MVE and later launch preflight confirm forbidden outcome files are absent and never recover them through Git/history/other worktrees;
+- MVE stdout/stderr, logs, temp/debug/cache artifacts, exception dumps, and diagnostic tables pass an allowlist scan that exposes structural/path status only and rejects census counts, rates, qualification/selection hints, rankings, or interpretation;
+- MVE authorization validation rejects any slice-selection rationale based on stale prevalence, recipient coexistence, opportunity counts/rates, qualification likelihood, or scientific desirability;
 - selection consumes only validated C7 count/rate records.
 
 ## 17 Risk register
@@ -433,18 +517,22 @@ Controls:
 | Risk | Prevention | Detection | Fail-closed response | Required test |
 | --- | --- | --- | --- | --- |
 | 1. Wrong first-service timing | Hook after FIFO select, before byte deduction | Residual equals full pre-service packet; no prior service event | Invalidate cell | boundary instrumentation test |
-| 2. Future-state reclassification | Once-only packet key and immutable record | duplicate/classification-event scan | Invalidate cell | future-state mutation test |
+| 2. Source future-state reclassification | Once-only packet key and immutable record | duplicate/classification-event scan | Invalidate cell | source sticky-class future-state mutation test |
+| 2a. Recipient interval lookahead | Construct intervals only from ordered real baseline state transitions at/before query | Independent raw ordinal/state provenance reconstruction | Invalidate affected window/cell | `recipient_interval_future_state_injection` with all four fault variants |
 | 3. Cross-packet residual attribution | Bind release to packet ID + wire digest | Ledger reconciliation | Invalidate window/cell | substituted packet negative |
 | 4. Ineligible recipient type | Explicit ID-State enum allowlist | Independent packet decode | Predicate false or invalid on unknown | Supplement/local/homography cases |
-| 5. Serviceability timing ambiguity | Persist event-local raw state and rule ID; governance gate in Section 22 | Validator recomputation and audit | Block milestone M3 | queued-unserved recipient timing cases |
+| 5. Serviceability interval misconstruction | Apply the governed observed-baseline trajectory-interval model in Section 2 | Validator recomputation from raw real transitions | Invalidate affected window/cell | queued-unserved recipient interval-boundary cases |
+| 5a. Removable interval or cross-frame credit drift | Bind per-frame start/end and current-frame stale obligation; reset credit at frame close | Packet/frame ledger and interval-bound checks | Invalidate window/cell | current-frame, persisted-residual, exhaustion, close, and carryover negatives |
 | 6. Waiting mistaken for capacity loss | Require exhausted budget plus exact residual/cause proof | Budget/work equation | Predicate false | waiting-only case |
 | 7. Conditional accounting becomes replay/treatment | Pure function over frozen evidence; no runtime callback/import | dependency/static scan and baseline digest comparison | Abort qualification | mutation/reordering spies |
 | 8. Partial bytes counted complete | Logical residual must reach exactly zero | Independent arithmetic | Predicate false/invalid | one-byte-short test |
 | 9. Valid zero confused with missing evidence | Explicit validity enum and expected frame bijection | completeness scan | Invalid, never zero | valid-zero vs missing-window test |
 | 10. Threshold drift/float error | Literal frozen integers and cross multiplication | independent recomputation | Qualification invalid | exact boundary vectors |
+| 10a. Count nesting/domain corruption | Validate one-frame domain bijection and nested counts before gates | Independent aggregate reconstruction | Cell invalid before qualification | negative, over-nested, duplicate, domain, invalid-window mutations |
 | 11. Premature/weighted selection | Separate command gated on all 21; schema forbids weights | manifest bijection and key scan | No selection output | missing-cell/weight-key tests |
 | 12. Provenance or generated-source drift | Bind all source/config/input/schema/validator hashes | disk reread + seal reproduction | Reject launch/package | one-hash-at-a-time tamper matrix |
 | 13. Outcome contamination | allowlists, strict schema, dependency/key/path/environment scans | static + runtime firewall validator | Abort, no authoritative seal | injected outcome field/path/env/import cases |
+| 13a. MVE informal outcome channel | Structural-status-only output allowlist across all internal/operator-visible channels | Scan artifacts/logs/stdout/stderr/temp/cache/exception content | Abort MVE qualification; no seal | forbidden count/rate/qualification/ranking leakage matrix |
 
 ## 18 Milestones
 
@@ -453,7 +541,7 @@ Controls:
 | M0 | Authority and change-boundary lock | Independent plan audit accepts authority chain and classifications |
 | M1 | Declarative schema, manifest, and frozen constants | Schema review proves every required field and exact rule is representable |
 | M2 | Passive runtime observation hooks | Existing C4 behavior tests unchanged; hook timing/immutability proven |
-| M3 | Predicate and sticky classification core | All predicate unit tests pass; Section 22 governance item resolved |
+| M3 | Predicate, sticky classification, and governed recipient-interval core | All source and recipient temporal predicate tests pass with OQ-1 closed |
 | M4 | Conditional accounting and conservation | Pure accounting and independent recomputation agree on exhaustive fixtures |
 | M5 | Aggregation and exact four-gate qualification | Valid-zero/invalid separation and all integer boundary vectors pass |
 | M6 | Cross-cell selection | All-21 gate and count/Pareto/stable ordering pass exhaustive tie cases |
@@ -473,7 +561,7 @@ Every milestone requires separate implementation authorization. “Scientific re
 | M0 | Authority inventory and implementation branch metadata only | Frozen spec edits; runtime/code changes | hashes, clean base, audit checklist | NO | NO | authority accepted |
 | M1 | New C7 schema/constants module and schema tests | runtime behavior; launcher execution | schema/manifest/threshold unit tests | NO | NO | representational completeness |
 | M2 | Minimal additive edits to async deadline runtime; hook tests | C6 treatment reuse; FIFO/state changes | existing C4 regressions + timing tests | NO | NO | behavioral parity |
-| M3 | C7 predicate functions/tests | accounting replay; outcome imports | exhaustive predicate cases | NO | NO | governance item resolved and tests pass |
+| M3 | C7 predicate and observed-trajectory interval functions/tests | accounting replay; synthetic first-service events; future/counterfactual state; outcome imports | exhaustive source/recipient temporal predicate cases | NO | NO | governed interval model and tests pass |
 | M4 | Pure conditional-accounting functions/tests | packet reschedule, AoI/predictive/RL, treatment | conservation/determinism/mutation tests | NO | NO | accounting semantics proven |
 | M5 | Aggregate and qualification functions/tests | selection; launcher execution | valid-zero/invalid + four-gate exact boundaries | NO | NO | exact qualification complete |
 | M6 | Selection function/schema/tests | selection before all 21 valid/qualified; weights | count/Pareto/stable-order exhaustive cases | NO | NO | deterministic selection contract |
@@ -496,11 +584,13 @@ No milestone may modify `EXPERIMENT_CONTRACT.md`, either corrective specificatio
 - No reuse of C6 suppression as conditional accounting.
 - No intervention, replay, rescheduling, AoI mutation, predictive method, RL policy, adaptive selector, or full OOSM framework design.
 - No scientific interpretation of whether C7 will pass.
+- No claim that a qualified C7 cell supports causal `H_R`, demonstrates real intervention redistribution, improves tracking, decreases ID switches, or improves IDF1/MOTA/HOTA-like outcomes.
+- No design or execution of the separately governed later real-suppression `H_R` Formal.
 - No independent audit performed by the plan author.
 
 ## 21 Implementation authorization boundary
 
-This plan does not authorize implementation. After its dedicated commit, the only permitted next step is `INDEPENDENT_C7_IMPLEMENTATION_PLAN_AUDIT`.
+This plan does not authorize implementation. `IMPLEMENTATION_AUTHORIZED=NO`. After this corrective commit, the only permitted next step is `INDEPENDENT_C7_CORRECTIVE_PLAN_DELTA_AUDIT`.
 
 Implementation may begin only after an independent audit explicitly approves this exact plan commit or an audited corrective plan supersedes it. Implementation authorization must name the exact implementation base, allowed files, allowed milestone(s), verification commands, outcome-firewall preflight, and stopping condition. Authorization for one milestone does not imply authorization for later milestones, MVE, qualification, census, or selection.
 
@@ -508,24 +598,34 @@ Any implementation discovery classified as `POTENTIAL_SPEC_CONFLICT` must stop a
 
 ## 22 Open engineering questions
 
+OQ-1 is not open and is not a potential specification conflict:
+
+```text
+OQ1_STATUS = CLOSED_BY_GOVERNANCE_CLARIFICATION
+OQ1_REQUIRES_NEW_RD = NO
+RECIPIENT_SERVICEABILITY_MODEL = OBSERVED_BASELINE_TRAJECTORY_INTERVALS
+SYNTHETIC_FIRST_SERVICE_EVENT = FORBIDDEN
+FUTURE_STATE = FORBIDDEN
+COUNTERFACTUAL_REPLAY = FORBIDDEN
+```
+
 | ID | Classification | Question | Required resolution / gate |
 | --- | --- | --- | --- |
-| OQ-1 | `POTENTIAL_SPEC_CONFLICT` / `NEEDS_GOVERNANCE_REVIEW` | For a later ID-State packet still queued and never selected by the baseline before same-window capacity exhaustion, which exact baseline event supplies its event-local serviceability proof? Existing code has no true-first-service event for it. | Independent plan audit/governance must bind the precise event and raw state fields before M3. The implementation must not infer from future state or invent a replay event. |
 | OQ-2 | `IMPLEMENTATION_DETAIL` | Is the existing generated-runtime manifest/cache invalidation sufficient when the runtime digest changes, or is an explicit C7 cachebuster field needed? | Resolve during M7 path tests; bind generated source digest either way. |
-| OQ-3 | `IMPLEMENTATION_DETAIL` | Which registered pair and exact tiny frame prefix will be used for the non-scientific MVE? | Later MVE authorization must name it; do not choose during implementation. |
+| OQ-3 | `IMPLEMENTATION_DETAIL` | Which registered pair and exact tiny frame prefix will be used for the non-scientific MVE? | Later MVE authorization must name it before execution using documented engineering/availability-only selection criteria; do not choose during implementation. |
 | OQ-4 | `IMPLEMENTATION_DETAIL` | Exact CLI spelling for resume/quarantine/dry-run modes. | Freeze in M5/M7 interface tests without changing atomicity semantics. |
 
-Open engineering item count: `4`.
+Open engineering item count: `3`.
 
-Potential specification conflict count: `1`.
+Potential specification conflict count: `0`.
 
-The potential conflict is localized and explicitly gates implementation; it does not alter or weaken the frozen specification in this plan.
+The OQ-1 closure is a governance clarification of the frozen mechanics, not a new research decision or changed scientific semantic.
 
 ## 23 Independent audit handoff
 
 The independent auditor should receive:
 
-- this exact plan commit and clean diff from `0eda32c58871c1ec4b5b194c0c33608d7dd2a777`;
+- this exact corrective Plan commit, its clean delta from parent Plan commit `73c8a2b555e6f99ec0d2f431ccf77f43697f5953`, and the full Plan lineage from freeze `0eda32c58871c1ec4b5b194c0c33608d7dd2a777`;
 - the frozen authority files and verified hashes from Section 1;
 - the complete specification-to-code traceability table;
 - the architecture and producer/validator separation;
@@ -533,7 +633,7 @@ The independent auditor should receive:
 - the four-layer test plan, risk register, and M0–M12 boundaries;
 - the complete inspected-path inventory;
 - explicit confirmation that no forbidden outcome material was read;
-- OQ-1 for an explicit governance disposition.
+- the eight-finding Corrective Revision 1 disposition table and OQ-1 closed-state encoding.
 
 Audit questions:
 
@@ -543,7 +643,8 @@ Audit questions:
 4. Is conditional accounting demonstrably distinct from replay or treatment?
 5. Are valid zero, invalid evidence, qualification, and selection cleanly separated?
 6. Are production-path parity, atomicity, resume, provenance, and outcome firewall sufficiently fail closed?
-7. Is OQ-1 resolvable without changing frozen scientific semantics, or must governance issue a specification clarification?
+7. Does the corrected Plan faithfully encode the already-issued OQ-1 governance clarification without reopening it or creating a new RD?
+8. Is the upstream `C7 -> candidate -> separately governed real Formal -> causal H_R evaluation` claim boundary explicit and preserved?
 
 The author must not perform this independent audit. After committing this plan, work stops.
 
@@ -551,7 +652,24 @@ Plan-author self-audit before commit:
 
 ```text
 FROZEN_SPEC_CHANGED = NO
-NEW_SCIENTIFIC_DECISION = NO
+NEW_RESEARCH_DECISION = NO
+SCIENTIFIC_SEMANTICS_CHANGED = NO
+OQ1_REOPENED = NO
+OQ1_STATUS = CLOSED_BY_GOVERNANCE_CLARIFICATION
+OQ1_REQUIRES_NEW_RD = NO
+THIRD_PARTY_FINDINGS_DISPOSITIONED = 8/8
+P1_1_INHERITED_FROM_UPSTREAM_AUTHORITY = YES
+P1_1_REQUIRES_NEW_RD = NO
+RECIPIENT_TRAJECTORY_FUTURE_STATE_NEGATIVE_TEST_PLANNED = YES
+WINDOW_EXACTLY_ONE_FRAME = YES
+REMOVABILITY_BOUNDARY_EXPLICIT = YES
+C7_QUALIFIED_NOT_EQUAL_H_R_SUPPORTED = YES
+MVE_INTERNAL_ARTIFACT_EMBARGO_PLANNED = YES
+MVE_SLICE_SELECTION_OUTCOME_BLIND = YES
+COUNT_NESTING_INVARIANTS_PLANNED = YES
+QUALIFIED_SUBSET_SELECTION_EXPLICIT = YES
+ZERO_QUALIFIED_BRANCH_EXPLICIT = YES
+T_DEN_GATE_EXPLICIT = YES
 THRESHOLDS_CHANGED = NO
 PAIR_SET_CHANGED = NO
 CAPACITY_GRID_CHANGED = NO
