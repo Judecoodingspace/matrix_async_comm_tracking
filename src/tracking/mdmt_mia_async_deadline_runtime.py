@@ -899,8 +899,11 @@ class _C4SharedLogicalServer(object):
             "wire_digest": str(item["wire_digest"]),
             "channel": str(item["channel"]),
             "packet_sequence": int(item["packet_sequence"]),
+            "JSON_WIRE_BYTES": int(item["JSON_WIRE_BYTES"]),
             "remaining_service_bytes": int(item["remaining_service_bytes"]),
             "bytes_served_total": int(item["bytes_served_total"]),
+            "service_start_frame": item["service_start_frame"],
+            "service_completion_frame": item["service_completion_frame"],
             "location": "in_service" if item is self._in_service else "waiting",
         } for item in ordered)
 
@@ -926,7 +929,11 @@ class _C4SharedLogicalServer(object):
             callback(**copy.deepcopy(payload))
         except Exception as exc:
             try:
-                observer._failure(method, exc)
+                event = payload.get("event")
+                try:
+                    observer._failure(method, exc, event=copy.deepcopy(event))
+                except TypeError:
+                    observer._failure(method, exc)
             except Exception:
                 pass
 

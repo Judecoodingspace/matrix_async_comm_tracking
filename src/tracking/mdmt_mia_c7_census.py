@@ -16,7 +16,7 @@ from types import MappingProxyType
 from typing import Any, Mapping, Optional, Sequence, Tuple
 
 
-SCHEMA_VERSION = "C7_CORE_SEMANTICS_V1"
+SCHEMA_VERSION = "C7_CORE_SEMANTICS_V2"
 EFFECTIVE_SERVICE_WINDOW = "ONE_FRAME"
 PARTIAL_BYTES_HAVE_SEMANTIC_EFFECT = False
 SEMANTIC_COMMIT = "LOGICAL_PACKET_COMPLETION"
@@ -79,6 +79,122 @@ class PacketRef:
 
     def to_dict(self) -> dict[str, Any]:
         return {"packet_id": self.packet_id, "wire_digest": self.wire_digest, "channel": self.channel}
+
+
+@dataclass(frozen=True)
+class RawBaselineEvidence:
+    """Immutable, observational C4 evidence; no semantic inputs are accepted."""
+
+    frame_index: int
+    observations: Tuple[Mapping[str, Any], ...]
+    receiver_state_transitions: Tuple["ReceiverStateEvidence", ...] = ()
+    observer_failures: Tuple[Mapping[str, Any], ...] = ()
+
+    @classmethod
+    def from_observer(cls, frame_index: int, observer: "C7CoreObserver") -> "RawBaselineEvidence":
+        frame = _int(frame_index, "raw baseline frame")
+        observations = []
+        transitions = []
+        last_state_signature = None
+        for row in observer.events:
+            event = row.get("event", {})
+            if isinstance(event, Mapping) and event.get("frame") == frame:
+                observations.append(_freeze_mapping({
+                    "observation_kind": row.get("observation_kind"),
+                    "event": copy.deepcopy(dict(event)),
+                    "fifo_snapshot": copy.deepcopy(list(row.get("fifo_snapshot", ()))),
+                }))
+                snapshot = row.get("receiver_state")
+                if snapshot is not None:
+                    state = ReceiverStateEvidence.from_runtime_snapshot(
+                        event.get("event_ordinal"), snapshot)
+                    signature = (
+                        state.live_track_ids_view1, state.live_track_ids_view2,
+                        state.confirmed_ids, state.applied_id_map,
+                        state.last_id_packet_version)
+                    if signature != last_state_signature:
+                        transitions.append(state)
+                        last_state_signature = signature
+        failures = []
+        for failure in observer.failures:
+            failure_frame = failure.get("frame") if isinstance(failure, Mapping) else None
+            if failure_frame is None or failure_frame == frame:
+                failures.append(_freeze_mapping(failure))
+        return cls(frame, tuple(observations), tuple(transitions), tuple(failures))
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "RawBaselineEvidence":
+        return cls(
+            frame_index=_int(value.get("frame_index"), "raw baseline frame"),
+            observations=tuple(_freeze_mapping(row) for row in value.get("observations", ())),
+            receiver_state_transitions=tuple(
+                ReceiverStateEvidence.from_dict(row)
+                for row in value.get("receiver_state_transitions", ())),
+            observer_failures=tuple(
+                _freeze_mapping(row) for row in value.get("observer_failures", ())),
+        )
+
+    @property
+    def evidence_complete(self) -> bool:
+        return not self.observer_failures
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "frame_index": self.frame_index,
+            "observations": [copy.deepcopy(dict(row)) for row in self.observations],
+            "receiver_state_transitions": [
+                row.to_dict() for row in self.receiver_state_transitions],
+            "observer_failures": [copy.deepcopy(dict(row)) for row in self.observer_failures],
+        }
+
+    def to_incomplete_evidence(self) -> dict[str, Any]:
+        if self.evidence_complete:
+            raise C7EvidenceError("complete observation cannot be serialized as observer failure")
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "raw_baseline_evidence": self.to_dict(),
+            "evidence_valid": False,
+            "invalid_reason": "OBSERVER_FAILURE",
+            "window_eligible": None,
+        }
+
+
+@dataclass(frozen=True)
+class CapacityCauseProof:
+    frame_index: int
+    frame_open_event: int
+    frame_close_event: int
+    binding_capacity_bytes: int
+    baseline_bytes_served: int
+    frame_unused_capacity: int
+    recipient: PacketRef
+    recipient_logical_bytes: int
+    recipient_baseline_bytes_served: int
+    recipient_frame_close_residual_bytes: int
+    recipient_completion_event: Optional[int]
+    baseline_complete_within_window: bool
+    frame_capacity_bound: bool
+    capacity_caused_incomplete: bool
+    waiting_only: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "frame_index": self.frame_index,
+            "frame_open_event": self.frame_open_event,
+            "frame_close_event": self.frame_close_event,
+            "binding_capacity_bytes": self.binding_capacity_bytes,
+            "baseline_bytes_served": self.baseline_bytes_served,
+            "frame_unused_capacity": self.frame_unused_capacity,
+            "recipient": self.recipient.to_dict(),
+            "recipient_logical_bytes": self.recipient_logical_bytes,
+            "recipient_baseline_bytes_served": self.recipient_baseline_bytes_served,
+            "recipient_frame_close_residual_bytes": self.recipient_frame_close_residual_bytes,
+            "recipient_completion_event": self.recipient_completion_event,
+            "baseline_complete_within_window": self.baseline_complete_within_window,
+            "frame_capacity_bound": self.frame_capacity_bound,
+            "capacity_caused_incomplete": self.capacity_caused_incomplete,
+            "waiting_only": self.waiting_only,
+        }
 
 
 @dataclass(frozen=True)
@@ -363,6 +479,194 @@ def serviceability_at(
     return matches[0]
 
 
+def _raw_identity(value: Mapping[str, Any], name: str) -> PacketRef:
+    try:
+        return PacketRef.from_raw(
+            value.get("packet_id"), value.get("wire_digest", ""), value.get("channel", ""))
+    except C7EvidenceError as exc:
+        raise C7EvidenceError("{} identity is invalid".format(name)) from exc
+
+
+def _parse_raw_baseline(raw: RawBaselineEvidence) -> dict[str, Any]:
+    if not raw.evidence_complete:
+        raise C7EvidenceError("C7 raw baseline evidence is incomplete due to observer failure")
+    if not raw.receiver_state_transitions:
+        raise C7EvidenceError("raw baseline receiver-state trajectory is missing")
+    previous_transition = 0
+    for transition in raw.receiver_state_transitions:
+        if transition.frame_index != raw.frame_index:
+            raise C7EvidenceError("raw receiver-state transition crosses frame")
+        if transition.event_ordinal <= previous_transition:
+            raise C7EvidenceError("raw receiver-state transitions are reordered")
+        previous_transition = transition.event_ordinal
+    rows = []
+    previous = 0
+    for observation in raw.observations:
+        event = observation.get("event", {})
+        if not isinstance(event, Mapping):
+            raise C7EvidenceError("raw baseline observation lacks an event")
+        ordinal = _int(event.get("event_ordinal"), "raw event ordinal", 1)
+        if ordinal <= previous:
+            raise C7EvidenceError("raw baseline events are duplicated or reordered")
+        if _int(event.get("frame"), "raw event frame") != raw.frame_index:
+            raise C7EvidenceError("raw baseline observation crosses frame")
+        previous = ordinal
+        rows.append((ordinal, observation, event))
+    opens = [row for row in rows if row[1].get("observation_kind") == "frame_open"]
+    closes = [row for row in rows if row[1].get("observation_kind") == "frame_close"]
+    if len(opens) != 1 or len(closes) != 1:
+        raise C7EvidenceError("raw baseline requires exactly one frame-open and frame-close")
+    open_ordinal, _, open_event = opens[0]
+    close_ordinal, close_observation, close_event = closes[0]
+    if open_ordinal >= close_ordinal:
+        raise C7EvidenceError("raw frame-close does not follow frame-open")
+    if rows[0][0] != open_ordinal or rows[-1][0] != close_ordinal:
+        raise C7EvidenceError("raw observations exist outside frame boundaries")
+    capacity = _int(open_event.get("frame_service_budget"), "binding frame capacity", 1)
+    served = _int(close_event.get("bytes_served"), "baseline frame bytes served")
+    unused = _int(close_event.get("frame_unused_budget"), "frame unused capacity")
+    if served + unused != capacity:
+        raise C7EvidenceError("raw frame capacity conservation failed")
+
+    packets: dict[Tuple[str, str, str], dict[str, Any]] = {}
+
+    def ingest(value: Mapping[str, Any], ordinal: int, at_open: bool, at_close: bool) -> None:
+        if value.get("packet_id") is None:
+            return
+        ref = _raw_identity(value, "raw packet")
+        key = (ref.packet_id_json, ref.wire_digest, ref.channel)
+        logical = _int(value.get("JSON_WIRE_BYTES"), "raw packet logical bytes", 1)
+        residual = _int(value.get("remaining_service_bytes"), "raw packet residual")
+        sequence = _int(value.get("packet_sequence"), "raw packet sequence", 1)
+        if residual > logical:
+            raise C7EvidenceError("raw packet residual exceeds logical bytes")
+        facts = packets.setdefault(key, {
+            "ref": ref, "logical": logical, "sequence": sequence,
+            "first_presence_event": ordinal, "opening_residual": None,
+            "close_residual": None, "completion_event": None,
+            "residual_observations": [], "service_slices": [],
+            "enqueue_events": [], "service_start_events": [],
+        })
+        if facts["logical"] != logical or facts["sequence"] != sequence:
+            raise C7EvidenceError("raw packet identity has inconsistent logical bytes/sequence")
+        facts["first_presence_event"] = min(facts["first_presence_event"], ordinal)
+        facts["residual_observations"].append((ordinal, residual))
+        if at_open:
+            facts["opening_residual"] = residual
+        if at_close:
+            facts["close_residual"] = residual
+        if "bytes_served_total" in value:
+            total = _int(value.get("bytes_served_total"), "raw packet total served")
+            if total + residual != logical:
+                raise C7EvidenceError("raw packet served/residual conservation failed")
+
+    for ordinal, observation, event in rows:
+        kind = str(observation.get("observation_kind", ""))
+        expected_event_type = {
+            "frame_open": "frame_open", "frame_close": "frame_summary",
+            "enqueue": "enqueue", "true_first_service": "service_start",
+            "service_slice": "service_slice", "completion": "completion",
+        }.get(kind)
+        if expected_event_type is None or event.get("event_type") != expected_event_type:
+            raise C7EvidenceError("raw observation kind/event type mismatch")
+        if event.get("packet_id") is not None:
+            ingest(event, ordinal, False, False)
+            ref = _raw_identity(event, "raw service event")
+            key = (ref.packet_id_json, ref.wire_digest, ref.channel)
+            facts = packets[key]
+            event_type = str(event.get("event_type", ""))
+            if event_type == "enqueue":
+                facts["enqueue_events"].append(ordinal)
+            elif event_type == "service_start":
+                facts["service_start_events"].append(ordinal)
+            elif event_type == "service_slice":
+                facts["service_slices"].append((
+                    ordinal, _int(event.get("bytes_served"), "raw service slice bytes", 1),
+                    _int(event.get("remaining_service_bytes"), "raw post-slice residual")))
+            elif event_type == "completion":
+                if facts["completion_event"] is not None:
+                    raise C7EvidenceError("raw packet has duplicate completion")
+                facts["completion_event"] = ordinal
+        snapshot = observation.get("fifo_snapshot", ())
+        if not isinstance(snapshot, Sequence) or isinstance(snapshot, (str, bytes, bytearray)):
+            raise C7EvidenceError("raw FIFO snapshot is malformed")
+        seen_snapshot = set()
+        last_sequence = 0
+        for entry in snapshot:
+            if not isinstance(entry, Mapping):
+                raise C7EvidenceError("raw FIFO snapshot entry is malformed")
+            ref = _raw_identity(entry, "raw FIFO snapshot")
+            key = (ref.packet_id_json, ref.wire_digest, ref.channel)
+            if key in seen_snapshot:
+                raise C7EvidenceError("raw FIFO snapshot duplicates a packet")
+            seen_snapshot.add(key)
+            sequence = _int(entry.get("packet_sequence"), "raw FIFO sequence", 1)
+            if sequence <= last_sequence:
+                raise C7EvidenceError("raw FIFO snapshot order is not strict")
+            last_sequence = sequence
+            ingest(entry, ordinal, kind == "frame_open", kind == "frame_close")
+
+    total_slice_bytes = 0
+    for facts in packets.values():
+        residual_by_event = {}
+        for ordinal, residual in facts["residual_observations"]:
+            if ordinal in residual_by_event and residual_by_event[ordinal] != residual:
+                raise C7EvidenceError("raw packet has contradictory same-event residuals")
+            residual_by_event[ordinal] = residual
+        slices = {}
+        for ordinal, amount, post_residual in facts["service_slices"]:
+            if ordinal in slices:
+                raise C7EvidenceError("raw packet has duplicate service slice event")
+            slices[ordinal] = amount
+            if residual_by_event.get(ordinal) != post_residual:
+                raise C7EvidenceError("raw service slice post-residual is inconsistent")
+            total_slice_bytes += amount
+        previous_residual = (
+            facts["opening_residual"]
+            if facts["opening_residual"] is not None else facts["logical"])
+        for ordinal, residual in sorted(residual_by_event.items()):
+            delta = previous_residual - residual
+            if delta < 0:
+                raise C7EvidenceError("raw packet residual increases over time")
+            if delta != slices.get(ordinal, 0):
+                raise C7EvidenceError("raw residual delta is not backed by a service slice")
+            previous_residual = residual
+        completion = facts["completion_event"]
+        if facts["opening_residual"] is None and len(facts["enqueue_events"]) != 1:
+            raise C7EvidenceError("current-frame packet lacks exactly one raw enqueue")
+        if facts["opening_residual"] is not None and facts["enqueue_events"]:
+            raise C7EvidenceError("frame-open packet is spuriously re-enqueued")
+        if facts["service_slices"] and not (
+                facts["opening_residual"] is not None or len(facts["service_start_events"]) == 1):
+            raise C7EvidenceError("raw service slice lacks legal service start")
+        if completion is not None:
+            facts["close_residual"] = 0
+        elif facts["close_residual"] is None:
+            raise C7EvidenceError("raw packet vanishes before frame close without completion")
+        elif facts["close_residual"] == 0:
+            raise C7EvidenceError("zero frame-close residual lacks logical completion event")
+    if total_slice_bytes != served:
+        raise C7EvidenceError("raw service slices do not reconcile frame bytes served")
+    return {
+        "rows": rows,
+        "frame_open_event": open_ordinal,
+        "frame_close_event": close_ordinal,
+        "capacity": capacity,
+        "served": served,
+        "unused": unused,
+        "packets": packets,
+        "close_fifo_snapshot": close_observation.get("fifo_snapshot", ()),
+    }
+
+
+def _packet_facts(parsed: Mapping[str, Any], packet: PacketRef) -> dict[str, Any]:
+    key = (packet.packet_id_json, packet.wire_digest, packet.channel)
+    try:
+        return parsed["packets"][key]
+    except KeyError as exc:
+        raise C7EvidenceError("packet is absent from complete raw baseline ledger") from exc
+
+
 @dataclass(frozen=True)
 class SourceRemovableWork:
     source: PacketRef
@@ -371,6 +675,10 @@ class SourceRemovableWork:
     frame_close_event: int
     stale_classification_event: int
     first_current_frame_presence_event: int
+    original_logical_bytes: int
+    prior_service_bytes: int
+    opening_or_presence_residual_bytes: int
+    current_frame_baseline_service_bytes: int
     source_removable_work_bytes: int
     source_removable_start_event: int
     source_removable_end_event: int
@@ -386,6 +694,10 @@ class SourceRemovableWork:
             "frame_close_event": self.frame_close_event,
             "stale_classification_event": self.stale_classification_event,
             "first_current_frame_presence_event": self.first_current_frame_presence_event,
+            "original_logical_bytes": self.original_logical_bytes,
+            "prior_service_bytes": self.prior_service_bytes,
+            "opening_or_presence_residual_bytes": self.opening_or_presence_residual_bytes,
+            "current_frame_baseline_service_bytes": self.current_frame_baseline_service_bytes,
             "source_removable_work_bytes": self.source_removable_work_bytes,
             "source_removable_start_event": self.source_removable_start_event,
             "source_removable_end_event": self.source_removable_end_event,
@@ -395,42 +707,55 @@ class SourceRemovableWork:
 
 def derive_source_removable_work(
     classification: StaleClassificationEvidence,
-    frame_index: int,
-    frame_open_event: int,
-    frame_close_event: int,
-    first_current_frame_presence_event: int,
-    current_frame_stale_work_bytes: int,
-    source_baseline_completion_event: Optional[int],
+    raw_baseline: RawBaselineEvidence,
 ) -> SourceRemovableWork:
+    """Derive source work exclusively from the complete raw C4 baseline ledger."""
     if not classification.suppressible_stale:
         raise C7EvidenceError("source packet is not authorized suppressible stale")
-    frame = _int(frame_index, "frame index")
-    frame_open = _int(frame_open_event, "frame-open event", 1)
-    frame_close = _int(frame_close_event, "frame-close event", 1)
-    presence = _int(first_current_frame_presence_event, "first current-frame presence", 1)
-    amount = _int(current_frame_stale_work_bytes, "current-frame stale work", 1)
-    if frame_close <= frame_open or not frame_open <= presence < frame_close:
-        raise C7EvidenceError("invalid one-frame source interval")
-    if amount > classification.json_wire_bytes:
-        raise C7EvidenceError("removable work exceeds source logical obligation")
+    parsed = _parse_raw_baseline(raw_baseline)
+    facts = _packet_facts(parsed, classification.source)
+    frame = raw_baseline.frame_index
+    frame_open = parsed["frame_open_event"]
+    frame_close = parsed["frame_close_event"]
+    presence = facts["first_presence_event"]
+    logical = facts["logical"]
+    if logical != classification.json_wire_bytes:
+        raise C7EvidenceError("source classification bytes disagree with raw baseline")
     if classification.frame_index == frame:
         start = classification.event_ordinal
+        matching = [row for row in parsed["rows"] if row[0] == start]
+        if len(matching) != 1 or matching[0][1].get("observation_kind") != "true_first_service":
+            raise C7EvidenceError("source classification lacks raw true-first-service event")
+        event = matching[0][2]
+        if _raw_identity(event, "source classification event") != classification.source:
+            raise C7EvidenceError("source classification identity differs from raw event")
+        amount = _int(event.get("remaining_service_bytes"), "source true-first residual", 1)
         if start < frame_open or start >= frame_close:
             raise C7EvidenceError("current-frame stale classification outside window")
+        prior_service = logical - amount
     elif classification.frame_index < frame:
         start = max(frame_open, presence)
+        opening = facts["opening_residual"]
+        if opening is None:
+            raise C7EvidenceError("persisted source lacks raw frame-open residual")
+        amount = _int(opening, "persisted source opening residual", 1)
+        prior_service = logical - amount
     else:
         raise C7EvidenceError("future stale classification cannot authorize current-frame removal")
-    completion = None if source_baseline_completion_event is None else _int(
-        source_baseline_completion_event, "source baseline completion event", 1)
+    completion = facts["completion_event"]
     if completion is not None and completion < start:
         raise C7EvidenceError("source baseline completion precedes removable work")
     end = min(frame_close, completion) if completion is not None else frame_close
     if end <= start:
         raise C7EvidenceError("source removable-work interval is empty")
+    close_residual = _int(facts["close_residual"], "source frame-close residual")
+    current_service = amount - close_residual
+    if current_service < 0:
+        raise C7EvidenceError("source raw service exceeds opening/presence residual")
     return SourceRemovableWork(
         classification.source, frame, frame_open, frame_close,
-        classification.event_ordinal, presence, amount, start, end, completion)
+        classification.event_ordinal, presence, logical, prior_service, amount,
+        current_service, amount, start, end, completion)
 
 
 @dataclass(frozen=True)
@@ -474,7 +799,9 @@ class CreditStep:
 
 @dataclass(frozen=True)
 class ConditionalAccountingResult:
+    raw_baseline: RawBaselineEvidence
     source_work: SourceRemovableWork
+    capacity_cause: CapacityCauseProof
     released_credit_created: int
     credit_creation_event: int
     fifo_items: Tuple[FIFOWorkItem, ...]
@@ -503,8 +830,10 @@ class ConditionalAccountingResult:
             "effective_service_window": EFFECTIVE_SERVICE_WINDOW,
             "semantic_commit": SEMANTIC_COMMIT,
             "partial_bytes_have_semantic_effect": PARTIAL_BYTES_HAVE_SEMANTIC_EFFECT,
+            "raw_baseline_evidence": self.raw_baseline.to_dict(),
             "stale_classification_records": [classification.to_dict()],
             "source_removable_work": self.source_work.to_dict(),
+            "capacity_cause_proof": self.capacity_cause.to_dict(),
             "released_credit": {
                 "released_credit_created": self.released_credit_created,
                 "credit_creation_event": self.credit_creation_event,
@@ -535,8 +864,10 @@ class ConditionalAccountingResult:
         }
 
 
-def evaluate_fifo_conditional_accounting(
+def _evaluate_fifo_conditional_accounting(
+    raw_baseline: RawBaselineEvidence,
     source_work: SourceRemovableWork,
+    capacity_cause: CapacityCauseProof,
     removed_stale_bytes: int,
     credit_creation_event: int,
     fifo_items: Sequence[FIFOWorkItem],
@@ -567,7 +898,7 @@ def evaluate_fifo_conditional_accounting(
             raise C7EvidenceError("FIFO positions must be contiguous and cannot skip")
         if item.event_ordinal < creation_event or item.event_ordinal >= source_work.frame_close_event:
             raise C7EvidenceError("FIFO work lies outside released-credit lifetime")
-        _int(item.logical_work_bytes, "FIFO logical work", 1)
+        _int(item.logical_work_bytes, "FIFO logical work")
         if expected and item.event_ordinal < ordered[expected - 1].event_ordinal:
             raise C7EvidenceError("FIFO work event order regressed")
     matches = [item for item in ordered if item.packet == recipient]
@@ -583,7 +914,7 @@ def evaluate_fifo_conditional_accounting(
             < residence_end <= source_work.frame_close_event):
         raise C7EvidenceError("recipient residence/query crosses the one-frame boundary")
     baseline_residual = _int(
-        baseline_recipient_residual_bytes, "baseline recipient residual", 1)
+        baseline_recipient_residual_bytes, "baseline recipient residual")
     if baseline_residual != recipient_item.logical_work_bytes:
         raise C7EvidenceError("recipient FIFO work differs from baseline residual")
     intervals = build_recipient_serviceability_intervals(
@@ -614,9 +945,16 @@ def evaluate_fifo_conditional_accounting(
     conditional_residual = max(0, baseline_residual - recipient_consumed)
     conditional_complete = conditional_residual == 0
     completion_flip = (not baseline_complete) and conditional_complete
-    eligible = bool(interval.serviceable and completion_flip)
+    eligible = bool(
+        raw_baseline.evidence_complete
+        and interval.serviceable
+        and capacity_cause.capacity_caused_incomplete
+        and not capacity_cause.baseline_complete_within_window
+        and completion_flip)
     return ConditionalAccountingResult(
+        raw_baseline=raw_baseline,
         source_work=source_work,
+        capacity_cause=capacity_cause,
         released_credit_created=created,
         credit_creation_event=creation_event,
         fifo_items=ordered,
@@ -641,12 +979,125 @@ def evaluate_fifo_conditional_accounting(
     )
 
 
+def _first_residual_at_or_after(facts: Mapping[str, Any], event_ordinal: int) -> Tuple[int, int]:
+    candidates = sorted(
+        (event, residual) for event, residual in facts["residual_observations"]
+        if event >= event_ordinal)
+    if not candidates:
+        raise C7EvidenceError("packet lacks raw residual evidence after credit creation")
+    return candidates[0]
+
+
+def _derive_fifo_from_raw(
+    parsed: Mapping[str, Any], source: PacketRef, recipient: PacketRef, creation_event: int,
+) -> Tuple[FIFOWorkItem, ...]:
+    source_facts = _packet_facts(parsed, source)
+    recipient_facts = _packet_facts(parsed, recipient)
+    source_sequence = source_facts["sequence"]
+    recipient_sequence = recipient_facts["sequence"]
+    if recipient_sequence <= source_sequence:
+        raise C7EvidenceError("recipient is not FIFO-subsequent to stale source")
+    by_sequence = {
+        facts["sequence"]: facts for facts in parsed["packets"].values()
+        if source_sequence < facts["sequence"] <= recipient_sequence
+    }
+    required_sequences = list(range(source_sequence + 1, recipient_sequence + 1))
+    if sorted(by_sequence) != required_sequences:
+        raise C7EvidenceError("raw baseline FIFO predecessor chain is incomplete")
+    result = []
+    for position, sequence in enumerate(required_sequences):
+        facts = by_sequence[sequence]
+        event, _ = _first_residual_at_or_after(facts, creation_event)
+        residual_at_close = _int(facts["close_residual"], "raw FIFO frame-close residual")
+        result.append(FIFOWorkItem(position, facts["ref"], event, residual_at_close))
+    if result[-1].packet != recipient:
+        raise C7EvidenceError("raw FIFO chain does not terminate at recipient")
+    return tuple(result)
+
+
+def prove_capacity_caused_incompletion(
+    raw_baseline: RawBaselineEvidence,
+    recipient: PacketRef,
+    recipient_query_event: int,
+) -> CapacityCauseProof:
+    """Prove completion loss at frame close, never intermediate waiting alone."""
+    parsed = _parse_raw_baseline(raw_baseline)
+    facts = _packet_facts(parsed, recipient)
+    query = _int(recipient_query_event, "recipient query event", 1)
+    logical = _int(facts["logical"], "recipient logical bytes", 1)
+    first_event, first_residual = _first_residual_at_or_after(
+        facts, parsed["frame_open_event"])
+    if first_event > query:
+        raise C7EvidenceError("recipient did not exist in raw FIFO at query event")
+    close_residual = _int(facts["close_residual"], "recipient frame-close residual")
+    baseline_served = first_residual - close_residual
+    if baseline_served < 0:
+        raise C7EvidenceError("recipient raw residual increases inside frame")
+    completion = facts["completion_event"]
+    complete_within = bool(
+        completion is not None
+        and parsed["frame_open_event"] <= completion < parsed["frame_close_event"])
+    if complete_within != (close_residual == 0):
+        raise C7EvidenceError("recipient completion event/residual disagree at frame close")
+    frame_bound = bool(parsed["served"] == parsed["capacity"] and parsed["unused"] == 0)
+    capacity_incomplete = bool(frame_bound and not complete_within and close_residual > 0)
+    waiting_only = bool(complete_within and query < int(completion))
+    return CapacityCauseProof(
+        frame_index=raw_baseline.frame_index,
+        frame_open_event=parsed["frame_open_event"],
+        frame_close_event=parsed["frame_close_event"],
+        binding_capacity_bytes=parsed["capacity"],
+        baseline_bytes_served=parsed["served"],
+        frame_unused_capacity=parsed["unused"],
+        recipient=recipient,
+        recipient_logical_bytes=logical,
+        recipient_baseline_bytes_served=baseline_served,
+        recipient_frame_close_residual_bytes=close_residual,
+        recipient_completion_event=completion,
+        baseline_complete_within_window=complete_within,
+        frame_capacity_bound=frame_bound,
+        capacity_caused_incomplete=capacity_incomplete,
+        waiting_only=waiting_only,
+    )
+
+
+def evaluate_window_from_raw_baseline(
+    classification: StaleClassificationEvidence,
+    raw_baseline: RawBaselineEvidence,
+    recipient: PacketRef,
+    recipient_wire: Mapping[str, Any],
+) -> ConditionalAccountingResult:
+    """Derive every semantic accounting input from immutable raw C4 evidence."""
+    parsed = _parse_raw_baseline(raw_baseline)
+    source_work = derive_source_removable_work(classification, raw_baseline)
+    fifo_items = _derive_fifo_from_raw(
+        parsed, classification.source, recipient, source_work.source_removable_start_event)
+    recipient_item = fifo_items[-1]
+    query = recipient_item.event_ordinal
+    capacity = prove_capacity_caused_incompletion(raw_baseline, recipient, query)
+    return _evaluate_fifo_conditional_accounting(
+        raw_baseline=raw_baseline,
+        source_work=source_work,
+        capacity_cause=capacity,
+        removed_stale_bytes=source_work.source_removable_work_bytes,
+        credit_creation_event=source_work.source_removable_start_event,
+        fifo_items=fifo_items,
+        recipient=recipient,
+        recipient_wire=recipient_wire,
+        recipient_query_event=query,
+        recipient_residence_start_event=query,
+        recipient_residence_end_event=parsed["frame_close_event"],
+        receiver_transitions=raw_baseline.receiver_state_transitions,
+        baseline_recipient_residual_bytes=capacity.recipient_frame_close_residual_bytes,
+    )
+
+
 class C7CoreObserver:
     """Duck-typed passive receiver for C4 deep-copy observation callbacks."""
 
     def __init__(self) -> None:
         self.events: list[Mapping[str, Any]] = []
-        self.failures: list[str] = []
+        self.failures: list[Mapping[str, Any]] = []
         self.classifications = StaleClassificationRegistry()
 
     def _record(self, kind: str, **payload: Any) -> None:
@@ -687,5 +1138,14 @@ class C7CoreObserver:
             payload["stale_classification"] = record.to_dict()
         self._record("true_first_service", **payload)
 
-    def _failure(self, stage: str, exc: Exception) -> None:
-        self.failures.append("{}:{}:{}".format(stage, type(exc).__name__, str(exc)[:160]))
+    def _failure(
+        self, stage: str, exc: Exception, event: Optional[Mapping[str, Any]] = None,
+    ) -> None:
+        event = {} if not isinstance(event, Mapping) else event
+        self.failures.append(MappingProxyType({
+            "callback_stage": str(stage),
+            "exception_class": type(exc).__name__,
+            "reason": str(exc).replace("\n", " ")[:160],
+            "event_ordinal": event.get("event_ordinal"),
+            "frame": event.get("frame"),
+        }))

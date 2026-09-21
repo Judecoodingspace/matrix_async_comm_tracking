@@ -16,16 +16,16 @@ from tracking.mdmt_mia_c7_census import (
     C7EvidenceError,
     CREDIT_EXPIRATION_REASONS,
     EFFECTIVE_SERVICE_WINDOW,
-    FIFOWorkItem,
     PARTIAL_BYTES_HAVE_SEMANTIC_EFFECT,
     PacketRef,
+    RawBaselineEvidence,
     ReceiverStateEvidence,
     SCHEMA_VERSION,
     SEMANTIC_COMMIT,
     StaleClassificationRegistry,
     build_recipient_serviceability_intervals,
     derive_source_removable_work,
-    evaluate_fifo_conditional_accounting,
+    evaluate_window_from_raw_baseline,
     serviceability_at,
 )
 from tracking.mdmt_mia_c7_validator import C7ValidationError, validate_core_evidence
@@ -74,16 +74,11 @@ def _source_item(packet_id=None, event=10, size=60, wire=None):
     }
 
 
-def _classification():
+def _classification(size=60, frame=0, event=10):
     registry = StaleClassificationRegistry()
-    return registry.classify_once(_source_item(), 10, _state(10, confirmed=(9,)))
-
-
-def _source_work():
-    return derive_source_removable_work(
-        _classification(), frame_index=0, frame_open_event=1, frame_close_event=30,
-        first_current_frame_presence_event=1, current_frame_stale_work_bytes=60,
-        source_baseline_completion_event=20)
+    return registry.classify_once(
+        {**_source_item(size=size), "service_start_frame": frame}, event,
+        _state(event, frame=frame, confirmed=(9,)))
 
 
 def _recipient():
@@ -91,54 +86,167 @@ def _recipient():
         {"packet": "B"}, _digest(_wire(version=2, confirmed=(9,))), "id_state")
 
 
-def _case_a():
-    classification = _classification()
-    source = derive_source_removable_work(
-        classification, 0, 1, 30, 1, 60, 20)
+def _snapshot(packet, sequence, logical, residual, location="waiting"):
+    return {
+        **packet.to_dict(),
+        "packet_sequence": sequence,
+        "JSON_WIRE_BYTES": logical,
+        "remaining_service_bytes": residual,
+        "bytes_served_total": logical - residual,
+        "service_start_frame": None,
+        "service_completion_frame": None,
+        "location": location,
+    }
+
+
+def _observation(kind, event, snapshot=()):
+    return {
+        "observation_kind": kind,
+        "event": event,
+        "fifo_snapshot": list(snapshot),
+    }
+
+
+def _frame_event(event_type, ordinal, frame=0, **updates):
+    event = {
+        "event_type": event_type,
+        "event_ordinal": ordinal,
+        "frame": frame,
+        "frame_service_budget": updates.pop("frame_service_budget", 60),
+        "frame_unused_budget": updates.pop("frame_unused_budget", 0),
+        "bytes_served": updates.pop("bytes_served", 0),
+        "packet_id": None,
+    }
+    event.update(updates)
+    return event
+
+
+def _packet_event(event_type, ordinal, packet, sequence, logical, residual, frame=0, **updates):
+    event = _frame_event(event_type, ordinal, frame=frame, **updates)
+    event.update({
+        **packet.to_dict(),
+        "packet_sequence": sequence,
+        "JSON_WIRE_BYTES": logical,
+        "remaining_service_bytes": residual,
+    })
+    return event
+
+
+def _raw_case(include_consumer=False, waiting_only=False, source_bytes=60, recipient_bytes=40):
+    classification = _classification(size=source_bytes)
+    source = classification.source
     recipient = _recipient()
-    result = evaluate_fifo_conditional_accounting(
-        source_work=source,
-        removed_stale_bytes=60,
-        credit_creation_event=10,
-        fifo_items=(FIFOWorkItem(0, recipient, 25, 40),),
-        recipient=recipient,
-        recipient_wire=_wire(version=2, confirmed=(9,)),
-        recipient_query_event=25,
-        recipient_residence_start_event=25,
-        recipient_residence_end_event=30,
-        receiver_transitions=(_state(1),),
-        baseline_recipient_residual_bytes=40,
-    )
+    consumer = PacketRef.from_raw({"packet": "C"}, "digest-C", "supplement")
+    observations = [
+        _observation("frame_open", _frame_event(
+            "frame_open", 1, frame_service_budget=(
+                source_bytes + recipient_bytes if waiting_only else source_bytes),
+            frame_unused_budget=(source_bytes + recipient_bytes if waiting_only else source_bytes))),
+        _observation("enqueue", _packet_event(
+            "enqueue", 5, source, 1, source_bytes, source_bytes),
+            (_snapshot(source, 1, source_bytes, source_bytes, "waiting"),)),
+        _observation("true_first_service", _packet_event(
+            "service_start", 10, source, 1, source_bytes, source_bytes),
+            (_snapshot(source, 1, source_bytes, source_bytes, "in_service"),)),
+        _observation("service_slice", _packet_event(
+            "service_slice", 15, source, 1, source_bytes, 0, bytes_served=source_bytes),
+            (_snapshot(source, 1, source_bytes, 0, "in_service"),)),
+        _observation("completion", _packet_event(
+            "completion", 20, source, 1, source_bytes, 0)),
+    ]
+    if include_consumer:
+        observations.append(_observation("enqueue", _packet_event(
+            "enqueue", 21, consumer, 2, 50, 50),
+            (_snapshot(consumer, 2, 50, 50),)))
+        recipient_sequence = 3
+        close_snapshot = (
+            _snapshot(consumer, 2, 50, 50),
+            _snapshot(recipient, 3, recipient_bytes, recipient_bytes),
+        )
+    else:
+        recipient_sequence = 2
+        close_snapshot = (_snapshot(recipient, 2, recipient_bytes, recipient_bytes),)
+    observations.append(_observation("enqueue", _packet_event(
+        "enqueue", 25, recipient, recipient_sequence, recipient_bytes, recipient_bytes),
+        tuple(close_snapshot)))
+    if waiting_only:
+        observations.extend((
+            _observation("true_first_service", _packet_event(
+                "service_start", 26, recipient, recipient_sequence,
+                recipient_bytes, recipient_bytes),
+                (_snapshot(recipient, recipient_sequence, recipient_bytes,
+                           recipient_bytes, "in_service"),)),
+            _observation("service_slice", _packet_event(
+                "service_slice", 27, recipient, recipient_sequence,
+                recipient_bytes, 0, bytes_served=recipient_bytes),
+                (_snapshot(recipient, recipient_sequence, recipient_bytes, 0, "in_service"),)),
+            _observation("completion", _packet_event(
+                "completion", 28, recipient, recipient_sequence, recipient_bytes, 0)),
+        ))
+        close_snapshot = ()
+    capacity = source_bytes + recipient_bytes if waiting_only else source_bytes
+    observations.append(_observation("frame_close", _frame_event(
+        "frame_summary", 30, frame_service_budget=capacity,
+        bytes_served=capacity, frame_unused_budget=0), close_snapshot))
+    raw = RawBaselineEvidence.from_dict({
+        "frame_index": 0,
+        "observations": observations,
+        "receiver_state_transitions": [_state(1).to_dict()],
+        "observer_failures": [],
+    })
+    return classification, recipient, raw
+
+
+def _case_a(waiting_only=False, source_bytes=60, recipient_bytes=40):
+    classification, recipient, raw = _raw_case(
+        waiting_only=waiting_only, source_bytes=source_bytes,
+        recipient_bytes=recipient_bytes)
+    result = evaluate_window_from_raw_baseline(
+        classification, raw, recipient, _wire(version=2, confirmed=(9,)))
     return classification, result, result.to_evidence(classification)
 
 
 def _case_b():
-    classification = _classification()
-    source = derive_source_removable_work(
-        classification, 0, 1, 30, 1, 60, 20)
-    consumer = PacketRef.from_raw({"packet": "C"}, "digest-C", "supplement")
+    classification, recipient, raw = _raw_case(include_consumer=True, recipient_bytes=20)
+    result = evaluate_window_from_raw_baseline(
+        classification, raw, recipient, _wire(version=2, confirmed=(9,)))
+    return classification, result, result.to_evidence(classification)
+
+
+def _persisted_case():
+    classification = _classification(frame=0, event=10)
+    source = classification.source
     recipient = _recipient()
-    result = evaluate_fifo_conditional_accounting(
-        source_work=source,
-        removed_stale_bytes=60,
-        credit_creation_event=10,
-        fifo_items=(
-            FIFOWorkItem(0, consumer, 21, 50),
-            FIFOWorkItem(1, recipient, 25, 20),
-        ),
-        recipient=recipient,
-        recipient_wire=_wire(version=2, confirmed=(9,)),
-        recipient_query_event=25,
-        recipient_residence_start_event=25,
-        recipient_residence_end_event=30,
-        receiver_transitions=(_state(1),),
-        baseline_recipient_residual_bytes=20,
-    )
+    raw = RawBaselineEvidence.from_dict({
+        "frame_index": 1,
+        "observer_failures": [],
+        "receiver_state_transitions": [_state(31, frame=1).to_dict()],
+        "observations": [
+            _observation("frame_open", _frame_event(
+                "frame_open", 31, frame=1, frame_service_budget=25,
+                frame_unused_budget=25),
+                (_snapshot(source, 1, 60, 25, "in_service"),)),
+            _observation("service_slice", _packet_event(
+                "service_slice", 40, source, 1, 60, 0, frame=1,
+                bytes_served=25), (_snapshot(source, 1, 60, 0, "in_service"),)),
+            _observation("completion", _packet_event(
+                "completion", 50, source, 1, 60, 0, frame=1)),
+            _observation("enqueue", _packet_event(
+                "enqueue", 55, recipient, 2, 20, 20, frame=1),
+                (_snapshot(recipient, 2, 20, 20),)),
+            _observation("frame_close", _frame_event(
+                "frame_summary", 60, frame=1, frame_service_budget=25,
+                bytes_served=25, frame_unused_budget=0),
+                (_snapshot(recipient, 2, 20, 20),)),
+        ],
+    })
+    result = evaluate_window_from_raw_baseline(
+        classification, raw, recipient, _wire(version=2, confirmed=(9,)))
     return classification, result, result.to_evidence(classification)
 
 
 def test_m1_schema_constants_are_batch_a_only():
-    assert SCHEMA_VERSION == "C7_CORE_SEMANTICS_V1"
+    assert SCHEMA_VERSION == "C7_CORE_SEMANTICS_V2"
     assert EFFECTIVE_SERVICE_WINDOW == "ONE_FRAME"
     assert PARTIAL_BYTES_HAVE_SEMANTIC_EFFECT is False
     assert SEMANTIC_COMMIT == "LOGICAL_PACKET_COMPLETION"
@@ -187,6 +295,11 @@ def test_m2_true_first_service_hook_is_exact_and_passive():
     assert server._items[0]["bytes_served_total"] == server._items[0]["JSON_WIRE_BYTES"]
     server.finalize_pending(0, observer)
     assert sum(row["observation_kind"] == "frame_close" for row in observer.events) == 1
+    raw = RawBaselineEvidence.from_observer(0, observer)
+    assert raw.evidence_complete is True
+    source = derive_source_removable_work(
+        observer.classifications.get(server._items[0]["packet_id"]), raw)
+    assert source.source_removable_work_bytes == server._items[0]["JSON_WIRE_BYTES"]
 
 
 def test_m2_observer_mutation_cannot_change_c4_runtime():
@@ -299,6 +412,8 @@ def test_m3_validator_rejects_recipient_future_state_injection(fault):
             "whole_packet_currently_non_applicable"] = True
     elif fault == "future_transition":
         mutated["recipient"]["receiver_transitions"][0]["event_ordinal"] = 26
+        mutated["raw_baseline_evidence"]["receiver_state_transitions"][0][
+            "event_ordinal"] = 26
     else:
         mutated["recipient"]["serviceability_intervals"][0]["start_event"] = 24
     with pytest.raises(C7ValidationError):
@@ -306,15 +421,34 @@ def test_m3_validator_rejects_recipient_future_state_injection(fault):
 
 
 def test_m4_source_removable_work_current_and_persisted_frames():
-    current = _source_work()
+    current = _case_a()[1].source_work
     assert (current.source_removable_start_event, current.source_removable_end_event) == (10, 20)
-    old_classification = StaleClassificationRegistry().classify_once(
-        {**_source_item(), "service_start_frame": 0}, 10,
-        _state(10, frame=0, confirmed=(9,)))
-    persisted = derive_source_removable_work(
-        old_classification, 1, 31, 60, 31, 25, 50)
+    old_classification = _classification(frame=0, event=10)
+    source = old_classification.source
+    persisted_raw = RawBaselineEvidence.from_dict({
+        "frame_index": 1,
+        "observer_failures": [],
+        "receiver_state_transitions": [_state(31, frame=1).to_dict()],
+        "observations": [
+            _observation("frame_open", _frame_event(
+                "frame_open", 31, frame=1, frame_service_budget=25,
+                frame_unused_budget=25),
+                (_snapshot(source, 1, 60, 25, "in_service"),)),
+            _observation("service_slice", _packet_event(
+                "service_slice", 40, source, 1, 60, 0, frame=1,
+                bytes_served=25), (_snapshot(source, 1, 60, 0, "in_service"),)),
+            _observation("completion", _packet_event(
+                "completion", 50, source, 1, 60, 0, frame=1)),
+            _observation("frame_close", _frame_event(
+                "frame_summary", 60, frame=1, frame_service_budget=25,
+                bytes_served=25, frame_unused_budget=0)),
+        ],
+    })
+    persisted = derive_source_removable_work(old_classification, persisted_raw)
     assert persisted.source_removable_start_event == 31
     assert persisted.source_removable_end_event == 50
+    assert persisted.source_removable_work_bytes == 25
+    assert persisted.prior_service_bytes == 35
 
 
 def test_m4_released_credit_survives_source_baseline_completion():
@@ -352,15 +486,95 @@ def test_m4_accounting_is_deterministic():
 
 
 def test_m4_one_byte_short_is_not_logical_completion():
-    classification = _classification()
-    source = derive_source_removable_work(classification, 0, 1, 30, 1, 39, 20)
-    recipient = _recipient()
-    result = evaluate_fifo_conditional_accounting(
-        source, 39, 10, (FIFOWorkItem(0, recipient, 25, 40),), recipient,
-        _wire(version=2, confirmed=(9,)), 25, 25, 30, (_state(1),), 40)
+    _, result, _ = _case_a(source_bytes=39, recipient_bytes=40)
     assert result.credit_steps[0].credit_consumed_by_step == 39
     assert result.conditional_recipient_complete is False
     assert result.window_eligible is False
+
+
+def test_m4_waiting_only_does_not_count_as_capacity_loss():
+    _, result, evidence = _case_a(waiting_only=True)
+    assert result.capacity_cause.baseline_complete_within_window is True
+    assert result.capacity_cause.capacity_caused_incomplete is False
+    assert result.capacity_cause.waiting_only is True
+    assert result.completion_flip is False
+    assert result.window_eligible is False
+    validation = validate_core_evidence(evidence)
+    assert validation["baseline_complete_within_window"] is True
+    assert validation["capacity_caused_incomplete"] is False
+    assert validation["window_eligible"] is False
+
+
+def test_validator_rejects_omitted_fifo_predecessor():
+    _, _, evidence = _case_b()
+    mutated = copy.deepcopy(evidence)
+    recipient_item = mutated["fifo_items"][1]
+    recipient_item["fifo_position"] = 0
+    mutated["fifo_items"] = [recipient_item]
+    mutated["released_credit"]["credit_steps"] = [{
+        "fifo_position": 0,
+        "fifo_consumer_packet_id": recipient_item["packet_id"],
+        "fifo_consumer_wire_digest": recipient_item["wire_digest"],
+        "fifo_consumer_channel": recipient_item["channel"],
+        "event_ordinal": recipient_item["event_ordinal"],
+        "credit_balance_before_fifo_step": 60,
+        "credit_consumed_by_step": 20,
+        "credit_balance_after_step": 40,
+    }]
+    mutated["released_credit"]["credit_expiration_reason"] = "FRAME_CLOSE"
+    mutated["released_credit"]["credit_expiration_event"] = 30
+    mutated["released_credit"]["credit_expired_unused"] = 40
+    mutated["recipient"]["conditional_credit_bytes"] = 20
+    mutated["recipient"]["conditional_residual_bytes"] = 0
+    mutated["recipient"]["conditional_complete"] = True
+    mutated["completion_flip"] = True
+    mutated["window_eligible"] = True
+    with pytest.raises(C7ValidationError, match="complete raw baseline FIFO chain"):
+        validate_core_evidence(mutated)
+
+
+def test_validator_rejects_inflated_persisted_source_residual():
+    _, result, evidence = _persisted_case()
+    assert result.source_work.original_logical_bytes == 60
+    assert result.source_work.prior_service_bytes == 35
+    assert result.source_work.source_removable_work_bytes == 25
+    assert result.released_credit_created == 25
+    assert validate_core_evidence(evidence)["released_credit_created"] == 25
+    mutated = copy.deepcopy(evidence)
+    mutated["source_removable_work"]["prior_service_bytes"] = 0
+    mutated["source_removable_work"]["opening_or_presence_residual_bytes"] = 60
+    mutated["source_removable_work"]["current_frame_baseline_service_bytes"] = 60
+    mutated["source_removable_work"]["source_removable_work_bytes"] = 60
+    mutated["released_credit"]["released_credit_created"] = 60
+    with pytest.raises(C7ValidationError, match="raw-baseline-derived"):
+        validate_core_evidence(mutated)
+
+
+def test_observer_failure_marks_c7_evidence_incomplete():
+    baseline = _run_server()
+    baseline.finalize_pending(0)
+
+    class FailingObserver(C7CoreObserver):
+        def observe_service_slice(self, **payload):
+            raise RuntimeError("synthetic required callback failure")
+
+    observer = FailingObserver()
+    observed = _run_server(observer)
+    observed.finalize_pending(0, observer)
+    assert observed._events == baseline._events
+    assert observed._items == baseline._items
+    assert len(observer.failures) == 1
+    failure = observer.failures[0]
+    assert failure["callback_stage"] == "observe_service_slice"
+    assert failure["exception_class"] == "RuntimeError"
+    assert failure["frame"] == 0
+    raw = RawBaselineEvidence.from_observer(0, observer)
+    assert raw.evidence_complete is False
+    invalid = raw.to_incomplete_evidence()
+    assert invalid["evidence_valid"] is False
+    assert invalid["window_eligible"] is None
+    with pytest.raises(C7ValidationError, match="observer failure"):
+        validate_core_evidence(invalid)
 
 
 @pytest.mark.parametrize("fault", (
@@ -377,6 +591,9 @@ def test_m4_one_byte_short_is_not_logical_completion():
     "cross_frame_fifo_suffix",
     "partial_claimed_complete",
     "raw_residual_tamper",
+    "raw_slice_omission",
+    "frame_close_capacity_tamper",
+    "capacity_claim_tamper",
     "cross_packet_source",
 ))
 def test_m4_strong_fail_closed_mutations(fault):
@@ -416,30 +633,25 @@ def test_m4_strong_fail_closed_mutations(fault):
         mutated["window_eligible"] = True
     elif fault == "raw_residual_tamper":
         mutated["recipient"]["baseline_residual_bytes"] = 10
+    elif fault == "raw_slice_omission":
+        mutated["raw_baseline_evidence"]["observations"] = [
+            row for row in mutated["raw_baseline_evidence"]["observations"]
+            if row["observation_kind"] != "service_slice"]
+    elif fault == "frame_close_capacity_tamper":
+        mutated["raw_baseline_evidence"]["observations"][-1]["event"][
+            "frame_unused_budget"] = 1
+    elif fault == "capacity_claim_tamper":
+        mutated["capacity_cause_proof"]["capacity_caused_incomplete"] = False
     else:
         mutated["source_removable_work"]["source_packet_id"] = {"packet": "other"}
     with pytest.raises(C7ValidationError):
         validate_core_evidence(mutated)
 
 
-def test_m4_producer_rejects_credit_before_removal_or_above_source_work():
-    classification = _classification()
-    source = derive_source_removable_work(classification, 0, 1, 30, 1, 60, 20)
-    recipient = _recipient()
-    arguments = dict(
-        source_work=source,
-        fifo_items=(FIFOWorkItem(0, recipient, 25, 40),),
-        recipient=recipient,
-        recipient_wire=_wire(version=2, confirmed=(9,)),
-        recipient_query_event=25,
-        recipient_residence_start_event=25,
-        recipient_residence_end_event=30,
-        receiver_transitions=(_state(1),),
-        baseline_recipient_residual_bytes=40,
-    )
-    with pytest.raises(C7EvidenceError, match="outside"):
-        evaluate_fifo_conditional_accounting(
-            removed_stale_bytes=60, credit_creation_event=9, **arguments)
-    with pytest.raises(C7EvidenceError, match="exceeds"):
-        evaluate_fifo_conditional_accounting(
-            removed_stale_bytes=61, credit_creation_event=10, **arguments)
+def test_m4_producer_credit_is_fixed_by_raw_source_work():
+    _, result, evidence = _case_a()
+    assert result.released_credit_created == result.source_work.source_removable_work_bytes
+    mutated = copy.deepcopy(evidence)
+    mutated["released_credit"]["released_credit_created"] = 61
+    with pytest.raises(C7ValidationError, match="raw-derived"):
+        validate_core_evidence(mutated)
