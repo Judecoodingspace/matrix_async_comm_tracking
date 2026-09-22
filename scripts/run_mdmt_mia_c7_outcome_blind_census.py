@@ -28,8 +28,13 @@ from tracking.mdmt_mia_c7_batch_b_package import (
     write_cell_transaction,
     write_selection_package,
 )
-from tracking.mdmt_mia_c7_batch_b_schema import authority_bindings, sha256_file
-from tracking.mdmt_mia_c7_batch_b_validator import read_json, read_jsonl
+from tracking.mdmt_mia_c7_batch_b_schema import (
+    ALLOWED_PARENT_ENV_KEYS,
+    REGISTERED_SOURCE_RELATIVE_PATHS,
+    authority_bindings,
+    sha256_file,
+)
+from tracking.mdmt_mia_c7_batch_b_validator import read_json, read_jsonl, validate_manifest
 
 
 CHILD_PATH = ROOT / "scripts/run_mdmt_mia_c7_real_child.py"
@@ -39,19 +44,11 @@ class C7LauncherError(RuntimeError):
     pass
 
 
-def source_hash_inventory() -> dict[str, str]:
-    aggregator = ROOT / "src/tracking/mdmt_mia_c7_batch_b.py"
+def source_hash_inventory(repo_root: Path | str = ROOT) -> dict[str, str]:
+    root = Path(repo_root).resolve(strict=True)
     return {
-        "runtime": sha256_file(ROOT / "src/tracking/mdmt_mia_async_deadline_runtime.py"),
-        "batch_a_producer": sha256_file(ROOT / "src/tracking/mdmt_mia_c7_census.py"),
-        "batch_a_validator": sha256_file(ROOT / "src/tracking/mdmt_mia_c7_validator.py"),
-        "batch_b_schema": sha256_file(ROOT / "src/tracking/mdmt_mia_c7_batch_b_schema.py"),
-        "batch_b_aggregator": sha256_file(aggregator),
-        "batch_b_selector": sha256_file(aggregator),
-        "batch_b_validator": sha256_file(ROOT / "src/tracking/mdmt_mia_c7_batch_b_validator.py"),
-        "batch_b_package": sha256_file(ROOT / "src/tracking/mdmt_mia_c7_batch_b_package.py"),
-        "launcher": sha256_file(Path(__file__)),
-        "child": sha256_file(CHILD_PATH),
+        key: sha256_file((root / relative).resolve(strict=True))
+        for key, relative in sorted(REGISTERED_SOURCE_RELATIVE_PATHS.items())
     }
 
 
@@ -59,27 +56,34 @@ def build_frozen_manifest(
     *, run_id: str, output_root: Path | str, batch_b_implementation_sha: str,
     input_identity: Mapping[str, Any], config_identity: Mapping[str, Any],
     synthetic_non_scientific: bool,
+    generated_source_root: Path | str | None = None,
 ) -> dict[str, Any]:
     return build_batch_b_manifest(
         run_id=run_id,
         output_root=output_root,
         batch_b_implementation_sha=batch_b_implementation_sha,
-        source_hashes=source_hash_inventory(),
+        source_hashes=source_hash_inventory(ROOT),
         input_identity=input_identity,
         config_identity=config_identity,
         synthetic_non_scientific=synthetic_non_scientific,
+        repo_root=ROOT if not synthetic_non_scientific else None,
+        wrapper_path=(ROOT / REGISTERED_SOURCE_RELATIVE_PATHS["wrapper"]),
+        generated_source_root=generated_source_root,
     )
 
 
-def controlled_environment() -> dict[str, str]:
+def controlled_environment(
+    parent_environment: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    parent = os.environ if parent_environment is None else parent_environment
     environment = {
-        key: value for key, value in os.environ.items()
-        if not key.startswith("MIA_") and not key.startswith("MDMT_MIA_C6")
+        key: str(parent[key]) for key in ALLOWED_PARENT_ENV_KEYS if key in parent
     }
     environment.update({
         "PYTHONNOUSERSITE": "1",
         "PYTHONHASHSEED": "0",
         "PYTHONPATH": str(SRC),
+        "MDMT_MIA_C7_CHILD_BOUNDARY": "1",
     })
     return environment
 
@@ -91,6 +95,7 @@ def execute_synthetic_launch(
     """Run the child/writer/validator/selector path using synthetic inputs only."""
     if manifest.get("synthetic_non_scientific") is not True:
         raise C7LauncherError("synthetic launch requires synthetic manifest")
+    validate_manifest(manifest)
     output = Path(output_root).resolve()
     operational = output / "operational"
     operational.mkdir(parents=True, exist_ok=True)

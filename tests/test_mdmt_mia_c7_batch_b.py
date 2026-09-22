@@ -27,11 +27,14 @@ from tracking.mdmt_mia_c7_batch_b_package import (
     write_selection_package,
 )
 from tracking.mdmt_mia_c7_batch_b_schema import (
+    ALLOWED_PARENT_ENV_KEYS,
     CELL_AGGREGATE_SCHEMA,
     CELL_QUALIFICATION_SCHEMA,
+    REGISTERED_SOURCE_RELATIVE_PATHS,
     SOURCE_HASH_KEYS,
     canonical_sha256,
     registered_cells,
+    sha256_file,
 )
 from tracking.mdmt_mia_c7_batch_b_validator import (
     C7BatchBValidationError,
@@ -66,6 +69,20 @@ def _hashes(value="a"):
 
 
 def _manifest(tmp_path, value="a", synthetic=True):
+    if not synthetic:
+        fixture = _registered_provenance_fixture(tmp_path)
+        return build_batch_b_manifest(
+            run_id="synthetic-run",
+            output_root=tmp_path,
+            batch_b_implementation_sha=fixture["head"],
+            source_hashes=None,
+            input_identity=fixture["input_identity"],
+            config_identity=fixture["config_identity"],
+            synthetic_non_scientific=False,
+            repo_root=fixture["repo_root"],
+            wrapper_path=fixture["wrapper_path"],
+            generated_source_root=fixture["generated_source_root"],
+        )
     return build_batch_b_manifest(
         run_id="synthetic-run",
         output_root=tmp_path,
@@ -75,6 +92,68 @@ def _manifest(tmp_path, value="a", synthetic=True):
         config_identity={"fixture": "tiny", "digest": "d" * 64},
         synthetic_non_scientific=synthetic,
     )
+
+
+def _registered_provenance_fixture(tmp_path):
+    repo = tmp_path / "registered-provenance-repo"
+    if not (repo / ".git").is_dir():
+        for relative in sorted(set(REGISTERED_SOURCE_RELATIVE_PATHS.values())):
+            path = repo / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("fixture source: {}\n".format(relative), encoding="utf-8")
+        input_path = repo / "fixtures/communication_input.json"
+        config_path = repo / "fixtures/c7_config.json"
+        input_path.parent.mkdir(parents=True, exist_ok=True)
+        input_path.write_text('{"fixture":"communication"}\n', encoding="utf-8")
+        config_path.write_text('{"fixture":"config"}\n', encoding="utf-8")
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "user.name", "C7 Test"], check=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "user.email", "c7@example.invalid"],
+            check=True)
+        subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "commit", "-q", "-m", "fixture"], check=True)
+    input_path = repo / "fixtures/communication_input.json"
+    config_path = repo / "fixtures/c7_config.json"
+    head = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        check=True, capture_output=True, text=True).stdout.strip()
+    return {
+        "repo_root": repo.resolve(),
+        "head": head,
+        "wrapper_path": (
+            repo / REGISTERED_SOURCE_RELATIVE_PATHS["wrapper"]).resolve(),
+        "generated_source_root": (tmp_path / "generated-author-source").resolve(),
+        "input_path": input_path.resolve(),
+        "config_path": config_path.resolve(),
+        "input_identity": {
+            "kind": "REGISTERED_C7_INPUT_FILES_V1",
+            "files": [{"path": str(input_path.resolve()), "sha256": sha256_file(input_path)}],
+        },
+        "config_identity": {
+            "kind": "REGISTERED_C7_CONFIG_FILES_V1",
+            "files": [{"path": str(config_path.resolve()), "sha256": sha256_file(config_path)}],
+        },
+    }
+
+
+def _build_registered_fixture_manifest(tmp_path, fixture, **overrides):
+    arguments = {
+        "run_id": "registered-fixture-run",
+        "output_root": tmp_path / "registered-output",
+        "batch_b_implementation_sha": fixture["head"],
+        "source_hashes": None,
+        "input_identity": fixture["input_identity"],
+        "config_identity": fixture["config_identity"],
+        "synthetic_non_scientific": False,
+        "repo_root": fixture["repo_root"],
+        "wrapper_path": fixture["wrapper_path"],
+        "generated_source_root": fixture["generated_source_root"],
+    }
+    arguments.update(overrides)
+    return build_batch_b_manifest(**arguments)
 
 
 def _no_stale_windows(cell, frames=(0, 1), run_id="synthetic-run"):
@@ -665,6 +744,154 @@ def test_p1_bb_04_real_child_self_authorization_cannot_execute_wrapper(tmp_path)
     with pytest.raises(child.C7ChildError, match="unconditionally blocked"):
         child.execute_child(child_spec)
     assert not sentinel.exists()
+
+
+def test_p2_bb_01_registered_manifest_binds_observed_provenance(tmp_path):
+    fixture = _registered_provenance_fixture(tmp_path)
+    manifest = _build_registered_fixture_manifest(tmp_path, fixture)
+    assert manifest["batch_b_implementation_sha"] == fixture["head"]
+    assert manifest["repository_identity"] == {
+        "mode": "REGISTERED_C7",
+        "repo_root": str(fixture["repo_root"]),
+        "git_head": fixture["head"],
+        "worktree_clean": True,
+    }
+    for key, relative in REGISTERED_SOURCE_RELATIVE_PATHS.items():
+        path = (fixture["repo_root"] / relative).resolve()
+        assert manifest["source_paths"][key] == str(path)
+        assert manifest["source_hashes"][key] == sha256_file(path)
+    assert manifest["execution_paths"]["wrapper_path"] == str(fixture["wrapper_path"])
+    assert manifest["execution_paths"]["wrapper_sha256"] == sha256_file(
+        fixture["wrapper_path"])
+    assert manifest["input_identity"]["files"][0]["path"] == str(fixture["input_path"])
+    assert manifest["config_identity"]["files"][0]["path"] == str(fixture["config_path"])
+    assert validate_manifest(manifest)["status"] == "PASS"
+
+
+def test_p2_bb_01_registered_manifest_rejects_false_40_hex_head(tmp_path):
+    fixture = _registered_provenance_fixture(tmp_path)
+    with pytest.raises(C7BatchBPackageError, match="actual Git HEAD"):
+        _build_registered_fixture_manifest(
+            tmp_path, fixture, batch_b_implementation_sha="f" * 40)
+
+
+def test_p2_bb_01_registered_manifest_rejects_dirty_worktree(tmp_path):
+    fixture = _registered_provenance_fixture(tmp_path)
+    dirty = fixture["repo_root"] / REGISTERED_SOURCE_RELATIVE_PATHS["runtime"]
+    dirty.write_text(dirty.read_text(encoding="utf-8") + "dirty\n", encoding="utf-8")
+    with pytest.raises(C7BatchBPackageError, match="clean worktree"):
+        _build_registered_fixture_manifest(tmp_path, fixture)
+
+
+def test_p2_bb_01_registered_manifest_rejects_wrapper_hash_mismatch(tmp_path):
+    fixture = _registered_provenance_fixture(tmp_path)
+    claimed = {
+        key: sha256_file(fixture["repo_root"] / relative)
+        for key, relative in REGISTERED_SOURCE_RELATIVE_PATHS.items()
+    }
+    claimed["wrapper"] = "0" * 64
+    with pytest.raises(C7BatchBPackageError, match="actual files"):
+        _build_registered_fixture_manifest(tmp_path, fixture, source_hashes=claimed)
+
+
+@pytest.mark.parametrize("identity_name", ["input_identity", "config_identity"])
+def test_p2_bb_01_registered_manifest_rejects_input_config_digest_mismatch(
+    tmp_path, identity_name,
+):
+    fixture = _registered_provenance_fixture(tmp_path)
+    corrupted = copy.deepcopy(fixture[identity_name])
+    corrupted["files"][0]["sha256"] = "0" * 64
+    with pytest.raises(C7BatchBPackageError, match="digest mismatch"):
+        _build_registered_fixture_manifest(
+            tmp_path, fixture, **{identity_name: corrupted})
+
+
+@pytest.mark.parametrize("target", ["source", "wrapper", "input", "config"])
+def test_p2_bb_01_validator_rejects_observed_provenance_tamper(tmp_path, target):
+    fixture = _registered_provenance_fixture(tmp_path)
+    manifest = _build_registered_fixture_manifest(tmp_path, fixture)
+    paths = {
+        "source": fixture["repo_root"] / REGISTERED_SOURCE_RELATIVE_PATHS["runtime"],
+        "wrapper": fixture["wrapper_path"],
+        "input": fixture["input_path"],
+        "config": fixture["config_path"],
+    }
+    path = paths[target]
+    path.write_text(path.read_text(encoding="utf-8") + "tampered\n", encoding="utf-8")
+    with pytest.raises(C7BatchBValidationError, match="digest"):
+        validate_manifest(manifest)
+
+
+def test_p2_bb_01_synthetic_placeholder_cannot_validate_as_registered(tmp_path):
+    manifest = _manifest(tmp_path, synthetic=True)
+    manifest["synthetic_non_scientific"] = False
+    manifest["transaction_domain_kind"] = "REGISTERED_C7"
+    with pytest.raises(C7BatchBValidationError):
+        validate_manifest(manifest)
+
+
+def test_p2_bb_02_unknown_parent_environment_excluded_at_subprocess_boundary(tmp_path):
+    launcher_path = ROOT / "scripts/run_mdmt_mia_c7_outcome_blind_census.py"
+    spec = importlib.util.spec_from_file_location("c7_launcher_environment", launcher_path)
+    assert spec and spec.loader
+    launcher = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(launcher)
+    windows_path = tmp_path / "empty_windows.jsonl"
+    atomic_write_jsonl(windows_path, [])
+    output_root = tmp_path / "child-environment"
+    child_spec = {
+        "authorities": __import__(
+            "tracking.mdmt_mia_c7_batch_b_schema",
+            fromlist=["authority_bindings"],
+        ).authority_bindings(),
+        "mode": "SYNTHETIC_NON_SCIENTIFIC",
+        "synthetic_non_scientific": True,
+        "window_source": str(windows_path),
+        "output_root": str(output_root),
+    }
+    spec_path = tmp_path / "environment_child_spec.json"
+    atomic_write_json(spec_path, child_spec)
+    sentinels = {
+        "UNRELATED_PARENT_SENTINEL": "absent-a",
+        "TRACKING_RESULT_PATH_SENTINEL": "absent-b",
+        "OLD_EXPERIMENT_ARTIFACT_SENTINEL": "absent-c",
+        "ARBITRARY_PARENT_STATE_SENTINEL": "absent-d",
+        "MIA_HISTORICAL_SENTINEL": "absent-mia",
+        "MDMT_MIA_C6_HISTORICAL_SENTINEL": "absent-c6",
+    }
+    parent = {
+        "PATH": "/synthetic/allowlisted/runtime/bin",
+        "LANG": "C.UTF-8",
+        "PYTHONPATH": "/parent/must/not/win",
+        "PYTHONHASHSEED": "999",
+        "MDMT_MIA_C7_CHILD_BOUNDARY": "parent-must-not-win",
+        **sentinels,
+    }
+    child_environment = launcher.controlled_environment(parent)
+    assert set(child_environment) == {
+        "PATH", "LANG", "PYTHONNOUSERSITE", "PYTHONHASHSEED", "PYTHONPATH",
+        "MDMT_MIA_C7_CHILD_BOUNDARY",
+    }
+    completed = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/run_mdmt_mia_c7_real_child.py"),
+         "--spec", str(spec_path)],
+        cwd=ROOT, env=child_environment, check=False)
+    assert completed.returncode == 0
+    status = json.loads((output_root / "CHILD_STATUS.json").read_text(encoding="utf-8"))
+    observed_keys = set(status["environment_keys"])
+    assert observed_keys.isdisjoint(sentinels)
+    assert observed_keys <= set(ALLOWED_PARENT_ENV_KEYS) | {
+        "PYTHONNOUSERSITE", "PYTHONHASHSEED", "PYTHONPATH",
+        "MDMT_MIA_C7_CHILD_BOUNDARY",
+    }
+    assert status["allowed_parent_environment"]["PATH"] == parent["PATH"]
+    assert status["allowed_parent_environment"]["LANG"] == parent["LANG"]
+    assert status["bound_environment"] == {
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONHASHSEED": "0",
+        "PYTHONPATH": str(ROOT / "src"),
+        "MDMT_MIA_C7_CHILD_BOUNDARY": "1",
+    }
 
 
 def test_synthetic_tiny_e2e_uses_child_disk_validator_writer_and_selector(tmp_path):

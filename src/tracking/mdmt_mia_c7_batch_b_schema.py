@@ -110,8 +110,38 @@ FORBIDDEN_OUTCOME_FAMILIES = (
 SOURCE_HASH_KEYS = frozenset({
     "runtime", "batch_a_producer", "batch_a_validator", "batch_b_schema",
     "batch_b_aggregator", "batch_b_selector", "batch_b_validator",
-    "batch_b_package", "launcher", "child",
+    "batch_b_package", "launcher", "child", "packet_definitions",
+    "generated_source_preparer", "wrapper",
 })
+
+# Declarative only: producer and validator independently resolve and hash these
+# paths for REGISTERED_C7 provenance.
+REGISTERED_SOURCE_RELATIVE_PATHS = {
+    "runtime": "src/tracking/mdmt_mia_async_deadline_runtime.py",
+    "batch_a_producer": "src/tracking/mdmt_mia_c7_census.py",
+    "batch_a_validator": "src/tracking/mdmt_mia_c7_validator.py",
+    "batch_b_schema": "src/tracking/mdmt_mia_c7_batch_b_schema.py",
+    "batch_b_aggregator": "src/tracking/mdmt_mia_c7_batch_b.py",
+    "batch_b_selector": "src/tracking/mdmt_mia_c7_batch_b.py",
+    "batch_b_validator": "src/tracking/mdmt_mia_c7_batch_b_validator.py",
+    "batch_b_package": "src/tracking/mdmt_mia_c7_batch_b_package.py",
+    "launcher": "scripts/run_mdmt_mia_c7_outcome_blind_census.py",
+    "child": "scripts/run_mdmt_mia_c7_real_child.py",
+    "packet_definitions": "src/tracking/mdmt_mia_packets.py",
+    "generated_source_preparer": "scripts/prepare_mdmt_mia_async_packet_variant.py",
+    "wrapper": "scripts/run_mdmt_mia_author_sync.sh",
+}
+
+ALLOWED_PARENT_ENV_KEYS = (
+    "PATH",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TMPDIR",
+    "CUDA_VISIBLE_DEVICES",
+    "LD_LIBRARY_PATH",
+    "NVIDIA_VISIBLE_DEVICES",
+)
 
 
 def canonical_json(value: Any) -> str:

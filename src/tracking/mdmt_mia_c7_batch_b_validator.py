@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -40,7 +41,9 @@ from .mdmt_mia_c7_batch_b_schema import (
     PACKAGE_SEAL_SCHEMA,
     PACKAGE_VALIDATION_SCHEMA,
     PAIR_DOMAIN,
+    ALLOWED_PARENT_ENV_KEYS,
     REGISTERED_CELL_IDS,
+    REGISTERED_SOURCE_RELATIVE_PATHS,
     SELECTION_SCHEMA,
     SOURCE_HASH_KEYS,
     T_COUNT,
@@ -107,7 +110,8 @@ _MANIFEST_KEYS = frozenset({
     "registered_capacity_domain", "cells", "input_identity", "config_identity",
     "output_root", "expected_cell_artifacts", "expected_package_artifacts",
     "outcome_firewall_forbidden_families", "transaction_domain_kind",
-    "authorized_frame_domains",
+    "authorized_frame_domains", "source_paths", "repository_identity",
+    "execution_paths", "environment_allowlist",
 })
 _CELL_MANIFEST_KEYS = frozenset({
     "schema_version", "run_id", "cell", "expected_frame_domain",
@@ -336,6 +340,127 @@ def _reconstruct_no_stale_facts(evidence: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _git_observed(repo_root: Path, *arguments: str) -> str:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repo_root), *arguments],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise C7BatchBValidationError(
+            "registered manifest Git provenance is not observable") from exc
+    return completed.stdout.strip()
+
+
+def _observed_file(path: Any, label: str) -> Path:
+    if not isinstance(path, str):
+        raise C7BatchBValidationError("{} path must be canonical string".format(label))
+    try:
+        observed = Path(path).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise C7BatchBValidationError("{} path cannot be resolved".format(label)) from exc
+    if not observed.is_file() or str(observed) != path:
+        raise C7BatchBValidationError("{} path is not a canonical file".format(label))
+    return observed
+
+
+def _validate_registered_identity(
+    identity: Any, *, label: str, expected_kind: str,
+) -> None:
+    if not isinstance(identity, Mapping) or frozenset(identity) != {"kind", "files", "digest"}:
+        raise C7BatchBValidationError("registered {} identity schema mismatch".format(label))
+    if identity.get("kind") != expected_kind:
+        raise C7BatchBValidationError("registered {} identity kind mismatch".format(label))
+    files = identity.get("files")
+    if not isinstance(files, list) or not files:
+        raise C7BatchBValidationError("registered {} identity files missing".format(label))
+    observed = []
+    for row in files:
+        if not isinstance(row, Mapping) or frozenset(row) != {"path", "sha256"}:
+            raise C7BatchBValidationError("registered {} file schema mismatch".format(label))
+        path = _observed_file(row.get("path"), "registered {}".format(label))
+        actual = sha256_file(path)
+        if row.get("sha256") != actual:
+            raise C7BatchBValidationError("registered {} file digest mismatch".format(label))
+        observed.append({"path": str(path), "sha256": actual})
+    if observed != sorted(observed, key=lambda row: row["path"]):
+        raise C7BatchBValidationError("registered {} files are not canonical ordered".format(label))
+    if len({row["path"] for row in observed}) != len(observed):
+        raise C7BatchBValidationError("registered {} identity has duplicate file".format(label))
+    if identity.get("digest") != canonical_sha256(observed):
+        raise C7BatchBValidationError("registered {} aggregate digest mismatch".format(label))
+
+
+def _validate_registered_provenance(manifest: Mapping[str, Any]) -> None:
+    repository = manifest.get("repository_identity")
+    if not isinstance(repository, Mapping) or frozenset(repository) != {
+            "mode", "repo_root", "git_head", "worktree_clean"}:
+        raise C7BatchBValidationError("registered repository identity schema mismatch")
+    if repository.get("mode") != "REGISTERED_C7" or repository.get("worktree_clean") is not True:
+        raise C7BatchBValidationError("registered repository identity marker mismatch")
+    root_text = repository.get("repo_root")
+    if not isinstance(root_text, str):
+        raise C7BatchBValidationError("registered repository root missing")
+    try:
+        root = Path(root_text).resolve(strict=True)
+        observed_root = Path(
+            _git_observed(root, "rev-parse", "--show-toplevel")).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise C7BatchBValidationError("registered repository root invalid") from exc
+    if str(root) != root_text or observed_root != root:
+        raise C7BatchBValidationError("registered repository root is not canonical")
+    observed_head = _git_observed(root, "rev-parse", "HEAD")
+    if (repository.get("git_head") != observed_head
+            or manifest.get("batch_b_implementation_sha") != observed_head):
+        raise C7BatchBValidationError("registered implementation SHA differs from actual Git HEAD")
+
+    source_paths = manifest.get("source_paths")
+    source_hashes = manifest.get("source_hashes")
+    if not isinstance(source_paths, Mapping) or frozenset(source_paths) != SOURCE_HASH_KEYS:
+        raise C7BatchBValidationError("registered source path inventory mismatch")
+    expected_paths = {}
+    for key, relative in sorted(REGISTERED_SOURCE_RELATIVE_PATHS.items()):
+        expected = (root / relative).resolve(strict=True)
+        try:
+            expected.relative_to(root)
+        except ValueError as exc:
+            raise C7BatchBValidationError(
+                "registered source escapes repository root") from exc
+        observed = _observed_file(source_paths.get(key), "registered source {}".format(key))
+        if observed != expected:
+            raise C7BatchBValidationError("registered source path mismatch")
+        expected_paths[key] = str(expected)
+        if source_hashes.get(key) != sha256_file(expected):
+            raise C7BatchBValidationError("registered source file digest mismatch")
+    if dict(source_paths) != expected_paths:
+        raise C7BatchBValidationError("registered source paths are not canonical")
+
+    execution = manifest.get("execution_paths")
+    if not isinstance(execution, Mapping) or frozenset(execution) != {
+            "wrapper_path", "wrapper_sha256", "generated_source_root",
+            "generated_source_lifecycle", "generated_source_sha256"}:
+        raise C7BatchBValidationError("registered execution path schema mismatch")
+    if (execution.get("wrapper_path") != expected_paths["wrapper"]
+            or execution.get("wrapper_sha256") != source_hashes["wrapper"]):
+        raise C7BatchBValidationError("registered wrapper provenance mismatch")
+    generated_root = execution.get("generated_source_root")
+    if (not isinstance(generated_root, str)
+            or str(Path(generated_root).resolve()) != generated_root
+            or execution.get("generated_source_lifecycle") != "MATERIALIZED_DURING_REAL_CHILD"
+            or execution.get("generated_source_sha256") is not None):
+        raise C7BatchBValidationError("registered generated-source lifecycle mismatch")
+
+    _validate_registered_identity(
+        manifest.get("input_identity"), label="input",
+        expected_kind="REGISTERED_C7_INPUT_FILES_V1")
+    _validate_registered_identity(
+        manifest.get("config_identity"), label="config",
+        expected_kind="REGISTERED_C7_CONFIG_FILES_V1")
+    if _git_observed(root, "status", "--porcelain", "--untracked-files=all"):
+        raise C7BatchBValidationError("registered worktree is dirty")
+
+
 def validate_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
     _exact_keys(manifest, _MANIFEST_KEYS, "Batch B manifest")
     if (manifest.get("schema_version") != MANIFEST_SCHEMA
@@ -376,12 +501,35 @@ def validate_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
     expected_kind = "SYNTHETIC_NON_SCIENTIFIC" if synthetic else "REGISTERED_C7"
     if manifest.get("transaction_domain_kind") != expected_kind:
         raise C7BatchBValidationError("manifest transaction domain kind mismatch")
+    if manifest.get("environment_allowlist") != list(ALLOWED_PARENT_ENV_KEYS):
+        raise C7BatchBValidationError("manifest environment allowlist mismatch")
     if manifest.get("authorized_frame_domains") != authorized_frame_domains(synthetic):
         raise C7BatchBValidationError("manifest authorized frame domain mismatch")
     if not isinstance(manifest.get("input_identity"), Mapping):
         raise C7BatchBValidationError("manifest input identity missing")
     if not isinstance(manifest.get("config_identity"), Mapping):
         raise C7BatchBValidationError("manifest config identity missing")
+    output_root = manifest.get("output_root")
+    if not isinstance(output_root, str) or str(Path(output_root).resolve()) != output_root:
+        raise C7BatchBValidationError("manifest output root is not canonical")
+    if synthetic:
+        if manifest.get("source_paths") != {}:
+            raise C7BatchBValidationError("synthetic source paths must not claim authority")
+        if manifest.get("repository_identity") != {
+                "mode": "SYNTHETIC_NON_SCIENTIFIC",
+                "repo_root": None,
+                "git_head": implementation_sha,
+                "worktree_clean": None}:
+            raise C7BatchBValidationError("synthetic repository identity mismatch")
+        if manifest.get("execution_paths") != {
+                "wrapper_path": None,
+                "wrapper_sha256": None,
+                "generated_source_root": None,
+                "generated_source_lifecycle": "SYNTHETIC_NON_SCIENTIFIC",
+                "generated_source_sha256": None}:
+            raise C7BatchBValidationError("synthetic execution provenance mismatch")
+    else:
+        _validate_registered_provenance(manifest)
     if manifest.get("expected_cell_artifacts") != [
         "windows.jsonl", "cell_aggregate.json", "cell_qualification.json",
         "cell_manifest.json", "cell_validation.json", "cell_inventory.json",

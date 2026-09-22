@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -28,6 +29,8 @@ from .mdmt_mia_c7_batch_b_schema import (
     PACKAGE_SEAL_SCHEMA,
     PACKAGE_VALIDATION_SCHEMA,
     PAIR_DOMAIN,
+    ALLOWED_PARENT_ENV_KEYS,
+    REGISTERED_SOURCE_RELATIVE_PATHS,
     SELECTION_SCHEMA,
     SOURCE_HASH_KEYS,
     VALIDATED_WINDOW_SCHEMA,
@@ -118,22 +121,182 @@ def _quarantine(path: Path, reason: str) -> Path:
     raise C7BatchBPackageError("unable to allocate quarantine path")
 
 
+def _git_text(repo_root: Path, *arguments: str) -> str:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repo_root), *arguments],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise C7BatchBPackageError("registered provenance Git preflight failed") from exc
+    return completed.stdout.strip()
+
+
+def _canonical_file(path: Path | str, label: str) -> Path:
+    try:
+        resolved = Path(path).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise C7BatchBPackageError("{} is not a resolvable file".format(label)) from exc
+    if not resolved.is_file():
+        raise C7BatchBPackageError("{} is not a file".format(label))
+    return resolved
+
+
+def _require_within(path: Path, root: Path, label: str) -> None:
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise C7BatchBPackageError(
+            "{} escapes registered repository root".format(label)) from exc
+
+
+def _registered_file_identity(
+    identity: Mapping[str, Any], *, label: str, expected_kind: str,
+) -> dict[str, Any]:
+    if not isinstance(identity, Mapping) or frozenset(identity) != {"kind", "files"}:
+        raise C7BatchBPackageError("registered {} identity schema mismatch".format(label))
+    if identity.get("kind") != expected_kind:
+        raise C7BatchBPackageError("registered {} identity kind mismatch".format(label))
+    files = identity.get("files")
+    if not isinstance(files, list) or not files:
+        raise C7BatchBPackageError("registered {} files are missing".format(label))
+    observed = []
+    seen = set()
+    for index, row in enumerate(files):
+        if not isinstance(row, Mapping) or frozenset(row) != {"path", "sha256"}:
+            raise C7BatchBPackageError("registered {} file schema mismatch".format(label))
+        path = _canonical_file(row.get("path", ""), "{} file {}".format(label, index))
+        if str(path) in seen:
+            raise C7BatchBPackageError("duplicate registered {} file".format(label))
+        seen.add(str(path))
+        actual = sha256_file(path)
+        if row.get("sha256") != actual:
+            raise C7BatchBPackageError("registered {} digest mismatch".format(label))
+        observed.append({"path": str(path), "sha256": actual})
+    observed.sort(key=lambda row: row["path"])
+    return {
+        "kind": expected_kind,
+        "files": observed,
+        "digest": canonical_sha256(observed),
+    }
+
+
+def _registered_provenance(
+    *, repo_root: Path | str, claimed_implementation_sha: str,
+    claimed_source_hashes: Mapping[str, str] | None,
+    wrapper_path: Path | str | None, generated_source_root: Path | str | None,
+    input_identity: Mapping[str, Any], config_identity: Mapping[str, Any],
+) -> tuple[str, dict[str, str], dict[str, str], dict[str, Any], dict[str, Any],
+           dict[str, Any], dict[str, Any]]:
+    try:
+        root = Path(repo_root).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise C7BatchBPackageError("registered repository root is invalid") from exc
+    observed_root = Path(_git_text(root, "rev-parse", "--show-toplevel")).resolve(strict=True)
+    if observed_root != root:
+        raise C7BatchBPackageError("registered repository root is not canonical Git root")
+    observed_head = _git_text(root, "rev-parse", "HEAD")
+    claimed = _require_sha(
+        claimed_implementation_sha, "Batch B implementation SHA", 40)
+    if claimed != observed_head:
+        raise C7BatchBPackageError("registered implementation SHA differs from actual Git HEAD")
+    if _git_text(root, "status", "--porcelain", "--untracked-files=all"):
+        raise C7BatchBPackageError("registered provenance requires a clean worktree")
+
+    expected_wrapper = (root / REGISTERED_SOURCE_RELATIVE_PATHS["wrapper"]).resolve(strict=True)
+    _require_within(expected_wrapper, root, "registered wrapper")
+    wrapper = expected_wrapper if wrapper_path is None else _canonical_file(
+        wrapper_path, "registered wrapper")
+    if wrapper != expected_wrapper:
+        raise C7BatchBPackageError("registered wrapper path differs from frozen source inventory")
+    source_paths = {}
+    source_hashes = {}
+    for key, relative in sorted(REGISTERED_SOURCE_RELATIVE_PATHS.items()):
+        path = wrapper if key == "wrapper" else _canonical_file(
+            root / relative, "registered source {}".format(key))
+        _require_within(path, root, "registered source {}".format(key))
+        source_paths[key] = str(path)
+        source_hashes[key] = sha256_file(path)
+    if claimed_source_hashes is not None and dict(claimed_source_hashes) != source_hashes:
+        raise C7BatchBPackageError("registered source hashes differ from actual files")
+
+    if generated_source_root is None:
+        raise C7BatchBPackageError("registered generated-source root is required")
+    generated = Path(generated_source_root).resolve()
+    repository_identity = {
+        "mode": "REGISTERED_C7",
+        "repo_root": str(root),
+        "git_head": observed_head,
+        "worktree_clean": True,
+    }
+    execution_paths = {
+        "wrapper_path": str(wrapper),
+        "wrapper_sha256": source_hashes["wrapper"],
+        "generated_source_root": str(generated),
+        "generated_source_lifecycle": "MATERIALIZED_DURING_REAL_CHILD",
+        "generated_source_sha256": None,
+    }
+    bound_input = _registered_file_identity(
+        input_identity, label="input", expected_kind="REGISTERED_C7_INPUT_FILES_V1")
+    bound_config = _registered_file_identity(
+        config_identity, label="config", expected_kind="REGISTERED_C7_CONFIG_FILES_V1")
+    return (
+        observed_head, source_hashes, source_paths, repository_identity,
+        execution_paths, bound_input, bound_config,
+    )
+
+
 def build_batch_b_manifest(
     *, run_id: str, output_root: Path | str, batch_b_implementation_sha: str,
-    source_hashes: Mapping[str, str], input_identity: Mapping[str, Any],
+    source_hashes: Mapping[str, str] | None, input_identity: Mapping[str, Any],
     config_identity: Mapping[str, Any], synthetic_non_scientific: bool,
+    repo_root: Path | str | None = None, wrapper_path: Path | str | None = None,
+    generated_source_root: Path | str | None = None,
 ) -> dict[str, Any]:
     """Build the immutable 21-cell authority/provenance manifest."""
-    if frozenset(source_hashes) != SOURCE_HASH_KEYS:
-        raise C7BatchBPackageError("source hash inventory mismatch")
-    checked_hashes = {
-        key: _require_sha(value, "{} source hash".format(key))
-        for key, value in sorted(source_hashes.items())
-    }
-    implementation_sha = _require_sha(
-        batch_b_implementation_sha, "Batch B implementation SHA", 40)
     if not isinstance(synthetic_non_scientific, bool):
         raise C7BatchBPackageError("synthetic marker must be boolean")
+    if synthetic_non_scientific:
+        if not isinstance(source_hashes, Mapping) or frozenset(source_hashes) != SOURCE_HASH_KEYS:
+            raise C7BatchBPackageError("source hash inventory mismatch")
+        checked_hashes = {
+            key: _require_sha(value, "{} source hash".format(key))
+            for key, value in sorted(source_hashes.items())
+        }
+        implementation_sha = _require_sha(
+            batch_b_implementation_sha, "Batch B implementation SHA", 40)
+        source_paths: dict[str, str] = {}
+        repository_identity = {
+            "mode": "SYNTHETIC_NON_SCIENTIFIC",
+            "repo_root": None,
+            "git_head": implementation_sha,
+            "worktree_clean": None,
+        }
+        execution_paths = {
+            "wrapper_path": None,
+            "wrapper_sha256": None,
+            "generated_source_root": None,
+            "generated_source_lifecycle": "SYNTHETIC_NON_SCIENTIFIC",
+            "generated_source_sha256": None,
+        }
+        bound_input = dict(input_identity)
+        bound_config = dict(config_identity)
+    else:
+        if repo_root is None:
+            raise C7BatchBPackageError("registered repository root is required")
+        (
+            implementation_sha, checked_hashes, source_paths,
+            repository_identity, execution_paths, bound_input, bound_config,
+        ) = _registered_provenance(
+            repo_root=repo_root,
+            claimed_implementation_sha=batch_b_implementation_sha,
+            claimed_source_hashes=source_hashes,
+            wrapper_path=wrapper_path,
+            generated_source_root=generated_source_root,
+            input_identity=input_identity,
+            config_identity=config_identity,
+        )
     manifest = {
         "schema_version": MANIFEST_SCHEMA,
         "batch_b_schema_version": BATCH_B_SCHEMA_VERSION,
@@ -142,6 +305,10 @@ def build_batch_b_manifest(
         "authorities": authority_bindings(),
         "batch_b_implementation_sha": implementation_sha,
         "source_hashes": checked_hashes,
+        "source_paths": source_paths,
+        "repository_identity": repository_identity,
+        "execution_paths": execution_paths,
+        "environment_allowlist": list(ALLOWED_PARENT_ENV_KEYS),
         "schema_identities": {
             "batch_a_semantics": BATCH_A_SEMANTICS_SCHEMA,
             "batch_a_validation": BATCH_A_VALIDATION_SCHEMA,
@@ -158,8 +325,8 @@ def build_batch_b_manifest(
         "transaction_domain_kind": (
             "SYNTHETIC_NON_SCIENTIFIC" if synthetic_non_scientific else "REGISTERED_C7"),
         "authorized_frame_domains": authorized_frame_domains(synthetic_non_scientific),
-        "input_identity": dict(input_identity),
-        "config_identity": dict(config_identity),
+        "input_identity": bound_input,
+        "config_identity": bound_config,
         "output_root": str(Path(output_root).resolve()),
         "expected_cell_artifacts": [
             "windows.jsonl", "cell_aggregate.json", "cell_qualification.json",

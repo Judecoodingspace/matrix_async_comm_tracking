@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -15,7 +16,11 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from tracking.mdmt_mia_c7_batch_b_package import atomic_write_json, atomic_write_jsonl
-from tracking.mdmt_mia_c7_batch_b_schema import authority_bindings, sha256_file
+from tracking.mdmt_mia_c7_batch_b_schema import (
+    ALLOWED_PARENT_ENV_KEYS,
+    authority_bindings,
+    sha256_file,
+)
 from tracking.mdmt_mia_c7_batch_b_validator import read_jsonl
 
 
@@ -38,6 +43,21 @@ def _verify_authorities(spec: dict) -> None:
         raise C7ChildError("child authority mismatch")
 
 
+def _environment_attestation() -> dict:
+    return {
+        "environment_keys": sorted(os.environ),
+        "allowed_parent_environment": {
+            key: os.environ[key] for key in ALLOWED_PARENT_ENV_KEYS if key in os.environ
+        },
+        "bound_environment": {
+            key: os.environ.get(key) for key in (
+                "PYTHONNOUSERSITE", "PYTHONHASHSEED", "PYTHONPATH",
+                "MDMT_MIA_C7_CHILD_BOUNDARY",
+            )
+        },
+    }
+
+
 def build_real_wrapper_command(spec: dict) -> tuple[list[str], dict[str, str]]:
     """Build the real author-wrapper path without reading any result artifact."""
     _verify_authorities(spec)
@@ -51,13 +71,16 @@ def build_real_wrapper_command(spec: dict) -> tuple[list[str], dict[str, str]]:
     if not wrapper.is_file() or sha256_file(wrapper) != spec.get("author_wrapper_sha256"):
         raise C7ChildError("author wrapper identity mismatch")
     environment = {
+        key: os.environ[key] for key in ALLOWED_PARENT_ENV_KEYS if key in os.environ
+    }
+    environment.update({
         "MIA_OUTPUT_ROOT": str(Path(spec["author_output_root"]).resolve()),
         "MIA_SOURCE_ROOT": str(Path(spec["generated_source_root"]).resolve()),
         "PYTHONNOUSERSITE": "1",
         "PYTHONHASHSEED": "0",
         "MDMT_MIA_C7_OBSERVATIONAL": "1",
         "MDMT_MIA_C7_CAPACITY_BYTES": str(cell["capacity_bytes"]),
-    }
+    })
     command = [str(wrapper), "mia", str(spec.get("split", "train")), pair_id[1:]]
     return command, environment
 
@@ -80,6 +103,7 @@ def execute_child(spec: dict) -> dict:
             "window_count": len(records),
             "windows_sha256": sha256_file(output_root / "windows.jsonl"),
             "real_input_executed": False,
+            **_environment_attestation(),
         }
         atomic_write_json(output_root / "CHILD_STATUS.json", status)
         return status
@@ -95,6 +119,7 @@ def execute_child(spec: dict) -> dict:
             "wrapper_command": command,
             "controlled_environment_keys": sorted(controlled),
             "real_input_executed": False,
+            **_environment_attestation(),
         }
         atomic_write_json(output_root / "CHILD_STATUS.json", status)
         return status
