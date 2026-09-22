@@ -1,0 +1,750 @@
+"""Independent fail-closed validator for C7 Batch B artifacts.
+
+This module does not import the Batch B producer.  It independently rebuilds
+window-domain counts, the four gates, the qualified subset, and selection.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+from .mdmt_mia_c7_batch_b_schema import (
+    BATCH_A_SEMANTICS_SCHEMA,
+    BATCH_A_VALIDATION_SCHEMA,
+    BATCH_A_FREEZE_AUTHORITY,
+    BATCH_B_SCHEMA_VERSION,
+    CAPACITY_DOMAIN,
+    CELL_AGGREGATE_SCHEMA,
+    CELL_ARTIFACTS_BEFORE_COMMIT,
+    CELL_AUTHORITATIVE_FILES,
+    CELL_COMMIT_SCHEMA,
+    CELL_INVENTORY_SCHEMA,
+    CELL_MANIFEST_SCHEMA,
+    CELL_QUALIFICATION_SCHEMA,
+    CELL_SEAL_SCHEMA,
+    CELL_VALIDATION_SCHEMA,
+    CONDITIONAL_MULTIPLIER,
+    FORBIDDEN_OUTCOME_FAMILIES,
+    FROZEN_BATCH_A_IMPLEMENTATION_AUTHORITY,
+    GLOBAL_MULTIPLIER,
+    MANIFEST_SCHEMA,
+    NO_STALE_VALIDATION_SCHEMA,
+    PACKAGE_ARTIFACTS_BEFORE_COMMIT,
+    PACKAGE_AUTHORITATIVE_FILES,
+    PACKAGE_COMMIT_SCHEMA,
+    PACKAGE_INVENTORY_SCHEMA,
+    PACKAGE_SEAL_SCHEMA,
+    PACKAGE_VALIDATION_SCHEMA,
+    PAIR_DOMAIN,
+    REGISTERED_CELL_IDS,
+    SELECTION_SCHEMA,
+    SOURCE_HASH_KEYS,
+    T_COUNT,
+    T_DENOMINATOR,
+    VALIDATED_WINDOW_SCHEMA,
+    authority_bindings,
+    canonical_sha256,
+    registered_cells,
+    sha256_file,
+)
+from .mdmt_mia_c7_validator import C7ValidationError, validate_core_evidence
+
+
+class C7BatchBValidationError(ValueError):
+    """Raised when persisted Batch B evidence cannot be independently proven."""
+
+
+_HEX64 = re.compile(r"^[0-9a-f]{64}$")
+_WINDOW_KEYS = frozenset({
+    "schema_version", "run_id", "cell_id", "pair_id", "capacity_id",
+    "capacity_bytes", "frame_index", "evidence_kind", "evidence",
+    "validation", "evidence_sha256", "validation_sha256",
+})
+_NO_STALE_EVIDENCE_KEYS = frozenset({
+    "schema_version", "frame_index", "observer_failures",
+    "stale_classification_records", "raw_evidence_sha256",
+})
+_AGGREGATE_KEYS = frozenset({
+    "schema_version", "run_id", "cell_id", "pair_id", "capacity_id",
+    "capacity_bytes", "expected_frame_domain", "observed_frame_domain",
+    "cell_validity", "invalid_reasons", "N_all", "N_stale", "N_eligible",
+    "nesting_attestation", "overall_rate", "conditional_rate",
+    "input_window_evidence_digests", "schema_identity",
+    "producer_source_authority", "validator_source_authority",
+})
+_QUALIFICATION_KEYS = frozenset({
+    "schema_version", "run_id", "cell_id", "pair_id", "capacity_id",
+    "capacity_bytes", "aggregate_sha256", "N_all", "N_stale", "N_eligible",
+    "count_threshold", "denominator_threshold", "count_pass",
+    "denominator_pass", "global_lhs", "global_rhs", "global_pass",
+    "conditional_lhs", "conditional_rhs", "conditional_pass", "CELL_QUALIFIED",
+    "cell_validity", "cell_validation_status", "qualification_complete",
+    "frozen_batch_a_implementation_authority", "batch_a_freeze_authority",
+})
+_SELECTION_KEYS = frozenset({
+    "schema_version", "run_id", "manifest_sha256",
+    "all_21_complete_attestation", "qualified_subset", "comparison_trace",
+    "selection_outcome", "selected_cell_id",
+})
+_MANIFEST_KEYS = frozenset({
+    "schema_version", "batch_b_schema_version", "run_id",
+    "synthetic_non_scientific", "authorities", "batch_b_implementation_sha",
+    "source_hashes", "schema_identities", "registered_pair_domain",
+    "registered_capacity_domain", "cells", "input_identity", "config_identity",
+    "output_root", "expected_cell_artifacts", "expected_package_artifacts",
+    "outcome_firewall_forbidden_families",
+})
+_CELL_MANIFEST_KEYS = frozenset({
+    "schema_version", "run_id", "cell", "expected_frame_domain",
+    "batch_b_manifest_sha256", "authorities", "source_hashes",
+    "schema_identities", "input_identity", "config_identity",
+    "synthetic_non_scientific", "expected_artifacts",
+})
+_CELL_SPEC_KEYS = frozenset({
+    "cell_id", "pair_id", "frame_count", "capacity_id", "capacity_bytes",
+    "stable_pair_order", "stable_capacity_order",
+})
+
+
+def _integer(value: Any, label: str, minimum: int = 0) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise C7BatchBValidationError("{} must be an integer".format(label))
+    if value < minimum:
+        raise C7BatchBValidationError("{} must be >= {}".format(label, minimum))
+    return value
+
+
+def _exact_keys(value: Mapping[str, Any], expected: frozenset[str], label: str) -> None:
+    if not isinstance(value, Mapping):
+        raise C7BatchBValidationError("{} must be an object".format(label))
+    keys = frozenset(value)
+    if keys != expected:
+        raise C7BatchBValidationError(
+            "{} keys mismatch: missing={} extra={}".format(
+                label, sorted(expected - keys), sorted(keys - expected)))
+
+
+def _digest(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not _HEX64.fullmatch(value):
+        raise C7BatchBValidationError("{} must be a lowercase SHA-256".format(label))
+    return value
+
+
+def read_json(path: Path | str) -> dict[str, Any]:
+    try:
+        value = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise C7BatchBValidationError("invalid JSON: {}".format(path)) from exc
+    if not isinstance(value, dict):
+        raise C7BatchBValidationError("JSON object required: {}".format(path))
+    return value
+
+
+def read_jsonl(path: Path | str) -> list[dict[str, Any]]:
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise C7BatchBValidationError("invalid JSONL: {}".format(path)) from exc
+    records = []
+    for index, line in enumerate(lines, 1):
+        if not line:
+            raise C7BatchBValidationError("blank JSONL line {}".format(index))
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise C7BatchBValidationError("invalid JSONL line {}".format(index)) from exc
+        if not isinstance(value, dict):
+            raise C7BatchBValidationError("JSONL object required on line {}".format(index))
+        records.append(value)
+    return records
+
+
+def reject_forbidden_outcome_content(value: Any, *, policy_context: bool = False) -> None:
+    """Reject outcome-bearing keys/values while allowing firewall declarations."""
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if key == "outcome_firewall_forbidden_families":
+                continue
+            reject_forbidden_outcome_content(str(key), policy_context=policy_context)
+            reject_forbidden_outcome_content(item, policy_context=policy_context)
+        return
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            reject_forbidden_outcome_content(item, policy_context=policy_context)
+        return
+    if isinstance(value, str) and not policy_context:
+        normalized = value.casefold().replace("\\", "/")
+        if any(token in normalized for token in FORBIDDEN_OUTCOME_FAMILIES):
+            raise C7BatchBValidationError("forbidden outcome content")
+
+
+def validate_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
+    _exact_keys(manifest, _MANIFEST_KEYS, "Batch B manifest")
+    if (manifest.get("schema_version") != MANIFEST_SCHEMA
+            or manifest.get("batch_b_schema_version") != BATCH_B_SCHEMA_VERSION):
+        raise C7BatchBValidationError("manifest schema mismatch")
+    if manifest.get("authorities") != authority_bindings():
+        raise C7BatchBValidationError("manifest authority mismatch")
+    implementation_sha = manifest.get("batch_b_implementation_sha")
+    if not isinstance(implementation_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", implementation_sha):
+        raise C7BatchBValidationError("Batch B implementation SHA mismatch")
+    source_hashes = manifest.get("source_hashes")
+    if not isinstance(source_hashes, Mapping) or frozenset(source_hashes) != SOURCE_HASH_KEYS:
+        raise C7BatchBValidationError("manifest source hash inventory mismatch")
+    for key, value in source_hashes.items():
+        _digest(value, "{} source hash".format(key))
+    if manifest.get("schema_identities") != {
+        "batch_a_semantics": BATCH_A_SEMANTICS_SCHEMA,
+        "batch_a_validation": BATCH_A_VALIDATION_SCHEMA,
+        "validated_window": VALIDATED_WINDOW_SCHEMA,
+        "selection": SELECTION_SCHEMA,
+    }:
+        raise C7BatchBValidationError("manifest schema identities mismatch")
+    if manifest.get("registered_pair_domain") != [
+        {"pair_id": pair_id, "frame_count": frame_count}
+        for pair_id, frame_count in PAIR_DOMAIN
+    ]:
+        raise C7BatchBValidationError("manifest pair domain mismatch")
+    if manifest.get("registered_capacity_domain") != [
+        {"capacity_id": capacity_id, "capacity_bytes": capacity_bytes}
+        for capacity_id, capacity_bytes in CAPACITY_DOMAIN
+    ]:
+        raise C7BatchBValidationError("manifest capacity domain mismatch")
+    if manifest.get("cells") != list(registered_cells()):
+        raise C7BatchBValidationError("manifest cell domain mismatch")
+    if manifest.get("synthetic_non_scientific") not in {True, False}:
+        raise C7BatchBValidationError("manifest synthetic marker mismatch")
+    if not isinstance(manifest.get("input_identity"), Mapping):
+        raise C7BatchBValidationError("manifest input identity missing")
+    if not isinstance(manifest.get("config_identity"), Mapping):
+        raise C7BatchBValidationError("manifest config identity missing")
+    if manifest.get("expected_cell_artifacts") != [
+        "windows.jsonl", "cell_aggregate.json", "cell_qualification.json",
+        "cell_manifest.json", "cell_validation.json", "cell_inventory.json",
+        "cell_seal.json", "CELL_COMMITTED.json",
+    ]:
+        raise C7BatchBValidationError("manifest cell inventory contract mismatch")
+    if manifest.get("expected_package_artifacts") != [
+        "package_manifest.json", "cell_qualifications.jsonl", "C7_SELECTION.json",
+        "package_validation.json", "package_inventory.json", "package_seal.json",
+        "PACKAGE_COMMITTED.json",
+    ]:
+        raise C7BatchBValidationError("manifest package inventory contract mismatch")
+    if manifest.get("outcome_firewall_forbidden_families") != list(FORBIDDEN_OUTCOME_FAMILIES):
+        raise C7BatchBValidationError("manifest outcome firewall policy mismatch")
+    reject_forbidden_outcome_content(manifest)
+    return {
+        "status": "PASS",
+        "manifest_sha256": canonical_sha256(manifest),
+        "cell_count": 21,
+        "outcome_firewall": "PASS",
+    }
+
+
+def _window_facts(
+    record: Mapping[str, Any], *, run_id: str, cell: Mapping[str, Any],
+) -> tuple[int, bool, bool, str]:
+    _exact_keys(record, _WINDOW_KEYS, "validated window")
+    if record.get("schema_version") != VALIDATED_WINDOW_SCHEMA:
+        raise C7BatchBValidationError("validated window schema mismatch")
+    identities = {
+        "run_id": run_id,
+        "cell_id": cell["cell_id"],
+        "pair_id": cell["pair_id"],
+        "capacity_id": cell["capacity_id"],
+        "capacity_bytes": cell["capacity_bytes"],
+    }
+    for key, expected in identities.items():
+        if record.get(key) != expected:
+            raise C7BatchBValidationError("validated window {} mismatch".format(key))
+    frame = _integer(record.get("frame_index"), "frame index")
+    evidence = record.get("evidence")
+    validation = record.get("validation")
+    if not isinstance(evidence, Mapping) or not isinstance(validation, Mapping):
+        raise C7BatchBValidationError("window evidence/validation must be objects")
+    if _digest(record.get("evidence_sha256"), "evidence digest") != canonical_sha256(evidence):
+        raise C7BatchBValidationError("window evidence digest mismatch")
+    if _digest(record.get("validation_sha256"), "validation digest") != canonical_sha256(validation):
+        raise C7BatchBValidationError("window validation digest mismatch")
+    reject_forbidden_outcome_content(record)
+
+    if record.get("evidence_kind") == "BATCH_A_CORE":
+        try:
+            reconstructed = validate_core_evidence(evidence)
+        except C7ValidationError as exc:
+            raise C7BatchBValidationError("Batch A evidence validation failed") from exc
+        if reconstructed != validation:
+            raise C7BatchBValidationError("Batch A validation reconstruction mismatch")
+        if evidence.get("raw_baseline_evidence", {}).get("frame_index") != frame:
+            raise C7BatchBValidationError("Batch A frame mismatch")
+        return frame, True, bool(reconstructed["window_eligible"]), canonical_sha256(record)
+
+    if record.get("evidence_kind") != "VALIDATED_NO_STALE":
+        raise C7BatchBValidationError("unknown window evidence kind")
+    _exact_keys(evidence, _NO_STALE_EVIDENCE_KEYS, "no-stale evidence")
+    expected = {
+        "schema_version": NO_STALE_VALIDATION_SCHEMA,
+        "status": "PASS",
+        "frame_index": frame,
+        "evidence_complete": True,
+        "stale_present": False,
+        "window_eligible": False,
+        "raw_evidence_sha256": evidence.get("raw_evidence_sha256"),
+    }
+    if (evidence.get("schema_version") != "C7_NO_STALE_EVIDENCE_V1"
+            or evidence.get("frame_index") != frame
+            or evidence.get("observer_failures") != []
+            or evidence.get("stale_classification_records") != []
+            or validation != expected):
+        raise C7BatchBValidationError("no-stale attestation mismatch")
+    _digest(evidence.get("raw_evidence_sha256"), "raw evidence digest")
+    return frame, False, False, canonical_sha256(record)
+
+
+def reconstruct_aggregate(
+    *, run_id: str, cell: Mapping[str, Any], expected_frame_domain: Sequence[int],
+    windows: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    expected = tuple(_integer(frame, "expected frame") for frame in expected_frame_domain)
+    if not expected or tuple(sorted(expected)) != expected or len(set(expected)) != len(expected):
+        raise C7BatchBValidationError("invalid expected frame domain")
+    parsed = [_window_facts(record, run_id=run_id, cell=cell) for record in windows]
+    frames = [row[0] for row in parsed]
+    if len(frames) != len(set(frames)):
+        raise C7BatchBValidationError("duplicate window")
+    if set(frames) != set(expected):
+        raise C7BatchBValidationError("window-domain bijection failed")
+    parsed.sort(key=lambda row: row[0])
+    n_all = len(parsed)
+    n_stale = sum(1 for _, stale, _, _ in parsed if stale)
+    n_eligible = sum(1 for _, _, eligible, _ in parsed if eligible)
+    if not 0 <= n_eligible <= n_stale <= n_all:
+        raise C7BatchBValidationError("count nesting failed")
+    return {
+        "schema_version": CELL_AGGREGATE_SCHEMA,
+        "run_id": run_id,
+        "cell_id": cell["cell_id"],
+        "pair_id": cell["pair_id"],
+        "capacity_id": cell["capacity_id"],
+        "capacity_bytes": cell["capacity_bytes"],
+        "expected_frame_domain": list(expected),
+        "observed_frame_domain": [row[0] for row in parsed],
+        "cell_validity": "VALID_ZERO" if n_stale == 0 else "VALID",
+        "invalid_reasons": [],
+        "N_all": n_all,
+        "N_stale": n_stale,
+        "N_eligible": n_eligible,
+        "nesting_attestation": True,
+        "overall_rate": {
+            "status": "DEFINED", "numerator": n_eligible, "denominator": n_all},
+        "conditional_rate": (
+            {"status": "N/A", "numerator": n_eligible, "denominator": 0}
+            if n_stale == 0 else
+            {"status": "DEFINED", "numerator": n_eligible, "denominator": n_stale}),
+        "input_window_evidence_digests": [
+            {"frame_index": row[0], "record_sha256": row[3]} for row in parsed],
+        "schema_identity": VALIDATED_WINDOW_SCHEMA,
+        "producer_source_authority": BATCH_A_SEMANTICS_SCHEMA,
+        "validator_source_authority": BATCH_A_VALIDATION_SCHEMA,
+    }
+
+
+def _gates(n_all: int, n_stale: int, n_eligible: int) -> dict[str, Any]:
+    n_all = _integer(n_all, "N_all", 1)
+    n_stale = _integer(n_stale, "N_stale")
+    n_eligible = _integer(n_eligible, "N_eligible")
+    if not 0 <= n_eligible <= n_stale <= n_all:
+        raise C7BatchBValidationError("qualification nesting failed")
+    count_pass = n_eligible >= T_COUNT
+    denominator_pass = n_stale >= T_DENOMINATOR
+    global_lhs = GLOBAL_MULTIPLIER * n_eligible
+    conditional_lhs = CONDITIONAL_MULTIPLIER * n_eligible
+    global_pass = global_lhs >= n_all
+    conditional_pass = n_stale > 0 and conditional_lhs >= n_stale
+    return {
+        "N_all": n_all,
+        "N_stale": n_stale,
+        "N_eligible": n_eligible,
+        "count_threshold": T_COUNT,
+        "denominator_threshold": T_DENOMINATOR,
+        "count_pass": count_pass,
+        "denominator_pass": denominator_pass,
+        "global_lhs": global_lhs,
+        "global_rhs": n_all,
+        "global_pass": global_pass,
+        "conditional_lhs": conditional_lhs,
+        "conditional_rhs": n_stale,
+        "conditional_pass": conditional_pass,
+        "CELL_QUALIFIED": bool(
+            count_pass and denominator_pass and global_pass and conditional_pass),
+    }
+
+
+def reconstruct_qualification(aggregate: Mapping[str, Any]) -> dict[str, Any]:
+    _exact_keys(aggregate, _AGGREGATE_KEYS, "cell aggregate")
+    if aggregate.get("schema_version") != CELL_AGGREGATE_SCHEMA:
+        raise C7BatchBValidationError("aggregate schema mismatch")
+    if aggregate.get("cell_validity") not in {"VALID", "VALID_ZERO"}:
+        raise C7BatchBValidationError("aggregate is invalid")
+    if aggregate.get("invalid_reasons") != [] or aggregate.get("nesting_attestation") is not True:
+        raise C7BatchBValidationError("aggregate validity mismatch")
+    return {
+        "schema_version": CELL_QUALIFICATION_SCHEMA,
+        "run_id": aggregate.get("run_id"),
+        "cell_id": aggregate.get("cell_id"),
+        "pair_id": aggregate.get("pair_id"),
+        "capacity_id": aggregate.get("capacity_id"),
+        "capacity_bytes": aggregate.get("capacity_bytes"),
+        "aggregate_sha256": canonical_sha256(aggregate),
+        "cell_validity": aggregate.get("cell_validity"),
+        "cell_validation_status": "PASS",
+        "qualification_complete": True,
+        "frozen_batch_a_implementation_authority": (
+            FROZEN_BATCH_A_IMPLEMENTATION_AUTHORITY),
+        "batch_a_freeze_authority": BATCH_A_FREEZE_AUTHORITY,
+        **_gates(aggregate.get("N_all"), aggregate.get("N_stale"), aggregate.get("N_eligible")),
+    }
+
+
+def validate_cell_documents(
+    *, windows: Sequence[Mapping[str, Any]], aggregate: Mapping[str, Any],
+    qualification: Mapping[str, Any], cell_manifest: Mapping[str, Any],
+) -> dict[str, Any]:
+    _exact_keys(cell_manifest, _CELL_MANIFEST_KEYS, "cell manifest")
+    if cell_manifest.get("schema_version") != CELL_MANIFEST_SCHEMA:
+        raise C7BatchBValidationError("cell manifest schema mismatch")
+    if cell_manifest.get("synthetic_non_scientific") not in {True, False}:
+        raise C7BatchBValidationError("synthetic marker must be boolean")
+    reject_forbidden_outcome_content(cell_manifest)
+    cell = cell_manifest.get("cell")
+    if not isinstance(cell, Mapping):
+        raise C7BatchBValidationError("cell manifest cell missing")
+    _exact_keys(cell, _CELL_SPEC_KEYS, "cell specification")
+    if cell_manifest.get("authorities") != authority_bindings():
+        raise C7BatchBValidationError("cell manifest authority mismatch")
+    source_hashes = cell_manifest.get("source_hashes")
+    if not isinstance(source_hashes, Mapping) or frozenset(source_hashes) != SOURCE_HASH_KEYS:
+        raise C7BatchBValidationError("cell source hash inventory mismatch")
+    for key, value in source_hashes.items():
+        _digest(value, "{} source hash".format(key))
+    if cell_manifest.get("schema_identities") != {
+        "batch_a_semantics": BATCH_A_SEMANTICS_SCHEMA,
+        "batch_a_validation": BATCH_A_VALIDATION_SCHEMA,
+        "validated_window": VALIDATED_WINDOW_SCHEMA,
+        "selection": SELECTION_SCHEMA,
+    }:
+        raise C7BatchBValidationError("cell schema identities mismatch")
+    if cell_manifest.get("expected_artifacts") != [
+        "windows.jsonl", "cell_aggregate.json", "cell_qualification.json",
+        "cell_manifest.json", "cell_validation.json", "cell_inventory.json",
+        "cell_seal.json", "CELL_COMMITTED.json",
+    ]:
+        raise C7BatchBValidationError("cell artifact contract mismatch")
+    _digest(cell_manifest.get("batch_b_manifest_sha256"), "Batch B manifest digest")
+    expected_aggregate = reconstruct_aggregate(
+        run_id=cell_manifest.get("run_id"), cell=cell,
+        expected_frame_domain=cell_manifest.get("expected_frame_domain", ()),
+        windows=windows)
+    _exact_keys(aggregate, _AGGREGATE_KEYS, "cell aggregate")
+    if aggregate != expected_aggregate:
+        raise C7BatchBValidationError("producer aggregate differs from disk reconstruction")
+    expected_qualification = reconstruct_qualification(expected_aggregate)
+    _exact_keys(qualification, _QUALIFICATION_KEYS, "cell qualification")
+    if qualification != expected_qualification:
+        raise C7BatchBValidationError("producer qualification differs from reconstruction")
+    reject_forbidden_outcome_content(aggregate)
+    reject_forbidden_outcome_content(qualification)
+    return {
+        "schema_version": CELL_VALIDATION_SCHEMA,
+        "status": "PASS",
+        "run_id": cell_manifest.get("run_id"),
+        "cell_id": cell.get("cell_id"),
+        "window_count": len(windows),
+        "aggregate_sha256": canonical_sha256(aggregate),
+        "qualification_sha256": canonical_sha256(qualification),
+        "frame_domain_bijection": True,
+        "nesting_verified": True,
+        "four_gates_reconstructed": True,
+        "outcome_firewall": "PASS",
+    }
+
+
+def validate_cell_files(cell_root: Path | str) -> dict[str, Any]:
+    root = Path(cell_root)
+    return validate_cell_documents(
+        windows=read_jsonl(root / "windows.jsonl"),
+        aggregate=read_json(root / "cell_aggregate.json"),
+        qualification=read_json(root / "cell_qualification.json"),
+        cell_manifest=read_json(root / "cell_manifest.json"),
+    )
+
+
+def _qualification_for_selection(
+    record: Mapping[str, Any], cell: Mapping[str, Any],
+) -> dict[str, Any]:
+    _exact_keys(record, _QUALIFICATION_KEYS, "selection qualification")
+    if record.get("schema_version") != CELL_QUALIFICATION_SCHEMA:
+        raise C7BatchBValidationError("qualification schema mismatch")
+    if record.get("cell_id") != cell["cell_id"]:
+        raise C7BatchBValidationError("qualification cell mismatch")
+    if record.get("N_all") != cell["frame_count"]:
+        raise C7BatchBValidationError("qualification frame count mismatch")
+    if (record.get("cell_validity") not in {"VALID", "VALID_ZERO"}
+            or record.get("cell_validation_status") != "PASS"
+            or record.get("qualification_complete") is not True
+            or record.get("frozen_batch_a_implementation_authority")
+            != FROZEN_BATCH_A_IMPLEMENTATION_AUTHORITY
+            or record.get("batch_a_freeze_authority") != BATCH_A_FREEZE_AUTHORITY):
+        raise C7BatchBValidationError("qualification validity/authority mismatch")
+    expected = _gates(record.get("N_all"), record.get("N_stale"), record.get("N_eligible"))
+    for key, value in expected.items():
+        if record.get(key) != value:
+            raise C7BatchBValidationError("qualification {} mismatch".format(key))
+    reject_forbidden_outcome_content(record)
+    return {**record, **expected}
+
+
+def _rate_compare(a: Mapping[str, Any], b: Mapping[str, Any], conditional: bool) -> int:
+    a_den = a["N_stale"] if conditional else a["N_all"]
+    b_den = b["N_stale"] if conditional else b["N_all"]
+    lhs = a["N_eligible"] * b_den
+    rhs = b["N_eligible"] * a_den
+    return (lhs > rhs) - (lhs < rhs)
+
+
+def _dominates(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
+    overall = _rate_compare(a, b, False)
+    conditional = _rate_compare(a, b, True)
+    return overall >= 0 and conditional >= 0 and (overall > 0 or conditional > 0)
+
+
+def reconstruct_selection(
+    manifest: Mapping[str, Any], qualifications: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    validate_manifest(manifest)
+    cells = manifest.get("cells")
+    if cells != list(registered_cells()):
+        raise C7BatchBValidationError("manifest does not contain the exact 21 cells")
+    if len(qualifications) != 21:
+        raise C7BatchBValidationError("selection requires 21 qualifications")
+    by_id: dict[str, Mapping[str, Any]] = {}
+    for record in qualifications:
+        cell_id = record.get("cell_id")
+        if cell_id in by_id:
+            raise C7BatchBValidationError("duplicate cell qualification")
+        by_id[cell_id] = record
+    if set(by_id) != set(REGISTERED_CELL_IDS):
+        raise C7BatchBValidationError("qualification cell domain mismatch")
+    reconstructed = [
+        (cell, _qualification_for_selection(by_id[cell["cell_id"]], cell))
+        for cell in cells
+    ]
+    qualified = [(cell, record) for cell, record in reconstructed if record["CELL_QUALIFIED"]]
+    trace: dict[str, Any] = {
+        "qualified_subset_reconstructed": [cell["cell_id"] for cell, _ in qualified],
+        "maximum_N_eligible": None,
+        "count_tied_candidates": [],
+        "pareto_comparisons": [],
+        "pareto_survivors": [],
+        "stable_tiebreak": [],
+    }
+    if not qualified:
+        return {
+            "schema_version": SELECTION_SCHEMA,
+            "run_id": manifest.get("run_id"),
+            "manifest_sha256": canonical_sha256(manifest),
+            "all_21_complete_attestation": True,
+            "qualified_subset": [],
+            "comparison_trace": trace,
+            "selection_outcome": "NO_CELL_SELECTED",
+            "selected_cell_id": None,
+        }
+    maximum = max(record["N_eligible"] for _, record in qualified)
+    tied = [(cell, record) for cell, record in qualified if record["N_eligible"] == maximum]
+    trace["maximum_N_eligible"] = maximum
+    trace["count_tied_candidates"] = [cell["cell_id"] for cell, _ in tied]
+    survivors = []
+    for candidate_cell, candidate in tied:
+        dominated = False
+        for other_cell, other in tied:
+            if candidate_cell["cell_id"] == other_cell["cell_id"]:
+                continue
+            other_dominates = _dominates(other, candidate)
+            trace["pareto_comparisons"].append({
+                "candidate": candidate_cell["cell_id"],
+                "other": other_cell["cell_id"],
+                "other_dominates": other_dominates,
+                "overall_cross_product": [
+                    other["N_eligible"] * candidate["N_all"],
+                    candidate["N_eligible"] * other["N_all"],
+                ],
+                "conditional_cross_product": [
+                    other["N_eligible"] * candidate["N_stale"],
+                    candidate["N_eligible"] * other["N_stale"],
+                ],
+            })
+            dominated = dominated or other_dominates
+        if not dominated:
+            survivors.append((candidate_cell, candidate))
+    trace["pareto_survivors"] = [cell["cell_id"] for cell, _ in survivors]
+    survivors.sort(key=lambda item: (
+        item[0]["stable_pair_order"], item[0]["stable_capacity_order"], item[0]["cell_id"]))
+    trace["stable_tiebreak"] = [cell["cell_id"] for cell, _ in survivors]
+    return {
+        "schema_version": SELECTION_SCHEMA,
+        "run_id": manifest.get("run_id"),
+        "manifest_sha256": canonical_sha256(manifest),
+        "all_21_complete_attestation": True,
+        "qualified_subset": [cell["cell_id"] for cell, _ in qualified],
+        "comparison_trace": trace,
+        "selection_outcome": "SELECTED_CELL",
+        "selected_cell_id": survivors[0][0]["cell_id"],
+    }
+
+
+def validate_selection(
+    manifest: Mapping[str, Any], qualifications: Sequence[Mapping[str, Any]],
+    selection: Mapping[str, Any],
+) -> dict[str, Any]:
+    _exact_keys(selection, _SELECTION_KEYS, "selection")
+    expected = reconstruct_selection(manifest, qualifications)
+    if selection != expected:
+        raise C7BatchBValidationError("selection differs from independent reconstruction")
+    reject_forbidden_outcome_content(selection)
+    return {
+        "schema_version": "C7_SELECTION_VALIDATION_V1",
+        "status": "PASS",
+        "all_21_complete": True,
+        "qualified_subset_reconstructed": True,
+        "selection_outcome": selection["selection_outcome"],
+        "selected_cell_id": selection["selected_cell_id"],
+        "outcome_firewall": "PASS",
+    }
+
+
+def _inventory_for(root: Path, names: Sequence[str], schema_version: str) -> dict[str, Any]:
+    files = []
+    for name in sorted(names):
+        path = root / name
+        if not path.is_file():
+            raise C7BatchBValidationError("missing authoritative artifact: {}".format(name))
+        files.append({
+            "path": name,
+            "sha256": sha256_file(path),
+            "byte_count": path.stat().st_size,
+        })
+    return {"schema_version": schema_version, "files": files}
+
+
+def validate_committed_cell(
+    cell_root: Path | str, *, expected_manifest_sha256: str | None = None,
+) -> dict[str, Any]:
+    """Reread and independently reproduce a completed cell transaction."""
+    root = Path(cell_root)
+    if not root.is_dir():
+        raise C7BatchBValidationError("committed cell directory is missing")
+    names = tuple(sorted(path.name for path in root.iterdir()))
+    if names != CELL_AUTHORITATIVE_FILES:
+        raise C7BatchBValidationError("unexpected authoritative cell inventory")
+    validation = validate_cell_files(root)
+    if read_json(root / "cell_validation.json") != validation:
+        raise C7BatchBValidationError("persisted cell validation is not reproducible")
+    inventory = _inventory_for(root, CELL_ARTIFACTS_BEFORE_COMMIT, CELL_INVENTORY_SCHEMA)
+    if read_json(root / "cell_inventory.json") != inventory:
+        raise C7BatchBValidationError("cell inventory digest mismatch")
+    cell_manifest = read_json(root / "cell_manifest.json")
+    manifest_sha = cell_manifest.get("batch_b_manifest_sha256")
+    _digest(manifest_sha, "Batch B manifest digest")
+    if expected_manifest_sha256 is not None and manifest_sha != expected_manifest_sha256:
+        raise C7BatchBValidationError("cell manifest authority mismatch")
+    payload = {
+        "run_id": cell_manifest.get("run_id"),
+        "cell_id": cell_manifest.get("cell", {}).get("cell_id"),
+        "cell_manifest_sha256": sha256_file(root / "cell_manifest.json"),
+        "inventory_sha256": canonical_sha256(inventory),
+        "status": "VALIDATED",
+    }
+    seal = read_json(root / "cell_seal.json")
+    expected_seal = {
+        "schema_version": CELL_SEAL_SCHEMA,
+        "sealed_payload": payload,
+        "seal_sha256": canonical_sha256(payload),
+    }
+    if seal != expected_seal:
+        raise C7BatchBValidationError("cell seal is not reproducible")
+    terminal = read_json(root / "CELL_COMMITTED.json")
+    expected_terminal = {
+        "schema_version": CELL_COMMIT_SCHEMA,
+        "status": "COMMITTED",
+        "cell_id": payload["cell_id"],
+        "inventory_sha256": payload["inventory_sha256"],
+        "seal_sha256": expected_seal["seal_sha256"],
+    }
+    if terminal != expected_terminal:
+        raise C7BatchBValidationError("cell terminal marker mismatch")
+    return {
+        **validation,
+        "inventory_reproduced": True,
+        "seal_reproduced": True,
+        "terminal_marker_valid": True,
+    }
+
+
+def validate_committed_package(package_root: Path | str) -> dict[str, Any]:
+    """Reread and independently reproduce a completed selection package."""
+    root = Path(package_root)
+    if not root.is_dir():
+        raise C7BatchBValidationError("committed package directory is missing")
+    names = tuple(sorted(path.name for path in root.iterdir()))
+    if names != PACKAGE_AUTHORITATIVE_FILES:
+        raise C7BatchBValidationError("unexpected authoritative package inventory")
+    manifest = read_json(root / "package_manifest.json")
+    validate_manifest(manifest)
+    qualifications = read_jsonl(root / "cell_qualifications.jsonl")
+    selection = read_json(root / "C7_SELECTION.json")
+    selection_validation = validate_selection(manifest, qualifications, selection)
+    expected_validation = {
+        "schema_version": PACKAGE_VALIDATION_SCHEMA,
+        "status": "PASS",
+        "run_id": manifest.get("run_id"),
+        "manifest_sha256": canonical_sha256(manifest),
+        "qualification_count": len(qualifications),
+        "selection_validation": selection_validation,
+        "outcome_firewall": "PASS",
+    }
+    if read_json(root / "package_validation.json") != expected_validation:
+        raise C7BatchBValidationError("package validation is not reproducible")
+    inventory = _inventory_for(root, PACKAGE_ARTIFACTS_BEFORE_COMMIT, PACKAGE_INVENTORY_SCHEMA)
+    if read_json(root / "package_inventory.json") != inventory:
+        raise C7BatchBValidationError("package inventory digest mismatch")
+    payload = {
+        "run_id": manifest.get("run_id"),
+        "manifest_sha256": sha256_file(root / "package_manifest.json"),
+        "selection_sha256": sha256_file(root / "C7_SELECTION.json"),
+        "inventory_sha256": canonical_sha256(inventory),
+        "status": "VALIDATED",
+    }
+    expected_seal = {
+        "schema_version": PACKAGE_SEAL_SCHEMA,
+        "sealed_payload": payload,
+        "seal_sha256": canonical_sha256(payload),
+    }
+    if read_json(root / "package_seal.json") != expected_seal:
+        raise C7BatchBValidationError("package seal is not reproducible")
+    expected_terminal = {
+        "schema_version": PACKAGE_COMMIT_SCHEMA,
+        "status": "COMMITTED",
+        "inventory_sha256": payload["inventory_sha256"],
+        "seal_sha256": expected_seal["seal_sha256"],
+    }
+    if read_json(root / "PACKAGE_COMMITTED.json") != expected_terminal:
+        raise C7BatchBValidationError("package terminal marker mismatch")
+    return {
+        **expected_validation,
+        "inventory_reproduced": True,
+        "seal_reproduced": True,
+        "terminal_marker_valid": True,
+    }
