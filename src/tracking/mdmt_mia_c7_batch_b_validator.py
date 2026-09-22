@@ -216,6 +216,9 @@ def _reconstruct_no_stale_facts(evidence: Mapping[str, Any]) -> dict[str, Any]:
     ordinals = []
     frame_open = 0
     frame_close = 0
+    frame_open_event = None
+    frame_close_event = None
+    observed_service_slice_bytes = 0
     true_first: dict[tuple[str, str, str], int] = {}
     served_id_state = set()
     stale_count = 0
@@ -231,8 +234,18 @@ def _reconstruct_no_stale_facts(evidence: Mapping[str, Any]) -> dict[str, Any]:
         ordinals.append(ordinal)
         kind = row.get("observation_kind")
         event_type = event.get("event_type")
-        frame_open += int(kind == "frame_open" and event_type == "frame_open")
-        frame_close += int(kind == "frame_close" and event_type == "frame_summary")
+        if kind == "frame_open" and event_type == "frame_open":
+            frame_open += 1
+            frame_open_event = event
+        if kind == "frame_close" and event_type == "frame_summary":
+            frame_close += 1
+            frame_close_event = event
+        if kind == "service_slice":
+            if event_type != "service_slice":
+                raise C7BatchBValidationError(
+                    "service-slice observation event type mismatch")
+            observed_service_slice_bytes += _integer(
+                event.get("bytes_served"), "observed service-slice bytes", 1)
         if event_type == "service_slice" and event.get("channel") == "id_state":
             served_id_state.add(_raw_packet_identity(event))
         if kind != "true_first_service":
@@ -287,6 +300,27 @@ def _reconstruct_no_stale_facts(evidence: Mapping[str, Any]) -> dict[str, Any]:
         raise C7BatchBValidationError("raw observation ordinals invalid")
     if frame_open != 1 or frame_close != 1:
         raise C7BatchBValidationError("complete frame boundary evidence required")
+    if frame_open_event.get("frame_service_budget") != frame_close_event.get(
+            "frame_service_budget"):
+        raise C7BatchBValidationError("raw frame service budget identity mismatch")
+    close_served = _integer(
+        frame_close_event.get("bytes_served"), "frame-close bytes served")
+    if observed_service_slice_bytes != close_served:
+        raise C7BatchBValidationError("raw service-slice byte ledger is incomplete")
+    frame_budget = frame_open_event.get("frame_service_budget")
+    open_unused = frame_open_event.get("frame_unused_budget")
+    close_unused = frame_close_event.get("frame_unused_budget")
+    if frame_budget is None:
+        if open_unused is not None or close_unused is not None:
+            raise C7BatchBValidationError(
+                "unlimited raw frame budget ledger is inconsistent")
+    else:
+        budget = _integer(frame_budget, "frame service budget", 1)
+        if (_integer(open_unused, "frame-open unused budget") != budget
+                or close_served + _integer(
+                    close_unused, "frame-close unused budget") != budget):
+            raise C7BatchBValidationError(
+                "finite raw frame service budget ledger is inconsistent")
     if not served_id_state.issubset(true_first):
         raise C7BatchBValidationError("served ID-State packet lacks classification opportunity")
     return {

@@ -302,6 +302,40 @@ def test_p1_bb_01_incomplete_raw_no_stale_evidence_is_rejected(fault):
             raw_observation_evidence=evidence)
 
 
+def test_no_stale_rejects_whole_stale_packet_event_chain_omission():
+    cell = _cell(frame_count=1)
+    evidence = _raw_observer_evidence(frame=0, stale=True)
+    omitted_kinds = {"true_first_service", "service_slice", "completion"}
+    evidence["observations"] = [
+        row for row in evidence["observations"]
+        if row["observation_kind"] not in omitted_kinds
+    ]
+    assert [row["observation_kind"] for row in evidence["observations"]] == [
+        "frame_open", "enqueue", "frame_close"]
+    assert [row["event"]["event_ordinal"] for row in evidence["observations"]] == [1, 2, 6]
+
+    with pytest.raises(C7BatchBError, match="service-slice byte ledger"):
+        make_validated_no_stale_window_record(
+            run_id="synthetic-run", cell=cell, frame_index=0,
+            raw_observation_evidence=evidence)
+
+    forged = _no_stale_windows(cell, (0,))[0]
+    forged["evidence"] = evidence
+    forged["evidence_sha256"] = canonical_sha256(evidence)
+    forged["validation"].update({
+        "true_first_service_count": 0,
+        "id_state_true_first_service_count": 0,
+        "stale_classification_count": 0,
+        "stale_present": False,
+        "raw_evidence_sha256": canonical_sha256(evidence),
+    })
+    forged["validation_sha256"] = canonical_sha256(forged["validation"])
+    with pytest.raises(C7BatchBValidationError, match="service-slice byte ledger"):
+        reconstruct_aggregate(
+            run_id="synthetic-run", cell=cell, expected_frame_domain=(0,),
+            windows=[forged])
+
+
 def test_p1_bb_02_unregistered_cell_cannot_enter_real_manifest_domain(tmp_path):
     manifest = _manifest(tmp_path, synthetic=False)
     cell = _cell()
