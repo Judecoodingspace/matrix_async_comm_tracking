@@ -15,11 +15,13 @@ from tracking.mdmt_mia_c7_batch_b import (
     aggregate_cell,
     make_validated_no_stale_window_record,
     qualify_cell,
+    raw_no_stale_evidence_from_observer,
     select_qualified_cell,
 )
 from tracking.mdmt_mia_c7_batch_b_package import (
     C7BatchBPackageError,
     atomic_write_json,
+    atomic_write_jsonl,
     build_batch_b_manifest,
     write_cell_transaction,
     write_selection_package,
@@ -63,7 +65,7 @@ def _hashes(value="a"):
     return {key: value * 64 for key in SOURCE_HASH_KEYS}
 
 
-def _manifest(tmp_path, value="a"):
+def _manifest(tmp_path, value="a", synthetic=True):
     return build_batch_b_manifest(
         run_id="synthetic-run",
         output_root=tmp_path,
@@ -71,7 +73,7 @@ def _manifest(tmp_path, value="a"):
         source_hashes=_hashes(value),
         input_identity={"fixture": "synthetic-only", "digest": "c" * 64},
         config_identity={"fixture": "tiny", "digest": "d" * 64},
-        synthetic_non_scientific=True,
+        synthetic_non_scientific=synthetic,
     )
 
 
@@ -81,10 +83,46 @@ def _no_stale_windows(cell, frames=(0, 1), run_id="synthetic-run"):
             run_id=run_id,
             cell=cell,
             frame_index=frame,
-            raw_evidence_sha256=("{:064x}".format(frame + 1)),
+            raw_observation_evidence=_raw_observer_evidence(frame=frame, stale=False),
         )
         for frame in frames
     ]
+
+
+def _raw_observer_evidence(frame=0, stale=False):
+    batch_a = _batch_a_test_module()
+    observer = batch_a.C7CoreObserver()
+    rows = batch_a.np.empty((0, 6), dtype=batch_a.np.float32)
+
+    def provider(packet_id, provider_frame):
+        confirmed = (9,) if stale else ()
+        return batch_a._snapshot_c5_receiver_state(
+            provider_frame, packet_id, rows, rows, confirmed, {}, 0)
+
+    server = batch_a._C4SharedLogicalServer(
+        "fifo", 10000, sequence_name="synthetic", run_id="batch-b-raw",
+        condition="test", pair_id="synthetic", ledger_enabled=False)
+    server.begin_frame(frame, c7_observer=observer, c7_context_provider=provider)
+    wire = batch_a._wire(version=1, confirmed=(9,))
+    encoded = json.dumps(wire, sort_keys=True, separators=(",", ":"))
+    server.admit(
+        "id_state", frame, wire, encoded,
+        __import__("hashlib").sha256(encoded.encode("utf-8")).hexdigest(),
+        c7_observer=observer, c7_context_provider=provider)
+    server.finalize_pending(frame, observer)
+    return raw_no_stale_evidence_from_observer(frame, observer)
+
+
+def _seal_all_synthetic_cells(tmp_path, manifest, cells=None):
+    for cell in (manifest["cells"] if cells is None else cells):
+        write_cell_transaction(
+            output_root=tmp_path,
+            manifest=manifest,
+            cell=cell,
+            expected_frame_domain=manifest["authorized_frame_domains"][cell["cell_id"]],
+            windows=_no_stale_windows(cell, (0,)),
+            synthetic_non_scientific=True,
+        )
 
 
 def _aggregate_stub(cell, n_stale, n_eligible, n_all=None):
@@ -205,7 +243,7 @@ def test_m5_window_domain_and_validity_faults_fail_closed(fault):
     elif fault == "extra":
         windows.append(make_validated_no_stale_window_record(
             run_id="synthetic-run", cell=cell, frame_index=2,
-            raw_evidence_sha256="e" * 64))
+            raw_observation_evidence=_raw_observer_evidence(frame=2, stale=False)))
     elif fault == "wrong_cell":
         windows[0]["cell_id"] = "OTHER"
     else:
@@ -228,8 +266,109 @@ def test_m5_independent_reconstruction_rejects_tampered_aggregate():
         windows=windows) != aggregate
 
 
-def test_m6_zero_and_one_qualified(tmp_path):
+def test_p1_bb_01_stale_raw_evidence_cannot_be_forged_as_no_stale():
+    cell = _cell(frame_count=1)
+    stale_raw = _raw_observer_evidence(frame=0, stale=True)
+    with pytest.raises(C7BatchBError, match="suppressible stale"):
+        make_validated_no_stale_window_record(
+            run_id="synthetic-run", cell=cell, frame_index=0,
+            raw_observation_evidence=stale_raw)
+
+    forged = _no_stale_windows(cell, (0,))[0]
+    forged["evidence"] = stale_raw
+    forged["evidence_sha256"] = canonical_sha256(stale_raw)
+    forged["validation"]["raw_evidence_sha256"] = canonical_sha256(stale_raw)
+    forged["validation_sha256"] = canonical_sha256(forged["validation"])
+    with pytest.raises(C7BatchBValidationError):
+        reconstruct_aggregate(
+            run_id="synthetic-run", cell=cell, expected_frame_domain=(0,),
+            windows=[forged])
+
+
+@pytest.mark.parametrize("fault", ["missing_true_first_service", "observer_failure"])
+def test_p1_bb_01_incomplete_raw_no_stale_evidence_is_rejected(fault):
+    cell = _cell(frame_count=1)
+    evidence = _raw_observer_evidence(frame=0, stale=False)
+    if fault == "missing_true_first_service":
+        evidence["observations"] = [
+            row for row in evidence["observations"]
+            if row["observation_kind"] != "true_first_service"
+        ]
+    else:
+        evidence["observer_failures"].append({"frame": 0, "reason": "forced"})
+    with pytest.raises(C7BatchBError):
+        make_validated_no_stale_window_record(
+            run_id="synthetic-run", cell=cell, frame_index=0,
+            raw_observation_evidence=evidence)
+
+
+def test_p1_bb_02_unregistered_cell_cannot_enter_real_manifest_domain(tmp_path):
+    manifest = _manifest(tmp_path, synthetic=False)
+    cell = _cell()
+    with pytest.raises(C7BatchBPackageError, match="exact member"):
+        write_cell_transaction(
+            output_root=tmp_path, manifest=manifest, cell=cell,
+            expected_frame_domain=(0, 1), windows=_no_stale_windows(cell),
+            synthetic_non_scientific=False)
+    assert not (tmp_path / "cells" / cell["cell_id"]).exists()
+
+
+def test_p1_bb_02_wrong_registered_frame_domain_is_rejected_before_seal(tmp_path):
+    manifest = _manifest(tmp_path, synthetic=False)
+    cell = dict(registered_cells()[0])
+    wrong_domain = tuple(range(100))
+    with pytest.raises(C7BatchBPackageError, match="manifest authority"):
+        write_cell_transaction(
+            output_root=tmp_path, manifest=manifest, cell=cell,
+            expected_frame_domain=wrong_domain, windows=[],
+            synthetic_non_scientific=False)
+    assert not (tmp_path / "cells" / cell["cell_id"]).exists()
+
+
+def test_p1_bb_02_synthetic_cell_cannot_validate_as_registered_cell(tmp_path):
+    cell = dict(registered_cells()[0])
+    synthetic_manifest = _manifest(tmp_path, synthetic=True)
+    write_cell_transaction(
+        output_root=tmp_path, manifest=synthetic_manifest, cell=cell,
+        expected_frame_domain=(0,), windows=_no_stale_windows(cell, (0,)),
+        synthetic_non_scientific=True)
+    real_manifest = _manifest(tmp_path, synthetic=False)
+    with pytest.raises(C7BatchBValidationError, match="authority mismatch"):
+        validate_committed_cell(
+            tmp_path / "cells" / cell["cell_id"], expected_manifest=real_manifest)
+
+
+def test_p1_bb_03_handbuilt_qualifications_cannot_create_package(tmp_path):
     manifest = _manifest(tmp_path)
+    with pytest.raises(C7BatchBPackageError, match="caller-supplied"):
+        write_selection_package(
+            output_root=tmp_path, manifest=manifest,
+            qualifications=_qualifications())
+    assert not (tmp_path / "package").exists()
+
+
+def test_p1_bb_03_missing_one_of_21_sealed_cells_blocks_package(tmp_path):
+    manifest = _manifest(tmp_path)
+    _seal_all_synthetic_cells(tmp_path, manifest, manifest["cells"][:-1])
+    with pytest.raises((C7BatchBValidationError, C7BatchBPackageError)):
+        write_selection_package(output_root=tmp_path, manifest=manifest)
+    assert not (tmp_path / "package").exists()
+
+
+def test_p1_bb_03_tampered_cell_seal_blocks_package(tmp_path):
+    manifest = _manifest(tmp_path)
+    _seal_all_synthetic_cells(tmp_path, manifest)
+    seal_path = tmp_path / "cells" / manifest["cells"][0]["cell_id"] / "cell_seal.json"
+    seal = json.loads(seal_path.read_text(encoding="utf-8"))
+    seal["seal_sha256"] = "0" * 64
+    atomic_write_json(seal_path, seal)
+    with pytest.raises((C7BatchBValidationError, C7BatchBPackageError)):
+        write_selection_package(output_root=tmp_path, manifest=manifest)
+    assert not (tmp_path / "package").exists()
+
+
+def test_m6_zero_and_one_qualified(tmp_path):
+    manifest = _manifest(tmp_path, synthetic=False)
     none = select_qualified_cell(manifest, _qualifications())
     assert none["selection_outcome"] == "NO_CELL_SELECTED"
     assert none["selected_cell_id"] is None
@@ -243,7 +382,7 @@ def test_m6_zero_and_one_qualified(tmp_path):
 
 def test_m6_maximum_count_wins(tmp_path):
     cells = registered_cells()
-    manifest = _manifest(tmp_path)
+    manifest = _manifest(tmp_path, synthetic=False)
     records = _qualifications({
         cells[0]["cell_id"]: (40, 20),
         cells[1]["cell_id"]: (40, 21),
@@ -259,7 +398,7 @@ def test_m6_exact_pareto_dominance(tmp_path):
         first["cell_id"]: (48, 12),
         better["cell_id"]: (24, 12),
     })
-    selection = select_qualified_cell(_manifest(tmp_path), records)
+    selection = select_qualified_cell(_manifest(tmp_path, synthetic=False), records)
     assert selection["selected_cell_id"] == better["cell_id"]
 
 
@@ -271,7 +410,7 @@ def test_m6_incomparable_rates_use_stable_order(tmp_path):
         first["cell_id"]: (20, 12),
         second["cell_id"]: (48, 12),
     })
-    selection = select_qualified_cell(_manifest(tmp_path), records)
+    selection = select_qualified_cell(_manifest(tmp_path, synthetic=False), records)
     assert selection["selected_cell_id"] == first["cell_id"]
     assert selection["comparison_trace"]["stable_tiebreak"][0] == first["cell_id"]
 
@@ -280,7 +419,8 @@ def test_m6_exact_equal_rates_use_stable_capacity_order(tmp_path):
     cells = registered_cells()
     first, second = cells[0], cells[1]
     records = _qualifications({first["cell_id"]: (40, 20), second["cell_id"]: (40, 20)})
-    assert select_qualified_cell(_manifest(tmp_path), records)["selected_cell_id"] == first["cell_id"]
+    assert select_qualified_cell(
+        _manifest(tmp_path, synthetic=False), records)["selected_cell_id"] == first["cell_id"]
 
 
 @pytest.mark.parametrize(
@@ -289,7 +429,7 @@ def test_m6_exact_equal_rates_use_stable_capacity_order(tmp_path):
      "authority_mismatch", "invalid_cell", "weighted_field"],
 )
 def test_m6_incomplete_or_tampered_domains_block_selection(tmp_path, fault):
-    manifest = _manifest(tmp_path)
+    manifest = _manifest(tmp_path, synthetic=False)
     records = _qualifications()
     if fault == "missing":
         records.pop()
@@ -313,30 +453,30 @@ def test_m6_incomplete_or_tampered_domains_block_selection(tmp_path, fault):
 
 def test_m7_cell_transaction_inventory_seal_and_resume(tmp_path):
     manifest = _manifest(tmp_path)
-    cell = _cell()
-    windows = _no_stale_windows(cell)
+    cell = dict(registered_cells()[0])
+    windows = _no_stale_windows(cell, (0,))
     first = write_cell_transaction(
         output_root=tmp_path, manifest=manifest, cell=cell,
-        expected_frame_domain=(0, 1), windows=windows,
+        expected_frame_domain=(0,), windows=windows,
         synthetic_non_scientific=True)
     assert first["status"] == "COMMITTED"
     assert first["seal_reproduced"] is True
     second = write_cell_transaction(
         output_root=tmp_path, manifest=manifest, cell=cell,
-        expected_frame_domain=(0, 1), windows=windows,
+        expected_frame_domain=(0,), windows=windows,
         synthetic_non_scientific=True)
     assert second["status"] == "SKIPPED_VALID_SEALED"
 
 
 def test_m7_incomplete_staging_is_quarantined_and_recomputed(tmp_path):
     manifest = _manifest(tmp_path)
-    cell = _cell()
-    staging = tmp_path / "cells" / ".SYNTHETIC_TINY.staging"
+    cell = dict(registered_cells()[0])
+    staging = tmp_path / "cells" / ".{}.staging".format(cell["cell_id"])
     staging.mkdir(parents=True)
     (staging / "partial").write_text("incomplete", encoding="utf-8")
     result = write_cell_transaction(
         output_root=tmp_path, manifest=manifest, cell=cell,
-        expected_frame_domain=(0, 1), windows=_no_stale_windows(cell),
+        expected_frame_domain=(0,), windows=_no_stale_windows(cell, (0,)),
         synthetic_non_scientific=True)
     assert result["status"] == "COMMITTED"
     assert list((tmp_path / "cells").glob("*.quarantine-incomplete-staging-*"))
@@ -344,13 +484,13 @@ def test_m7_incomplete_staging_is_quarantined_and_recomputed(tmp_path):
 
 def test_m7_final_without_terminal_is_quarantined(tmp_path):
     manifest = _manifest(tmp_path)
-    cell = _cell()
+    cell = dict(registered_cells()[0])
     final = tmp_path / "cells" / cell["cell_id"]
     final.mkdir(parents=True)
     (final / "partial").write_text("incomplete", encoding="utf-8")
     result = write_cell_transaction(
         output_root=tmp_path, manifest=manifest, cell=cell,
-        expected_frame_domain=(0, 1), windows=_no_stale_windows(cell),
+        expected_frame_domain=(0,), windows=_no_stale_windows(cell, (0,)),
         synthetic_non_scientific=True)
     assert result["status"] == "COMMITTED"
     assert list((tmp_path / "cells").glob("*.quarantine-missing-terminal-*"))
@@ -359,10 +499,10 @@ def test_m7_final_without_terminal_is_quarantined(tmp_path):
 @pytest.mark.parametrize("fault", ["digest", "unexpected_file", "terminal"])
 def test_m7_committed_cell_tamper_fails_closed(tmp_path, fault):
     manifest = _manifest(tmp_path)
-    cell = _cell()
+    cell = dict(registered_cells()[0])
     write_cell_transaction(
         output_root=tmp_path, manifest=manifest, cell=cell,
-        expected_frame_domain=(0, 1), windows=_no_stale_windows(cell),
+        expected_frame_domain=(0,), windows=_no_stale_windows(cell, (0,)),
         synthetic_non_scientific=True)
     final = tmp_path / "cells" / cell["cell_id"]
     if fault == "digest":
@@ -380,16 +520,16 @@ def test_m7_committed_cell_tamper_fails_closed(tmp_path, fault):
 
 
 def test_m7_resume_manifest_mismatch_hard_fails(tmp_path):
-    cell = _cell()
+    cell = dict(registered_cells()[0])
     first_manifest = _manifest(tmp_path, "a")
     write_cell_transaction(
         output_root=tmp_path, manifest=first_manifest, cell=cell,
-        expected_frame_domain=(0, 1), windows=_no_stale_windows(cell),
+        expected_frame_domain=(0,), windows=_no_stale_windows(cell, (0,)),
         synthetic_non_scientific=True)
     with pytest.raises(C7BatchBPackageError, match="mismatched"):
         write_cell_transaction(
             output_root=tmp_path, manifest=_manifest(tmp_path, "f"), cell=cell,
-            expected_frame_domain=(0, 1), windows=_no_stale_windows(cell),
+            expected_frame_domain=(0,), windows=_no_stale_windows(cell, (0,)),
             synthetic_non_scientific=True)
 
 
@@ -410,9 +550,8 @@ def test_m7_manifest_binding_and_firewall_faults(fault, tmp_path):
 
 def test_m7_package_transaction_and_tamper(tmp_path):
     manifest = _manifest(tmp_path)
-    qualifications = _qualifications()
-    result = write_selection_package(
-        output_root=tmp_path, manifest=manifest, qualifications=qualifications)
+    _seal_all_synthetic_cells(tmp_path, manifest)
+    result = write_selection_package(output_root=tmp_path, manifest=manifest)
     assert result["status"] == "COMMITTED"
     assert result["seal_reproduced"] is True
     package = tmp_path / "package"
@@ -425,11 +564,11 @@ def test_m7_package_transaction_and_tamper(tmp_path):
 
 def test_m7_failed_cell_validation_produces_no_authoritative_final(tmp_path):
     manifest = _manifest(tmp_path)
-    cell = _cell()
+    cell = dict(registered_cells()[0])
     with pytest.raises(C7BatchBError):
         write_cell_transaction(
             output_root=tmp_path, manifest=manifest, cell=cell,
-            expected_frame_domain=(0, 1), windows=_no_stale_windows(cell, (0,)),
+            expected_frame_domain=(0,), windows=[],
             synthetic_non_scientific=True)
     assert not (tmp_path / "cells" / cell["cell_id"]).exists()
     quarantines = list((tmp_path / "cells").glob("*.quarantine-failed-transaction-*"))
@@ -459,12 +598,59 @@ def test_m7_real_launcher_path_dry_run_only(tmp_path):
     assert status["real_input_executed"] is False
 
 
+def test_p1_bb_04_real_child_self_authorization_cannot_execute_wrapper(tmp_path):
+    path = ROOT / "scripts/run_mdmt_mia_c7_real_child.py"
+    spec = importlib.util.spec_from_file_location("c7_real_child", path)
+    assert spec and spec.loader
+    child = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(child)
+    sentinel = tmp_path / "wrapper-executed"
+    wrapper = tmp_path / "would_execute.sh"
+    wrapper.write_text(
+        "#!/bin/sh\nprintf executed > '{}'\n".format(sentinel), encoding="utf-8")
+    wrapper.chmod(0o755)
+    child_spec = {
+        "authorities": __import__(
+            "tracking.mdmt_mia_c7_batch_b_schema",
+            fromlist=["authority_bindings"],
+        ).authority_bindings(),
+        "mode": "REAL_C7_CELL",
+        "dry_run": False,
+        "execution_authorized": True,
+        "self_authorized": True,
+        "output_root": str(tmp_path / "child-output"),
+        "cell": dict(registered_cells()[0]),
+        "author_wrapper_path": str(wrapper),
+        "author_wrapper_sha256": __import__(
+            "tracking.mdmt_mia_c7_batch_b_schema", fromlist=["sha256_file"]
+        ).sha256_file(wrapper),
+        "author_output_root": str(tmp_path / "author-output"),
+        "generated_source_root": str(tmp_path / "generated-source"),
+        "split": "train",
+    }
+    with pytest.raises(child.C7ChildError, match="unconditionally blocked"):
+        child.execute_child(child_spec)
+    assert not sentinel.exists()
+
+
 def test_synthetic_tiny_e2e_uses_child_disk_validator_writer_and_selector(tmp_path):
     batch_a = _batch_a_test_module()
     _, _, evidence = batch_a._case_a()
     evidence_path = tmp_path / "batch_a_evidence.json"
     atomic_write_json(evidence_path, evidence)
-    cell = _cell(frame_count=1, capacity_bytes=60)
+    launcher_path = ROOT / "scripts/run_mdmt_mia_c7_outcome_blind_census.py"
+    spec = importlib.util.spec_from_file_location("c7_launcher_e2e", launcher_path)
+    assert spec and spec.loader
+    launcher = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(launcher)
+    output_root = tmp_path / "e2e-output"
+    manifest = launcher.build_frozen_manifest(
+        run_id="synthetic-run", output_root=output_root,
+        batch_b_implementation_sha="b" * 40,
+        input_identity={"fixture": "synthetic-only", "digest": "c" * 64},
+        config_identity={"fixture": "tiny", "digest": "d" * 64},
+        synthetic_non_scientific=True)
+    cell = manifest["cells"][0]
     fixture_spec = {
         "synthetic_non_scientific": True,
         "run_id": "synthetic-run",
@@ -484,22 +670,16 @@ def test_synthetic_tiny_e2e_uses_child_disk_validator_writer_and_selector(tmp_pa
         cwd=ROOT, env={**__import__("os").environ, "PYTHONPATH": str(ROOT / "src")},
         check=False)
     assert completed.returncode == 0
-    launcher_path = ROOT / "scripts/run_mdmt_mia_c7_outcome_blind_census.py"
-    spec = importlib.util.spec_from_file_location("c7_launcher_e2e", launcher_path)
-    assert spec and spec.loader
-    launcher = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(launcher)
-    output_root = tmp_path / "e2e-output"
-    manifest = launcher.build_frozen_manifest(
-        run_id="synthetic-run", output_root=output_root,
-        batch_b_implementation_sha="b" * 40,
-        input_identity={"fixture": "synthetic-only", "digest": "c" * 64},
-        config_identity={"fixture": "tiny", "digest": "d" * 64},
-        synthetic_non_scientific=True)
+    window_sources = {cell["cell_id"]: tmp_path / "window_source.jsonl"}
+    raw_no_stale = _raw_observer_evidence(frame=0, stale=False)
+    for other in manifest["cells"][1:]:
+        path = tmp_path / "window_source_{}.jsonl".format(other["cell_id"])
+        atomic_write_jsonl(path, [make_validated_no_stale_window_record(
+            run_id="synthetic-run", cell=other, frame_index=0,
+            raw_observation_evidence=raw_no_stale)])
+        window_sources[other["cell_id"]] = path
     result = launcher.execute_synthetic_launch(
-        output_root=output_root, manifest=manifest, synthetic_cell=cell,
-        expected_frame_domain=(0,), window_source=tmp_path / "window_source.jsonl",
-        qualifications=_qualifications())
+        output_root=output_root, manifest=manifest, window_sources=window_sources)
     assert result == {
         "schema_version": "C7_SYNTHETIC_E2E_STATUS_V1",
         "status": "PASS",
@@ -512,7 +692,7 @@ def test_synthetic_tiny_e2e_uses_child_disk_validator_writer_and_selector(tmp_pa
     }
     assert validate_committed_cell(
         output_root / "cells" / cell["cell_id"],
-        expected_manifest_sha256=canonical_sha256(manifest))["status"] == "PASS"
+        expected_manifest=manifest)["status"] == "PASS"
     assert validate_committed_package(output_root / "package")["status"] == "PASS"
 
 

@@ -14,7 +14,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -86,62 +86,71 @@ def controlled_environment() -> dict[str, str]:
 
 def execute_synthetic_launch(
     *, output_root: Path | str, manifest: Mapping[str, Any],
-    synthetic_cell: Mapping[str, Any], expected_frame_domain: Sequence[int],
-    window_source: Path | str, qualifications: Sequence[Mapping[str, Any]],
+    window_sources: Mapping[str, Path | str],
 ) -> dict[str, Any]:
     """Run the child/writer/validator/selector path using synthetic inputs only."""
     if manifest.get("synthetic_non_scientific") is not True:
         raise C7LauncherError("synthetic launch requires synthetic manifest")
     output = Path(output_root).resolve()
     operational = output / "operational"
-    child_root = operational / "child"
     operational.mkdir(parents=True, exist_ok=True)
-    child_spec = {
-        "schema_version": "C7_CHILD_SPEC_V1",
-        "mode": "SYNTHETIC_NON_SCIENTIFIC",
-        "synthetic_non_scientific": True,
-        "authorities": authority_bindings(),
-        "run_id": manifest.get("run_id"),
-        "cell": dict(synthetic_cell),
-        "window_source": str(Path(window_source).resolve()),
-        "output_root": str(child_root),
-    }
-    spec_path = operational / "child_spec.json"
-    atomic_write_json(spec_path, child_spec)
-    completed = subprocess.run(
-        [sys.executable, str(CHILD_PATH), "--spec", str(spec_path)],
-        cwd=ROOT,
-        env=controlled_environment(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=False,
-    )
-    if completed.returncode != 0:
-        raise C7LauncherError("synthetic child failed")
-    child_status = read_json(child_root / "CHILD_STATUS.json")
-    if child_status.get("status") != "PASS" or child_status.get("real_input_executed") is not False:
-        raise C7LauncherError("synthetic child status mismatch")
-    windows = read_jsonl(child_root / "windows.jsonl")
-    cell_result = write_cell_transaction(
-        output_root=output,
-        manifest=manifest,
-        cell=synthetic_cell,
-        expected_frame_domain=expected_frame_domain,
-        windows=windows,
-        synthetic_non_scientific=True,
-    )
-    package_result = write_selection_package(
-        output_root=output, manifest=manifest, qualifications=qualifications)
+    expected_ids = [cell["cell_id"] for cell in manifest.get("cells", ())]
+    if set(window_sources) != set(expected_ids):
+        raise C7LauncherError("synthetic launch requires one window source per manifest cell")
+    cell_statuses = []
+    cell_seals_reproduced = []
+    for cell in manifest["cells"]:
+        cell_id = cell["cell_id"]
+        child_root = operational / "child" / cell_id
+        child_spec = {
+            "schema_version": "C7_CHILD_SPEC_V1",
+            "mode": "SYNTHETIC_NON_SCIENTIFIC",
+            "synthetic_non_scientific": True,
+            "authorities": authority_bindings(),
+            "run_id": manifest.get("run_id"),
+            "cell": dict(cell),
+            "window_source": str(Path(window_sources[cell_id]).resolve()),
+            "output_root": str(child_root),
+        }
+        spec_path = operational / "child_spec_{}.json".format(cell_id)
+        atomic_write_json(spec_path, child_spec)
+        completed = subprocess.run(
+            [sys.executable, str(CHILD_PATH), "--spec", str(spec_path)],
+            cwd=ROOT,
+            env=controlled_environment(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise C7LauncherError("synthetic child failed")
+        child_status = read_json(child_root / "CHILD_STATUS.json")
+        if (child_status.get("status") != "PASS"
+                or child_status.get("real_input_executed") is not False):
+            raise C7LauncherError("synthetic child status mismatch")
+        windows = read_jsonl(child_root / "windows.jsonl")
+        result = write_cell_transaction(
+            output_root=output,
+            manifest=manifest,
+            cell=cell,
+            expected_frame_domain=manifest["authorized_frame_domains"][cell_id],
+            windows=windows,
+            synthetic_non_scientific=True,
+        )
+        cell_statuses.append(result["status"])
+        cell_seals_reproduced.append(result["seal_reproduced"] is True)
+    package_result = write_selection_package(output_root=output, manifest=manifest)
     result = {
         "schema_version": "C7_SYNTHETIC_E2E_STATUS_V1",
         "status": "PASS",
         "synthetic_non_scientific": True,
         "child_status": "PASS",
-        "cell_transaction_status": cell_result["status"],
+        "cell_transaction_status": (
+            "COMMITTED" if set(cell_statuses) == {"COMMITTED"} else "RESUMED"),
         "package_transaction_status": package_result["status"],
         "seal_reproduced": bool(
-            cell_result["seal_reproduced"] and package_result["seal_reproduced"]),
+            all(cell_seals_reproduced) and package_result["seal_reproduced"]),
         "real_input_executed": False,
     }
     atomic_write_json(operational / "SYNTHETIC_E2E_STATUS.json", result)
@@ -191,14 +200,10 @@ def main(argv: list[str] | None = None) -> int:
     if spec.get("mode") != "SYNTHETIC_NON_SCIENTIFIC":
         raise C7LauncherError("Batch B CLI execution is synthetic-only")
     manifest = _load(spec["manifest_path"])
-    qualifications = read_jsonl(spec["qualification_source"])
     execute_synthetic_launch(
         output_root=spec["output_root"],
         manifest=manifest,
-        synthetic_cell=spec["cell"],
-        expected_frame_domain=spec["expected_frame_domain"],
-        window_source=spec["window_source"],
-        qualifications=qualifications,
+        window_sources=spec["window_sources"],
     )
     return 0
 

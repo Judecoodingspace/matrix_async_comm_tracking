@@ -5,8 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -100,26 +98,8 @@ def execute_child(spec: dict) -> dict:
         }
         atomic_write_json(output_root / "CHILD_STATUS.json", status)
         return status
-    if spec.get("real_c7_scientific_input_execution_authorized") is not True:
-        raise C7ChildError("real C7 input execution is not authorized")
-    environment = {
-        key: value for key, value in os.environ.items()
-        if not key.startswith("MIA_") and not key.startswith("MDMT_MIA_C6")
-    }
-    environment.update(controlled)
-    completed = subprocess.run(command, cwd=ROOT, env=environment, check=False)
-    if completed.returncode != 0:
-        raise C7ChildError("author wrapper failed")
-    status = {
-        "schema_version": "C7_CHILD_STATUS_V1",
-        "status": "PASS",
-        "mode": mode,
-        "synthetic_non_scientific": False,
-        "real_input_executed": True,
-        "returncode": completed.returncode,
-    }
-    atomic_write_json(output_root / "CHILD_STATUS.json", status)
-    return status
+    raise C7ChildError(
+        "non-dry REAL_C7_CELL execution is unconditionally blocked in Batch B")
 
 
 def main(argv: list[str] | None = None) -> int:

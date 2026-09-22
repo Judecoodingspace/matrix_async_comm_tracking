@@ -16,6 +16,7 @@ from typing import Any, Mapping
 BATCH_B_SCHEMA_VERSION = "C7_BATCH_B_SCHEMA_V1"
 VALIDATED_WINDOW_SCHEMA = "C7_VALIDATED_WINDOW_V1"
 NO_STALE_VALIDATION_SCHEMA = "C7_NO_STALE_VALIDATION_V1"
+NO_STALE_RAW_OBSERVATION_SCHEMA = "C7_NO_STALE_RAW_OBSERVATION_V1"
 CELL_AGGREGATE_SCHEMA = "C7_CELL_AGGREGATE_V1"
 CELL_QUALIFICATION_SCHEMA = "C7_CELL_QUALIFICATION_V1"
 SELECTION_SCHEMA = "C7_SELECTION_V1"
@@ -26,6 +27,7 @@ CELL_INVENTORY_SCHEMA = "C7_CELL_INVENTORY_V1"
 CELL_SEAL_SCHEMA = "C7_CELL_SEAL_V1"
 CELL_COMMIT_SCHEMA = "C7_CELL_COMMIT_V1"
 PACKAGE_VALIDATION_SCHEMA = "C7_PACKAGE_VALIDATION_V1"
+VERIFIED_CELL_INVENTORY_SCHEMA = "C7_VERIFIED_CELL_INVENTORY_V1"
 PACKAGE_INVENTORY_SCHEMA = "C7_PACKAGE_INVENTORY_V1"
 PACKAGE_SEAL_SCHEMA = "C7_PACKAGE_SEAL_V1"
 PACKAGE_COMMIT_SCHEMA = "C7_PACKAGE_COMMIT_V1"
@@ -81,6 +83,7 @@ PACKAGE_ARTIFACTS_BEFORE_COMMIT = (
     "cell_qualifications.jsonl",
     "package_manifest.json",
     "package_validation.json",
+    "verified_cell_inventory.json",
 )
 PACKAGE_AUTHORITATIVE_FILES = tuple(sorted(PACKAGE_ARTIFACTS_BEFORE_COMMIT + (
     "PACKAGE_COMMITTED.json",
@@ -148,6 +151,14 @@ def registered_cells() -> tuple[dict[str, Any], ...]:
 
 
 REGISTERED_CELL_IDS = tuple(cell["cell_id"] for cell in registered_cells())
+
+
+def authorized_frame_domains(synthetic_non_scientific: bool) -> dict[str, list[int]]:
+    """Return the manifest-bound frame domain for every registered cell."""
+    return {
+        cell["cell_id"]: ([0] if synthetic_non_scientific else list(range(cell["frame_count"])))
+        for cell in registered_cells()
+    }
 
 
 def authority_bindings() -> dict[str, str]:

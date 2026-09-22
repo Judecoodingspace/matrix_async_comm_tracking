@@ -32,6 +32,7 @@ from .mdmt_mia_c7_batch_b_schema import (
     SOURCE_HASH_KEYS,
     VALIDATED_WINDOW_SCHEMA,
     authority_bindings,
+    authorized_frame_domains,
     canonical_json,
     canonical_sha256,
     registered_cells,
@@ -41,6 +42,7 @@ from .mdmt_mia_c7_batch_b_validator import (
     C7BatchBValidationError,
     read_json,
     read_jsonl,
+    reconstruct_verified_cell_inventory,
     validate_cell_files,
     validate_committed_cell,
     validate_committed_package,
@@ -153,6 +155,9 @@ def build_batch_b_manifest(
             {"capacity_id": capacity_id, "capacity_bytes": capacity_bytes}
             for capacity_id, capacity_bytes in CAPACITY_DOMAIN],
         "cells": list(registered_cells()),
+        "transaction_domain_kind": (
+            "SYNTHETIC_NON_SCIENTIFIC" if synthetic_non_scientific else "REGISTERED_C7"),
+        "authorized_frame_domains": authorized_frame_domains(synthetic_non_scientific),
         "input_identity": dict(input_identity),
         "config_identity": dict(config_identity),
         "output_root": str(Path(output_root).resolve()),
@@ -163,8 +168,8 @@ def build_batch_b_manifest(
         ],
         "expected_package_artifacts": [
             "package_manifest.json", "cell_qualifications.jsonl", "C7_SELECTION.json",
-            "package_validation.json", "package_inventory.json", "package_seal.json",
-            "PACKAGE_COMMITTED.json",
+            "verified_cell_inventory.json", "package_validation.json",
+            "package_inventory.json", "package_seal.json", "PACKAGE_COMMITTED.json",
         ],
         "outcome_firewall_forbidden_families": list(FORBIDDEN_OUTCOME_FAMILIES),
     }
@@ -188,6 +193,7 @@ def build_cell_manifest(
         "input_identity": dict(manifest.get("input_identity", {})),
         "config_identity": dict(manifest.get("config_identity", {})),
         "synthetic_non_scientific": bool(synthetic_non_scientific),
+        "transaction_domain_kind": manifest.get("transaction_domain_kind"),
         "expected_artifacts": list(manifest.get("expected_cell_artifacts", ())),
     }
 
@@ -200,19 +206,25 @@ def write_cell_transaction(
     """Write, reread, validate, seal, and atomically commit one cell."""
     root = Path(output_root)
     validate_manifest(manifest)
+    manifest_cells = manifest.get("cells", ())
+    if dict(cell) not in manifest_cells:
+        raise C7BatchBPackageError("cell is not an exact member of manifest domain")
+    authorized_domain = manifest.get("authorized_frame_domains", {}).get(cell.get("cell_id"))
+    if list(expected_frame_domain) != authorized_domain:
+        raise C7BatchBPackageError("caller frame domain differs from manifest authority")
+    if synthetic_non_scientific is not manifest.get("synthetic_non_scientific"):
+        raise C7BatchBPackageError("synthetic/scientific transaction domain mismatch")
     cells_root = root / "cells"
     cells_root.mkdir(parents=True, exist_ok=True)
     final = cells_root / str(cell["cell_id"])
     staging = cells_root / ".{}.staging".format(cell["cell_id"])
-    manifest_sha = canonical_sha256(manifest)
 
     if final.exists():
         if not (final / "CELL_COMMITTED.json").is_file():
             _quarantine(final, "missing-terminal")
         else:
             try:
-                validation = validate_committed_cell(
-                    final, expected_manifest_sha256=manifest_sha)
+                validation = validate_committed_cell(final, expected_manifest=manifest)
             except C7BatchBValidationError as exc:
                 raise C7BatchBPackageError("existing final cell is invalid or mismatched") from exc
             return {**validation, "status": "SKIPPED_VALID_SEALED", "cell_root": str(final)}
@@ -262,17 +274,22 @@ def write_cell_transaction(
         if staging.exists():
             _quarantine(staging, "failed-transaction")
         raise
-    final_validation = validate_committed_cell(final, expected_manifest_sha256=manifest_sha)
+    final_validation = validate_committed_cell(final, expected_manifest=manifest)
     return {**final_validation, "status": "COMMITTED", "cell_root": str(final)}
 
 
 def write_selection_package(
     *, output_root: Path | str, manifest: Mapping[str, Any],
-    qualifications: Sequence[Mapping[str, Any]],
+    qualifications: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Atomically write the all-21 synthetic/mechanical selection package."""
+    """Derive selection only from the exact manifest-bound sealed cell set."""
     root = Path(output_root)
     validate_manifest(manifest)
+    if qualifications is not None:
+        raise C7BatchBPackageError(
+            "caller-supplied qualifications are not authoritative package inputs")
+    verified_inventory, sealed_qualifications = reconstruct_verified_cell_inventory(
+        root, manifest)
     final = root / "package"
     staging = root / ".package.staging"
     if final.exists():
@@ -290,13 +307,20 @@ def write_selection_package(
         _quarantine(staging, "incomplete-staging")
     staging.mkdir(parents=True)
     try:
-        selection = select_qualified_cell(manifest, qualifications)
+        selection = select_qualified_cell(manifest, sealed_qualifications)
         atomic_write_json(staging / "package_manifest.json", manifest)
-        atomic_write_jsonl(staging / "cell_qualifications.jsonl", qualifications)
+        atomic_write_jsonl(staging / "cell_qualifications.jsonl", sealed_qualifications)
         atomic_write_json(staging / "C7_SELECTION.json", selection)
+        atomic_write_json(staging / "verified_cell_inventory.json", verified_inventory)
         disk_manifest = read_json(staging / "package_manifest.json")
         disk_qualifications = read_jsonl(staging / "cell_qualifications.jsonl")
         disk_selection = read_json(staging / "C7_SELECTION.json")
+        disk_verified_inventory = read_json(staging / "verified_cell_inventory.json")
+        rebuilt_inventory, rebuilt_qualifications = reconstruct_verified_cell_inventory(
+            root, disk_manifest)
+        if (disk_verified_inventory != rebuilt_inventory
+                or disk_qualifications != rebuilt_qualifications):
+            raise C7BatchBPackageError("sealed-cell inventory changed during package staging")
         selection_validation = validate_selection(
             disk_manifest, disk_qualifications, disk_selection)
         package_validation = {
@@ -305,6 +329,8 @@ def write_selection_package(
             "run_id": disk_manifest.get("run_id"),
             "manifest_sha256": canonical_sha256(disk_manifest),
             "qualification_count": len(disk_qualifications),
+            "verified_cell_inventory_sha256": canonical_sha256(disk_verified_inventory),
+            "all_21_cell_seals_verified": True,
             "selection_validation": selection_validation,
             "outcome_firewall": "PASS",
         }
@@ -316,6 +342,8 @@ def write_selection_package(
             "run_id": manifest.get("run_id"),
             "manifest_sha256": sha256_file(staging / "package_manifest.json"),
             "selection_sha256": sha256_file(staging / "C7_SELECTION.json"),
+            "verified_cell_inventory_sha256": sha256_file(
+                staging / "verified_cell_inventory.json"),
             "inventory_sha256": canonical_sha256(inventory),
             "status": "VALIDATED",
         }

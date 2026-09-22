@@ -45,7 +45,7 @@ def generate(spec):
                 run_id=spec["run_id"],
                 cell=spec["cell"],
                 frame_index=window["frame_index"],
-                raw_evidence_sha256=window["raw_evidence_sha256"],
+                raw_observation_evidence=_load(window["raw_observation_evidence_path"]),
             ))
         else:
             raise ValueError("unknown synthetic window kind")

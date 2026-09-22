@@ -32,6 +32,7 @@ from .mdmt_mia_c7_batch_b_schema import (
     GLOBAL_MULTIPLIER,
     MANIFEST_SCHEMA,
     NO_STALE_VALIDATION_SCHEMA,
+    NO_STALE_RAW_OBSERVATION_SCHEMA,
     PACKAGE_ARTIFACTS_BEFORE_COMMIT,
     PACKAGE_AUTHORITATIVE_FILES,
     PACKAGE_COMMIT_SCHEMA,
@@ -45,12 +46,19 @@ from .mdmt_mia_c7_batch_b_schema import (
     T_COUNT,
     T_DENOMINATOR,
     VALIDATED_WINDOW_SCHEMA,
+    VERIFIED_CELL_INVENTORY_SCHEMA,
     authority_bindings,
+    authorized_frame_domains,
     canonical_sha256,
     registered_cells,
     sha256_file,
 )
 from .mdmt_mia_c7_validator import C7ValidationError, validate_core_evidence
+from .mdmt_mia_c7_census import (
+    ReceiverStateEvidence,
+    SUPPRESSIBLE_STALE,
+    evaluate_id_state_applicability,
+)
 
 
 class C7BatchBValidationError(ValueError):
@@ -64,8 +72,11 @@ _WINDOW_KEYS = frozenset({
     "validation", "evidence_sha256", "validation_sha256",
 })
 _NO_STALE_EVIDENCE_KEYS = frozenset({
-    "schema_version", "frame_index", "observer_failures",
-    "stale_classification_records", "raw_evidence_sha256",
+    "schema_version", "frame_index", "observations", "observer_failures",
+})
+_RAW_OBSERVATION_KEYS = frozenset({
+    "schema_version", "observation_kind", "event", "item",
+    "fifo_snapshot", "receiver_state", "stale_classification",
 })
 _AGGREGATE_KEYS = frozenset({
     "schema_version", "run_id", "cell_id", "pair_id", "capacity_id",
@@ -95,13 +106,14 @@ _MANIFEST_KEYS = frozenset({
     "source_hashes", "schema_identities", "registered_pair_domain",
     "registered_capacity_domain", "cells", "input_identity", "config_identity",
     "output_root", "expected_cell_artifacts", "expected_package_artifacts",
-    "outcome_firewall_forbidden_families",
+    "outcome_firewall_forbidden_families", "transaction_domain_kind",
+    "authorized_frame_domains",
 })
 _CELL_MANIFEST_KEYS = frozenset({
     "schema_version", "run_id", "cell", "expected_frame_domain",
     "batch_b_manifest_sha256", "authorities", "source_hashes",
     "schema_identities", "input_identity", "config_identity",
-    "synthetic_non_scientific", "expected_artifacts",
+    "synthetic_non_scientific", "transaction_domain_kind", "expected_artifacts",
 })
 _CELL_SPEC_KEYS = frozenset({
     "cell_id", "pair_id", "frame_count", "capacity_id", "capacity_bytes",
@@ -181,6 +193,115 @@ def reject_forbidden_outcome_content(value: Any, *, policy_context: bool = False
             raise C7BatchBValidationError("forbidden outcome content")
 
 
+def _raw_packet_identity(value: Mapping[str, Any]) -> tuple[str, str, str]:
+    return (
+        canonical_sha256(value.get("packet_id")),
+        str(value.get("wire_digest", "")),
+        str(value.get("channel", "")),
+    )
+
+
+def _reconstruct_no_stale_facts(evidence: Mapping[str, Any]) -> dict[str, Any]:
+    """Independently prove completeness and stale absence from persisted raw events."""
+    _exact_keys(evidence, _NO_STALE_EVIDENCE_KEYS, "no-stale raw evidence")
+    if evidence.get("schema_version") != NO_STALE_RAW_OBSERVATION_SCHEMA:
+        raise C7BatchBValidationError("no-stale raw schema mismatch")
+    frame = _integer(evidence.get("frame_index"), "no-stale frame")
+    failures = evidence.get("observer_failures")
+    if not isinstance(failures, list) or failures:
+        raise C7BatchBValidationError("no-stale observer failure/incomplete ledger")
+    observations = evidence.get("observations")
+    if not isinstance(observations, list) or not observations:
+        raise C7BatchBValidationError("no-stale raw observations missing")
+    ordinals = []
+    frame_open = 0
+    frame_close = 0
+    true_first: dict[tuple[str, str, str], int] = {}
+    served_id_state = set()
+    stale_count = 0
+    id_state_true_first_count = 0
+    for row in observations:
+        _exact_keys(row, _RAW_OBSERVATION_KEYS, "raw observation")
+        if row.get("schema_version") != BATCH_A_SEMANTICS_SCHEMA:
+            raise C7BatchBValidationError("raw observation schema mismatch")
+        event = row.get("event")
+        if not isinstance(event, Mapping) or event.get("frame") != frame:
+            raise C7BatchBValidationError("raw observation frame mismatch")
+        ordinal = _integer(event.get("event_ordinal"), "raw event ordinal", 1)
+        ordinals.append(ordinal)
+        kind = row.get("observation_kind")
+        event_type = event.get("event_type")
+        frame_open += int(kind == "frame_open" and event_type == "frame_open")
+        frame_close += int(kind == "frame_close" and event_type == "frame_summary")
+        if event_type == "service_slice" and event.get("channel") == "id_state":
+            served_id_state.add(_raw_packet_identity(event))
+        if kind != "true_first_service":
+            continue
+        if event_type != "service_start":
+            raise C7BatchBValidationError("true-first-service event type mismatch")
+        item = row.get("item")
+        if not isinstance(item, Mapping) or _raw_packet_identity(item) != _raw_packet_identity(event):
+            raise C7BatchBValidationError("true-first-service item identity mismatch")
+        identity = _raw_packet_identity(item)
+        if identity in true_first:
+            raise C7BatchBValidationError("duplicate true-first-service observation")
+        true_first[identity] = ordinal
+        if item.get("channel") != "id_state":
+            continue
+        id_state_true_first_count += 1
+        size = _integer(item.get("JSON_WIRE_BYTES"), "no-stale wire bytes", 1)
+        if (_integer(item.get("bytes_served_total"), "no-stale bytes served") != 0
+                or _integer(item.get("remaining_service_bytes"), "no-stale residual", 1) != size
+                or item.get("service_start_frame") != frame):
+            raise C7BatchBValidationError("true-first-service item is not pristine")
+        wire = item.get("wire")
+        if not isinstance(wire, Mapping) or canonical_sha256(wire) != item.get("wire_digest"):
+            raise C7BatchBValidationError("true-first-service wire mismatch")
+        state_raw = row.get("receiver_state")
+        if not isinstance(state_raw, Mapping):
+            raise C7BatchBValidationError("true-first-service receiver state missing")
+        state = ReceiverStateEvidence.from_dict(state_raw)
+        if state.frame_index != frame or state.event_ordinal != ordinal:
+            raise C7BatchBValidationError("true-first-service state identity mismatch")
+        applicability = evaluate_id_state_applicability(wire, state)
+        expected_classification = (
+            SUPPRESSIBLE_STALE if applicability.whole_packet_currently_non_applicable
+            else "SERVICEABLE")
+        classification = row.get("stale_classification")
+        if (not isinstance(classification, Mapping)
+                or classification.get("classification") != expected_classification
+                or classification.get("event_ordinal") != ordinal
+                or classification.get("frame_index") != frame
+                or classification.get("source_wire") != wire
+                or not isinstance(classification.get("source"), Mapping)
+                or _raw_packet_identity(classification["source"]) != identity
+                or classification.get("raw_receiver_state") != state.to_dict()
+                or classification.get("raw_applicability") != applicability.to_dict()
+                or classification.get("hook_event_type") != "service_start"
+                or classification.get("json_wire_bytes") != size
+                or classification.get("bytes_served_before_hook") != 0
+                or classification.get("remaining_service_bytes_before_hook") != size):
+            raise C7BatchBValidationError("classification record missing/inconsistent")
+        stale_count += int(applicability.whole_packet_currently_non_applicable)
+    if len(ordinals) != len(set(ordinals)) or ordinals != sorted(ordinals):
+        raise C7BatchBValidationError("raw observation ordinals invalid")
+    if frame_open != 1 or frame_close != 1:
+        raise C7BatchBValidationError("complete frame boundary evidence required")
+    if not served_id_state.issubset(true_first):
+        raise C7BatchBValidationError("served ID-State packet lacks classification opportunity")
+    return {
+        "frame_index": frame,
+        "evidence_complete": True,
+        "observer_failure_count": 0,
+        "true_first_service_count": len(true_first),
+        "id_state_true_first_service_count": id_state_true_first_count,
+        "stale_classification_count": stale_count,
+        "stale_present": stale_count > 0,
+        "window_eligible": False,
+        "raw_evidence_sha256": canonical_sha256(evidence),
+    }
+
+
 def validate_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
     _exact_keys(manifest, _MANIFEST_KEYS, "Batch B manifest")
     if (manifest.get("schema_version") != MANIFEST_SCHEMA
@@ -217,6 +338,12 @@ def validate_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
         raise C7BatchBValidationError("manifest cell domain mismatch")
     if manifest.get("synthetic_non_scientific") not in {True, False}:
         raise C7BatchBValidationError("manifest synthetic marker mismatch")
+    synthetic = manifest["synthetic_non_scientific"]
+    expected_kind = "SYNTHETIC_NON_SCIENTIFIC" if synthetic else "REGISTERED_C7"
+    if manifest.get("transaction_domain_kind") != expected_kind:
+        raise C7BatchBValidationError("manifest transaction domain kind mismatch")
+    if manifest.get("authorized_frame_domains") != authorized_frame_domains(synthetic):
+        raise C7BatchBValidationError("manifest authorized frame domain mismatch")
     if not isinstance(manifest.get("input_identity"), Mapping):
         raise C7BatchBValidationError("manifest input identity missing")
     if not isinstance(manifest.get("config_identity"), Mapping):
@@ -229,8 +356,8 @@ def validate_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
         raise C7BatchBValidationError("manifest cell inventory contract mismatch")
     if manifest.get("expected_package_artifacts") != [
         "package_manifest.json", "cell_qualifications.jsonl", "C7_SELECTION.json",
-        "package_validation.json", "package_inventory.json", "package_seal.json",
-        "PACKAGE_COMMITTED.json",
+        "verified_cell_inventory.json", "package_validation.json",
+        "package_inventory.json", "package_seal.json", "PACKAGE_COMMITTED.json",
     ]:
         raise C7BatchBValidationError("manifest package inventory contract mismatch")
     if manifest.get("outcome_firewall_forbidden_families") != list(FORBIDDEN_OUTCOME_FAMILIES):
@@ -284,23 +411,10 @@ def _window_facts(
 
     if record.get("evidence_kind") != "VALIDATED_NO_STALE":
         raise C7BatchBValidationError("unknown window evidence kind")
-    _exact_keys(evidence, _NO_STALE_EVIDENCE_KEYS, "no-stale evidence")
-    expected = {
-        "schema_version": NO_STALE_VALIDATION_SCHEMA,
-        "status": "PASS",
-        "frame_index": frame,
-        "evidence_complete": True,
-        "stale_present": False,
-        "window_eligible": False,
-        "raw_evidence_sha256": evidence.get("raw_evidence_sha256"),
-    }
-    if (evidence.get("schema_version") != "C7_NO_STALE_EVIDENCE_V1"
-            or evidence.get("frame_index") != frame
-            or evidence.get("observer_failures") != []
-            or evidence.get("stale_classification_records") != []
-            or validation != expected):
-        raise C7BatchBValidationError("no-stale attestation mismatch")
-    _digest(evidence.get("raw_evidence_sha256"), "raw evidence digest")
+    facts = _reconstruct_no_stale_facts(evidence)
+    expected = {"schema_version": NO_STALE_VALIDATION_SCHEMA, "status": "PASS", **facts}
+    if facts["frame_index"] != frame or facts["stale_present"] or validation != expected:
+        raise C7BatchBValidationError("no-stale raw reconstruction mismatch")
     return frame, False, False, canonical_sha256(record)
 
 
@@ -443,6 +557,11 @@ def validate_cell_documents(
         "cell_seal.json", "CELL_COMMITTED.json",
     ]:
         raise C7BatchBValidationError("cell artifact contract mismatch")
+    expected_kind = (
+        "SYNTHETIC_NON_SCIENTIFIC"
+        if cell_manifest["synthetic_non_scientific"] else "REGISTERED_C7")
+    if cell_manifest.get("transaction_domain_kind") != expected_kind:
+        raise C7BatchBValidationError("cell transaction domain kind mismatch")
     _digest(cell_manifest.get("batch_b_manifest_sha256"), "Batch B manifest digest")
     expected_aggregate = reconstruct_aggregate(
         run_id=cell_manifest.get("run_id"), cell=cell,
@@ -483,14 +602,14 @@ def validate_cell_files(cell_root: Path | str) -> dict[str, Any]:
 
 
 def _qualification_for_selection(
-    record: Mapping[str, Any], cell: Mapping[str, Any],
+    record: Mapping[str, Any], cell: Mapping[str, Any], expected_frame_count: int,
 ) -> dict[str, Any]:
     _exact_keys(record, _QUALIFICATION_KEYS, "selection qualification")
     if record.get("schema_version") != CELL_QUALIFICATION_SCHEMA:
         raise C7BatchBValidationError("qualification schema mismatch")
     if record.get("cell_id") != cell["cell_id"]:
         raise C7BatchBValidationError("qualification cell mismatch")
-    if record.get("N_all") != cell["frame_count"]:
+    if record.get("N_all") != expected_frame_count:
         raise C7BatchBValidationError("qualification frame count mismatch")
     if (record.get("cell_validity") not in {"VALID", "VALID_ZERO"}
             or record.get("cell_validation_status") != "PASS"
@@ -538,10 +657,16 @@ def reconstruct_selection(
         by_id[cell_id] = record
     if set(by_id) != set(REGISTERED_CELL_IDS):
         raise C7BatchBValidationError("qualification cell domain mismatch")
-    reconstructed = [
-        (cell, _qualification_for_selection(by_id[cell["cell_id"]], cell))
-        for cell in cells
-    ]
+    reconstructed = []
+    for cell in cells:
+        domain = manifest["authorized_frame_domains"].get(cell["cell_id"])
+        if not isinstance(domain, list) or not domain:
+            raise C7BatchBValidationError("selection manifest frame domain missing")
+        reconstructed.append((
+            cell,
+            _qualification_for_selection(
+                by_id[cell["cell_id"]], cell, len(domain)),
+        ))
     qualified = [(cell, record) for cell, record in reconstructed if record["CELL_QUALIFIED"]]
     trace: dict[str, Any] = {
         "qualified_subset_reconstructed": [cell["cell_id"] for cell, _ in qualified],
@@ -640,7 +765,7 @@ def _inventory_for(root: Path, names: Sequence[str], schema_version: str) -> dic
 
 
 def validate_committed_cell(
-    cell_root: Path | str, *, expected_manifest_sha256: str | None = None,
+    cell_root: Path | str, *, expected_manifest: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Reread and independently reproduce a completed cell transaction."""
     root = Path(cell_root)
@@ -658,8 +783,23 @@ def validate_committed_cell(
     cell_manifest = read_json(root / "cell_manifest.json")
     manifest_sha = cell_manifest.get("batch_b_manifest_sha256")
     _digest(manifest_sha, "Batch B manifest digest")
-    if expected_manifest_sha256 is not None and manifest_sha != expected_manifest_sha256:
-        raise C7BatchBValidationError("cell manifest authority mismatch")
+    if expected_manifest is not None:
+        validate_manifest(expected_manifest)
+        if manifest_sha != canonical_sha256(expected_manifest):
+            raise C7BatchBValidationError("cell manifest authority mismatch")
+        cell = cell_manifest.get("cell")
+        if cell not in expected_manifest.get("cells", ()):
+            raise C7BatchBValidationError("cell is not in expected manifest domain")
+        expected_domain = expected_manifest["authorized_frame_domains"][cell["cell_id"]]
+        if cell_manifest.get("expected_frame_domain") != expected_domain:
+            raise C7BatchBValidationError("cell frame domain differs from manifest")
+        for key in (
+            "authorities", "source_hashes", "schema_identities", "input_identity",
+            "config_identity", "synthetic_non_scientific", "transaction_domain_kind",
+        ):
+            if cell_manifest.get(key) != expected_manifest.get(key):
+                raise C7BatchBValidationError(
+                    "cell manifest {} binding mismatch".format(key))
     payload = {
         "run_id": cell_manifest.get("run_id"),
         "cell_id": cell_manifest.get("cell", {}).get("cell_id"),
@@ -693,6 +833,46 @@ def validate_committed_cell(
     }
 
 
+def reconstruct_verified_cell_inventory(
+    output_root: Path | str, manifest: Mapping[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Rebuild the exact qualification set from 21 verified sealed cells."""
+    validate_manifest(manifest)
+    root = Path(output_root)
+    manifest_sha = canonical_sha256(manifest)
+    inventory_rows = []
+    qualifications = []
+    for cell in manifest["cells"]:
+        cell_root = root / "cells" / cell["cell_id"]
+        validate_committed_cell(cell_root, expected_manifest=manifest)
+        cell_manifest = read_json(cell_root / "cell_manifest.json")
+        qualification = read_json(cell_root / "cell_qualification.json")
+        if qualification.get("cell_id") != cell["cell_id"]:
+            raise C7BatchBValidationError("sealed qualification cell identity mismatch")
+        qualifications.append(qualification)
+        terminal = read_json(cell_root / "CELL_COMMITTED.json")
+        inventory_rows.append({
+            "cell_id": cell["cell_id"],
+            "cell_manifest_sha256": sha256_file(cell_root / "cell_manifest.json"),
+            "cell_qualification_sha256": sha256_file(cell_root / "cell_qualification.json"),
+            "cell_inventory_sha256": sha256_file(cell_root / "cell_inventory.json"),
+            "cell_seal_sha256": sha256_file(cell_root / "cell_seal.json"),
+            "terminal_marker_sha256": sha256_file(cell_root / "CELL_COMMITTED.json"),
+            "terminal_status": terminal.get("status"),
+            "terminal_seal_sha256": terminal.get("seal_sha256"),
+            "cell_manifest_binding_sha256": cell_manifest.get("batch_b_manifest_sha256"),
+        })
+    if len(inventory_rows) != 21 or len({row["cell_id"] for row in inventory_rows}) != 21:
+        raise C7BatchBValidationError("exact 21-cell sealed inventory required")
+    return ({
+        "schema_version": VERIFIED_CELL_INVENTORY_SCHEMA,
+        "manifest_sha256": manifest_sha,
+        "cell_count": 21,
+        "all_cells_valid_sealed": True,
+        "cells": inventory_rows,
+    }, qualifications)
+
+
 def validate_committed_package(package_root: Path | str) -> dict[str, Any]:
     """Reread and independently reproduce a completed selection package."""
     root = Path(package_root)
@@ -703,7 +883,12 @@ def validate_committed_package(package_root: Path | str) -> dict[str, Any]:
         raise C7BatchBValidationError("unexpected authoritative package inventory")
     manifest = read_json(root / "package_manifest.json")
     validate_manifest(manifest)
-    qualifications = read_jsonl(root / "cell_qualifications.jsonl")
+    verified_inventory, qualifications = reconstruct_verified_cell_inventory(
+        root.parent, manifest)
+    if read_json(root / "verified_cell_inventory.json") != verified_inventory:
+        raise C7BatchBValidationError("verified cell inventory is not reproducible")
+    if read_jsonl(root / "cell_qualifications.jsonl") != qualifications:
+        raise C7BatchBValidationError("package qualifications are not sealed-cell-derived")
     selection = read_json(root / "C7_SELECTION.json")
     selection_validation = validate_selection(manifest, qualifications, selection)
     expected_validation = {
@@ -712,6 +897,8 @@ def validate_committed_package(package_root: Path | str) -> dict[str, Any]:
         "run_id": manifest.get("run_id"),
         "manifest_sha256": canonical_sha256(manifest),
         "qualification_count": len(qualifications),
+        "verified_cell_inventory_sha256": canonical_sha256(verified_inventory),
+        "all_21_cell_seals_verified": True,
         "selection_validation": selection_validation,
         "outcome_firewall": "PASS",
     }
@@ -724,6 +911,8 @@ def validate_committed_package(package_root: Path | str) -> dict[str, Any]:
         "run_id": manifest.get("run_id"),
         "manifest_sha256": sha256_file(root / "package_manifest.json"),
         "selection_sha256": sha256_file(root / "C7_SELECTION.json"),
+        "verified_cell_inventory_sha256": sha256_file(
+            root / "verified_cell_inventory.json"),
         "inventory_sha256": canonical_sha256(inventory),
         "status": "VALIDATED",
     }
