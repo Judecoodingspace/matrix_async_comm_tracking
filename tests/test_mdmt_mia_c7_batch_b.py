@@ -7,6 +7,7 @@ import subprocess
 import sys
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -30,6 +31,10 @@ from tracking.mdmt_mia_c7_batch_b_schema import (
     ALLOWED_PARENT_ENV_KEYS,
     CELL_AGGREGATE_SCHEMA,
     CELL_QUALIFICATION_SCHEMA,
+    REGISTERED_C7_CONFIG_CLASS_ID,
+    REGISTERED_C7_CONFIG_FILES_KIND,
+    REGISTERED_C7_INPUT_CLASS_ID,
+    REGISTERED_C7_INPUT_FILES_KIND,
     REGISTERED_SOURCE_RELATIVE_PATHS,
     SOURCE_HASH_KEYS,
     canonical_sha256,
@@ -104,8 +109,17 @@ def _registered_provenance_fixture(tmp_path):
         input_path = repo / "fixtures/communication_input.json"
         config_path = repo / "fixtures/c7_config.json"
         input_path.parent.mkdir(parents=True, exist_ok=True)
-        input_path.write_text('{"fixture":"communication"}\n', encoding="utf-8")
-        config_path.write_text('{"fixture":"config"}\n', encoding="utf-8")
+        input_path.write_text(json.dumps({
+            "schema_version": REGISTERED_C7_INPUT_CLASS_ID,
+            "pair_id": "P23",
+            "split": "train",
+        }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        config_path.write_text(json.dumps({
+            "schema_version": REGISTERED_C7_CONFIG_CLASS_ID,
+            "device": "cuda:0",
+            "stage": "mia",
+        }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
         subprocess.run(["git", "init", "-q", str(repo)], check=True)
         subprocess.run(
             ["git", "-C", str(repo), "config", "user.name", "C7 Test"], check=True)
@@ -892,6 +906,147 @@ def test_p2_bb_02_unknown_parent_environment_excluded_at_subprocess_boundary(tmp
         "PYTHONPATH": str(ROOT / "src"),
         "MDMT_MIA_C7_CHILD_BOUNDARY": "1",
     }
+
+
+def _write_registered_input(path: Path, **fields) -> None:
+    payload = {"schema_version": REGISTERED_C7_INPUT_CLASS_ID, **fields}
+    atomic_write_json(path, payload)
+
+
+def _write_registered_config(path: Path, **fields) -> None:
+    payload = {"schema_version": REGISTERED_C7_CONFIG_CLASS_ID, **fields}
+    atomic_write_json(path, payload)
+
+
+def _registered_file_identity(path: Path, kind: str) -> dict[str, Any]:
+    return {"kind": kind, "files": [{"path": str(path), "sha256": sha256_file(path)}]}
+
+
+def test_p2_final_01_valid_registered_communication_input_and_config_pass(tmp_path):
+    fixture = _registered_provenance_fixture(tmp_path)
+    manifest = _build_registered_fixture_manifest(tmp_path, fixture)
+    assert manifest["input_identity"]["files"][0]["path"] == str(fixture["input_path"])
+    assert manifest["config_identity"]["files"][0]["path"] == str(fixture["config_path"])
+    assert validate_manifest(manifest)["status"] == "PASS"
+
+
+def test_p2_final_01_registered_input_rejects_outcome_key_with_correct_digest(tmp_path):
+    fixture = _registered_provenance_fixture(tmp_path)
+    contaminated = tmp_path / "contaminated_input.json"
+    contaminated.write_text(json.dumps({
+        "schema_version": REGISTERED_C7_INPUT_CLASS_ID,
+        "idf1": 0.91,
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    identity = _registered_file_identity(contaminated, REGISTERED_C7_INPUT_FILES_KIND)
+    with pytest.raises(C7BatchBPackageError, match="communication-only"):
+        _build_registered_fixture_manifest(tmp_path, fixture, input_identity=identity)
+
+
+def test_p2_final_01_registered_config_rejects_outcome_key_with_correct_digest(tmp_path):
+    fixture = _registered_provenance_fixture(tmp_path)
+    contaminated = tmp_path / "contaminated_config.json"
+    contaminated.write_text(json.dumps({
+        "schema_version": REGISTERED_C7_CONFIG_CLASS_ID,
+        "idsw": 7,
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    identity = _registered_file_identity(contaminated, REGISTERED_C7_CONFIG_FILES_KIND)
+    with pytest.raises(C7BatchBPackageError, match="communication-only"):
+        _build_registered_fixture_manifest(tmp_path, fixture, config_identity=identity)
+
+
+def test_p2_final_01_registered_input_rejects_outcome_value_with_correct_digest(tmp_path):
+    fixture = _registered_provenance_fixture(tmp_path)
+    contaminated = tmp_path / "contaminated_input.json"
+    contaminated.write_text(json.dumps({
+        "schema_version": REGISTERED_C7_INPUT_CLASS_ID,
+        "split": "tracking_result/IDF1=0.91",
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    identity = _registered_file_identity(contaminated, REGISTERED_C7_INPUT_FILES_KIND)
+    with pytest.raises(C7BatchBPackageError, match="forbidden outcome"):
+        _build_registered_fixture_manifest(tmp_path, fixture, input_identity=identity)
+
+
+def test_p2_final_01_registered_config_rejects_outcome_value_with_correct_digest(tmp_path):
+    fixture = _registered_provenance_fixture(tmp_path)
+    contaminated = tmp_path / "contaminated_config.json"
+    contaminated.write_text(json.dumps({
+        "schema_version": REGISTERED_C7_CONFIG_CLASS_ID,
+        "device": "tracking_result/IDF1=0.91",
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    identity = _registered_file_identity(contaminated, REGISTERED_C7_CONFIG_FILES_KIND)
+    with pytest.raises(C7BatchBPackageError, match="forbidden outcome"):
+        _build_registered_fixture_manifest(tmp_path, fixture, config_identity=identity)
+
+
+def test_p2_final_01_registered_config_rejects_outcome_path_with_correct_digest(tmp_path):
+    fixture = _registered_provenance_fixture(tmp_path)
+    contaminated = tmp_path / "contaminated_config.json"
+    contaminated.write_text(json.dumps({
+        "schema_version": REGISTERED_C7_CONFIG_CLASS_ID,
+        "mia_config_path": "/path/to/tracking_results/config.py",
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    identity = _registered_file_identity(contaminated, REGISTERED_C7_CONFIG_FILES_KIND)
+    with pytest.raises(C7BatchBPackageError, match="forbidden outcome"):
+        _build_registered_fixture_manifest(tmp_path, fixture, config_identity=identity)
+
+
+def test_p2_final_01_registered_input_rejects_outcome_path_with_correct_digest(tmp_path):
+    fixture = _registered_provenance_fixture(tmp_path)
+    contaminated = tmp_path / "contaminated_input.json"
+    contaminated.write_text(json.dumps({
+        "schema_version": REGISTERED_C7_INPUT_CLASS_ID,
+        "run_input_root": "/path/to/tracking_results/run_inputs",
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    identity = _registered_file_identity(contaminated, REGISTERED_C7_INPUT_FILES_KIND)
+    with pytest.raises(C7BatchBPackageError, match="forbidden outcome"):
+        _build_registered_fixture_manifest(tmp_path, fixture, input_identity=identity)
+
+
+def test_p2_final_01_innocuous_filename_with_outcome_content_rejected(tmp_path):
+    fixture = _registered_provenance_fixture(tmp_path)
+    innocuous = tmp_path / "input.json"
+    innocuous.write_text(json.dumps({
+        "schema_version": REGISTERED_C7_INPUT_CLASS_ID,
+        "tracking_outcome": {"idf1": 0.91},
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    identity = _registered_file_identity(innocuous, REGISTERED_C7_INPUT_FILES_KIND)
+    with pytest.raises(C7BatchBPackageError, match="communication-only"):
+        _build_registered_fixture_manifest(tmp_path, fixture, input_identity=identity)
+
+
+def test_p2_final_01_validator_rejects_forged_registered_outcome_content_with_correct_digest(
+    tmp_path,
+):
+    fixture = _registered_provenance_fixture(tmp_path)
+    manifest = _build_registered_fixture_manifest(tmp_path, fixture)
+    # Simulate a forged manifest that records the correct SHA-256 of an
+    # outcome-contaminated file. The validator must reject based on actual
+    # content, not trust the manifest digest.
+    contaminated = tmp_path / "forged_input.json"
+    contaminated.write_text(json.dumps({
+        "schema_version": REGISTERED_C7_INPUT_CLASS_ID,
+        "mota": 0.85,
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    forged_identity = {
+        "kind": REGISTERED_C7_INPUT_FILES_KIND,
+        "files": [{"path": str(contaminated), "sha256": sha256_file(contaminated)}],
+        "digest": canonical_sha256([
+            {"path": str(contaminated), "sha256": sha256_file(contaminated)}]),
+    }
+    manifest["input_identity"] = forged_identity
+    with pytest.raises(C7BatchBValidationError, match="communication-only"):
+        validate_manifest(manifest)
+
+
+def test_p2_final_01_mutation_after_manifest_rejects_registered_input(tmp_path):
+    fixture = _registered_provenance_fixture(tmp_path)
+    manifest = _build_registered_fixture_manifest(tmp_path, fixture)
+    fixture["input_path"].write_text(json.dumps({
+        "schema_version": REGISTERED_C7_INPUT_CLASS_ID,
+        "hota": 0.7,
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    with pytest.raises(C7BatchBValidationError, match="digest"):
+        validate_manifest(manifest)
 
 
 def test_synthetic_tiny_e2e_uses_child_disk_validator_writer_and_selector(tmp_path):

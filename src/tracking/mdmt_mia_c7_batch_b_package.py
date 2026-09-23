@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -39,7 +40,9 @@ from .mdmt_mia_c7_batch_b_schema import (
     canonical_json,
     canonical_sha256,
     registered_cells,
+    registered_file_class_id,
     sha256_file,
+    validate_registered_communication_content,
 )
 from .mdmt_mia_c7_batch_b_validator import (
     C7BatchBValidationError,
@@ -161,6 +164,7 @@ def _registered_file_identity(
     files = identity.get("files")
     if not isinstance(files, list) or not files:
         raise C7BatchBPackageError("registered {} files are missing".format(label))
+    file_class_id = registered_file_class_id(expected_kind)
     observed = []
     seen = set()
     for index, row in enumerate(files):
@@ -170,9 +174,22 @@ def _registered_file_identity(
         if str(path) in seen:
             raise C7BatchBPackageError("duplicate registered {} file".format(label))
         seen.add(str(path))
-        actual = sha256_file(path)
+        # Read bytes once, hash those bytes, parse/validate those same bytes.
+        try:
+            raw = path.read_bytes()
+        except OSError as exc:
+            raise C7BatchBPackageError("registered {} file unreadable".format(label)) from exc
+        actual = hashlib.sha256(raw).hexdigest()
         if row.get("sha256") != actual:
             raise C7BatchBPackageError("registered {} digest mismatch".format(label))
+        try:
+            validate_registered_communication_content(
+                raw, class_id=file_class_id,
+                label="{} file {}".format(label, index))
+        except ValueError as exc:
+            raise C7BatchBPackageError(
+                "registered {} file content failed communication-only validation: {}".format(
+                    label, exc)) from exc
         observed.append({"path": str(path), "sha256": actual})
     observed.sort(key=lambda row: row["path"])
     return {

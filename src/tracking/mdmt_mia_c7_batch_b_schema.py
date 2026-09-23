@@ -101,12 +101,73 @@ FORBIDDEN_OUTCOME_FAMILIES = (
     "tracking accuracy",
     "tracking_outcome",
     "tracking outcome",
+    "tracking_result",
+    "tracking result",
     "detection_quality",
     "detection quality",
     "evaluation/mdmt_mia_paper",
     "scientific_result",
     "scientific result",
 )
+
+# Additional path-oriented outcome tokens used for path-field scanning.
+FORBIDDEN_OUTCOME_PATH_TOKENS = FORBIDDEN_OUTCOME_FAMILIES + (
+    "tracking_results",
+    "tracking_results/",
+    "results/",
+    "/results",
+    "outcomes/",
+    "/outcomes",
+    "c6_outcome",
+    "c6_outcome/",
+    "formal_outcome",
+    "formal_outcome/",
+)
+
+REGISTERED_C7_INPUT_FILES_KIND = "REGISTERED_C7_INPUT_FILES_V1"
+REGISTERED_C7_CONFIG_FILES_KIND = "REGISTERED_C7_CONFIG_FILES_V1"
+REGISTERED_C7_INPUT_CLASS_ID = "REGISTERED_C7_COMMUNICATION_INPUT_PATH_INVENTORY_V1"
+REGISTERED_C7_CONFIG_CLASS_ID = "REGISTERED_C7_COMMUNICATION_CONFIG_PATH_INVENTORY_V1"
+
+REGISTERED_IDENTITY_KIND_TO_CLASS_ID = {
+    REGISTERED_C7_INPUT_FILES_KIND: REGISTERED_C7_INPUT_CLASS_ID,
+    REGISTERED_C7_CONFIG_FILES_KIND: REGISTERED_C7_CONFIG_CLASS_ID,
+}
+
+REGISTERED_CLASS_ID_TO_ALLOWED_FIELDS = {
+    REGISTERED_C7_INPUT_CLASS_ID: frozenset({
+        "schema_version",
+        "view1_sequence_path",
+        "view2_sequence_path",
+        "view1_xml_path",
+        "view2_xml_path",
+        "run_input_root",
+        "split",
+        "pair_id",
+    }),
+    REGISTERED_C7_CONFIG_CLASS_ID: frozenset({
+        "schema_version",
+        "mia_config_path",
+        "checkpoint_path",
+        "device",
+        "stage",
+    }),
+}
+
+REGISTERED_CLASS_ID_TO_PATH_FIELDS = {
+    REGISTERED_C7_INPUT_CLASS_ID: frozenset({
+        "view1_sequence_path",
+        "view2_sequence_path",
+        "view1_xml_path",
+        "view2_xml_path",
+        "run_input_root",
+    }),
+    REGISTERED_C7_CONFIG_CLASS_ID: frozenset({
+        "mia_config_path",
+        "checkpoint_path",
+    }),
+}
+
 SOURCE_HASH_KEYS = frozenset({
     "runtime", "batch_a_producer", "batch_a_validator", "batch_b_schema",
     "batch_b_aggregator", "batch_b_selector", "batch_b_validator",
@@ -217,3 +278,80 @@ def contains_forbidden_outcome_content(value: Any) -> bool:
         normalized = value.casefold().replace("\\", "/")
         return any(token in normalized for token in FORBIDDEN_OUTCOME_FAMILIES)
     return False
+
+
+def _scan_forbidden_outcome_material(value: Any) -> None:
+    """Recursively reject outcome-bearing keys, string values, and nested data."""
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            _scan_forbidden_outcome_material(str(key))
+            _scan_forbidden_outcome_material(item)
+        return
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            _scan_forbidden_outcome_material(item)
+        return
+    if isinstance(value, str):
+        normalized = value.casefold().replace("\\", "/")
+        if any(token in normalized for token in FORBIDDEN_OUTCOME_FAMILIES):
+            raise ValueError("forbidden outcome content: {}".format(value))
+
+
+def _validate_path_field(value: Any, label: str) -> None:
+    if not isinstance(value, str):
+        raise ValueError("{} must be a string path".format(label))
+    normalized = value.casefold().replace("\\", "/")
+    if any(token in normalized for token in FORBIDDEN_OUTCOME_PATH_TOKENS):
+        raise ValueError("forbidden outcome path content: {}".format(label))
+
+
+def validate_registered_communication_content(
+    raw_bytes: bytes,
+    *,
+    class_id: str,
+    label: str,
+) -> dict[str, Any]:
+    """Parse and strictly validate a registered communication-only file.
+
+    The caller must supply bytes that have already been hashed; this function
+    validates parseability, strict schema, and recursive outcome firewall.
+    """
+    try:
+        value = json.loads(raw_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("{} is not valid UTF-8 JSON".format(label)) from exc
+    if not isinstance(value, dict):
+        raise ValueError("{} must be a JSON object".format(label))
+
+    allowed_fields = REGISTERED_CLASS_ID_TO_ALLOWED_FIELDS.get(class_id)
+    if allowed_fields is None:
+        raise ValueError("{} has unknown registered class id".format(label))
+
+    observed_keys = frozenset(value)
+    if not observed_keys <= allowed_fields:
+        raise ValueError(
+            "{} has forbidden extra fields: {}".format(
+                label, sorted(observed_keys - allowed_fields)))
+
+    # Validate schema_version if present.
+    if "schema_version" in value and value["schema_version"] != class_id:
+        raise ValueError(
+            "{} schema_version mismatch: expected {}".format(label, class_id))
+
+    # Validate path fields are strings and do not carry outcome semantics.
+    path_fields = REGISTERED_CLASS_ID_TO_PATH_FIELDS[class_id]
+    for field in sorted(path_fields):
+        if field in value:
+            _validate_path_field(value[field], "{}[{}]".format(label, field))
+
+    # Recursive key/value outcome firewall.
+    _scan_forbidden_outcome_material(value)
+    return value
+
+
+def registered_file_class_id(identity_kind: str) -> str:
+    """Return the registered file class id bound to an identity kind."""
+    try:
+        return REGISTERED_IDENTITY_KIND_TO_CLASS_ID[identity_kind]
+    except KeyError as exc:
+        raise ValueError("unknown registered identity kind: {}".format(identity_kind)) from exc

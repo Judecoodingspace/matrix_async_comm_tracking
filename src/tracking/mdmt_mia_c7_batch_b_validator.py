@@ -6,6 +6,7 @@ window-domain counts, the four gates, the qualified subset, and selection.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -54,7 +55,9 @@ from .mdmt_mia_c7_batch_b_schema import (
     authorized_frame_domains,
     canonical_sha256,
     registered_cells,
+    registered_file_class_id,
     sha256_file,
+    validate_registered_communication_content,
 )
 from .mdmt_mia_c7_validator import C7ValidationError, validate_core_evidence
 from .mdmt_mia_c7_census import (
@@ -375,14 +378,29 @@ def _validate_registered_identity(
     files = identity.get("files")
     if not isinstance(files, list) or not files:
         raise C7BatchBValidationError("registered {} identity files missing".format(label))
+    file_class_id = registered_file_class_id(expected_kind)
     observed = []
-    for row in files:
+    for index, row in enumerate(files):
         if not isinstance(row, Mapping) or frozenset(row) != {"path", "sha256"}:
             raise C7BatchBValidationError("registered {} file schema mismatch".format(label))
         path = _observed_file(row.get("path"), "registered {}".format(label))
-        actual = sha256_file(path)
+        # Independently reread bytes, recompute digest, parse/validate content.
+        try:
+            raw = path.read_bytes()
+        except OSError as exc:
+            raise C7BatchBValidationError(
+                "registered {} file is not readable".format(label)) from exc
+        actual = hashlib.sha256(raw).hexdigest()
         if row.get("sha256") != actual:
             raise C7BatchBValidationError("registered {} file digest mismatch".format(label))
+        try:
+            validate_registered_communication_content(
+                raw, class_id=file_class_id,
+                label="registered {} file {}".format(label, index))
+        except ValueError as exc:
+            raise C7BatchBValidationError(
+                "registered {} file content failed communication-only validation: {}".format(
+                    label, exc)) from exc
         observed.append({"path": str(path), "sha256": actual})
     if observed != sorted(observed, key=lambda row: row["path"]):
         raise C7BatchBValidationError("registered {} files are not canonical ordered".format(label))
