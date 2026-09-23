@@ -32,6 +32,77 @@ PACKAGE_INVENTORY_SCHEMA = "C7_PACKAGE_INVENTORY_V1"
 PACKAGE_SEAL_SCHEMA = "C7_PACKAGE_SEAL_V1"
 PACKAGE_COMMIT_SCHEMA = "C7_PACKAGE_COMMIT_V1"
 
+MVE_AUTHORIZATION_SCHEMA = "C7_MVE_AUTHORIZATION_V1"
+MVE_AUTHORIZATION_ROLE = "C7_OUTCOME_BLIND_REAL_INPUT_MVE_EXECUTION"
+MVE_AUTHORIZATION_STATUS_AUTHORIZED = "AUTHORIZED"
+
+MVE_REQUIRED_AUTHORIZATION_KEYS = frozenset({
+    "schema_version",
+    "authorization_role",
+    "status",
+    "scientific_core_authority",
+    "execution_harness_authority",
+    "mve_run_id",
+    "mve_cell_id",
+    "pair_id",
+    "capacity_id",
+    "execution_scope",
+    "output_root",
+    "execution_resources",
+    "wrapper_identity",
+    "generated_source_preparer_identity",
+    "outcome_blind_policy",
+    "single_run_scope",
+})
+
+MVE_REQUIRED_EXECUTION_RESOURCE_KEYS = frozenset({
+    "mdmt_root",
+    "mia_root",
+    "mia_source_root",
+    "mia_config_path",
+    "mia_config_sha256",
+    "mia_run_input_root",
+    "mia_output_root",
+    "device",
+    "checkpoint_path",
+    "checkpoint_sha256",
+    "sequence_resources",
+    "xml_resources",
+})
+
+MVE_REQUIRED_SEQUENCE_RESOURCE_KEYS = frozenset({
+    "role",
+    "canonical_path",
+    "resource_class",
+})
+
+MVE_REQUIRED_XML_RESOURCE_KEYS = frozenset({
+    "role",
+    "canonical_path",
+    "sha256",
+    "resource_class",
+})
+
+MVE_REQUIRED_FILE_RESOURCE_KEYS = frozenset({
+    "canonical_path",
+    "sha256",
+    "resource_class",
+})
+
+EXECUTION_RESOURCE_CLASS_FILE = "FILE"
+EXECUTION_RESOURCE_CLASS_DIRECTORY = "DIRECTORY"
+EXECUTION_RESOURCE_CLASS_CHECKPOINT = "CHECKPOINT"
+
+MVE_WRAPPER_REQUIRED_KEYS = frozenset({
+    "canonical_path",
+    "sha256",
+})
+
+MVE_GENERATED_SOURCE_PREPARER_REQUIRED_KEYS = frozenset({
+    "canonical_path",
+    "sha256",
+})
+
 FROZEN_BATCH_A_IMPLEMENTATION_AUTHORITY = (
     "f484ac5b886e68393c581936f1e764d4d08366d8"
 )
@@ -355,3 +426,179 @@ def registered_file_class_id(identity_kind: str) -> str:
         return REGISTERED_IDENTITY_KIND_TO_CLASS_ID[identity_kind]
     except KeyError as exc:
         raise ValueError("unknown registered identity kind: {}".format(identity_kind)) from exc
+
+
+def _require_exact_keys(value: Any, required: frozenset[str], label: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping) or frozenset(value) != required:
+        raise ValueError("{} schema mismatch: expected {}".format(label, sorted(required)))
+    return dict(value)
+
+
+def _validate_file_resource(resource: Any, label: str) -> None:
+    if not isinstance(resource, Mapping):
+        raise ValueError("{} must be a mapping".format(label))
+    _require_exact_keys(resource, MVE_REQUIRED_FILE_RESOURCE_KEYS, label)
+    path = Path(resource["canonical_path"])
+    if not path.is_absolute():
+        raise ValueError("{} path must be absolute".format(label))
+    if not path.is_file():
+        raise ValueError("{} file does not exist: {}".format(label, path))
+    actual = sha256_file(path)
+    if actual != resource["sha256"]:
+        raise ValueError("{} digest mismatch".format(label))
+
+
+def _validate_directory_resource(resource: Any, label: str) -> None:
+    if not isinstance(resource, Mapping):
+        raise ValueError("{} must be a mapping".format(label))
+    required = frozenset({"canonical_path", "resource_class"})
+    if frozenset(resource) != required:
+        raise ValueError("{} schema mismatch".format(label))
+    path = Path(resource["canonical_path"])
+    if not path.is_absolute():
+        raise ValueError("{} path must be absolute".format(label))
+    if not path.is_dir():
+        raise ValueError("{} directory does not exist: {}".format(label, path))
+
+
+def validate_mve_authorization(
+    authorization: Any,
+    *,
+    execution_harness_head: str,
+) -> dict[str, Any]:
+    """Validate a C7 MVE execution authorization artifact.
+
+    The caller supplies the actual current execution-harness Git HEAD; this
+    function validates that the authorization is bound to that exact SHA.
+    """
+    if not isinstance(authorization, Mapping):
+        raise ValueError("MVE authorization must be a JSON object")
+    auth = _require_exact_keys(
+        authorization, MVE_REQUIRED_AUTHORIZATION_KEYS, "MVE authorization")
+
+    if auth["schema_version"] != MVE_AUTHORIZATION_SCHEMA:
+        raise ValueError("MVE authorization schema_version mismatch")
+    if auth["authorization_role"] != MVE_AUTHORIZATION_ROLE:
+        raise ValueError("MVE authorization role mismatch")
+    if auth["status"] != MVE_AUTHORIZATION_STATUS_AUTHORIZED:
+        raise ValueError("MVE authorization status not authorized")
+    if auth["outcome_blind_policy"] != "NO_TRACKING_OUTCOME_READ":
+        raise ValueError("MVE outcome-blind policy mismatch")
+    if auth["single_run_scope"] is not True:
+        raise ValueError("MVE authorization must be single-run scope")
+
+    if not isinstance(auth["scientific_core_authority"], str):
+        raise ValueError("MVE scientific_core_authority must be a string")
+    if not isinstance(auth["execution_harness_authority"], str):
+        raise ValueError("MVE execution_harness_authority must be a string")
+    if auth["execution_harness_authority"] != execution_harness_head:
+        raise ValueError(
+            "MVE authorization execution_harness_authority mismatch: "
+            "expected {}".format(execution_harness_head))
+
+    for key in ("mve_run_id", "mve_cell_id", "pair_id", "capacity_id", "execution_scope"):
+        if not isinstance(auth[key], str) or not auth[key]:
+            raise ValueError("MVE {} must be a non-empty string".format(key))
+
+    output_root = Path(auth["output_root"])
+    if not output_root.is_absolute():
+        raise ValueError("MVE output_root must be absolute")
+
+    wrapper = auth["wrapper_identity"]
+    _require_exact_keys(wrapper, MVE_WRAPPER_REQUIRED_KEYS, "MVE wrapper_identity")
+    wrapper_path = Path(wrapper["canonical_path"])
+    if not wrapper_path.is_absolute() or not wrapper_path.is_file():
+        raise ValueError("MVE wrapper path does not exist")
+    if sha256_file(wrapper_path) != wrapper["sha256"]:
+        raise ValueError("MVE wrapper digest mismatch")
+
+    preparer = auth["generated_source_preparer_identity"]
+    _require_exact_keys(
+        preparer, MVE_GENERATED_SOURCE_PREPARER_REQUIRED_KEYS,
+        "MVE generated_source_preparer_identity")
+    preparer_path = Path(preparer["canonical_path"])
+    if not preparer_path.is_absolute() or not preparer_path.is_file():
+        raise ValueError("MVE generated-source preparer path does not exist")
+    if sha256_file(preparer_path) != preparer["sha256"]:
+        raise ValueError("MVE generated-source preparer digest mismatch")
+
+    resources = auth["execution_resources"]
+    _require_exact_keys(
+        resources, MVE_REQUIRED_EXECUTION_RESOURCE_KEYS, "MVE execution_resources")
+
+    # File resources: config and checkpoint.
+    _validate_file_resource(
+        {"canonical_path": resources["mia_config_path"],
+         "sha256": resources["mia_config_sha256"],
+         "resource_class": EXECUTION_RESOURCE_CLASS_FILE},
+        "MVE mia_config_path")
+    _validate_file_resource(
+        {"canonical_path": resources["checkpoint_path"],
+         "sha256": resources["checkpoint_sha256"],
+         "resource_class": EXECUTION_RESOURCE_CLASS_CHECKPOINT},
+        "MVE checkpoint_path")
+
+    # Directory resources: roots.  mia_source_root is generated during execution,
+    # so only require that it is an absolute path here.
+    for key in ("mdmt_root", "mia_root", "mia_run_input_root", "mia_output_root"):
+        _validate_directory_resource(
+            {"canonical_path": resources[key],
+             "resource_class": EXECUTION_RESOURCE_CLASS_DIRECTORY},
+            "MVE {}".format(key))
+
+    mia_source_root = Path(resources["mia_source_root"])
+    if not mia_source_root.is_absolute():
+        raise ValueError("MVE mia_source_root must be absolute")
+
+    if not isinstance(resources["device"], str) or not resources["device"]:
+        raise ValueError("MVE device must be a non-empty string")
+
+    sequences = resources["sequence_resources"]
+    if not isinstance(sequences, (list, tuple)) or not sequences:
+        raise ValueError("MVE sequence_resources must be a non-empty list")
+    for index, seq in enumerate(sequences):
+        _require_exact_keys(
+            seq, MVE_REQUIRED_SEQUENCE_RESOURCE_KEYS,
+            "MVE sequence_resources[{}]".format(index))
+        _validate_directory_resource(
+            {"canonical_path": seq["canonical_path"],
+             "resource_class": seq["resource_class"]},
+            "MVE sequence_resources[{}]".format(index))
+
+    xmls = resources["xml_resources"]
+    if not isinstance(xmls, (list, tuple)) or not xmls:
+        raise ValueError("MVE xml_resources must be a non-empty list")
+    for index, xml in enumerate(xmls):
+        _require_exact_keys(
+            xml, MVE_REQUIRED_XML_RESOURCE_KEYS,
+            "MVE xml_resources[{}]".format(index))
+        _validate_file_resource(
+            {"canonical_path": xml["canonical_path"],
+             "sha256": xml["sha256"],
+             "resource_class": xml["resource_class"]},
+            "MVE xml_resources[{}]".format(index))
+
+    return auth
+
+
+def inventory_generated_source(root: Path | str) -> dict[str, Any]:
+    """Create a deterministic inventory of generated source files.
+
+    Returns a sorted list of {relative_path, size_bytes, sha256} records.
+    """
+    root = Path(root)
+    records = []
+    for path in sorted(root.rglob("*")):
+        if path.is_file():
+            relative = path.relative_to(root).as_posix()
+            records.append({
+                "relative_path": relative,
+                "size_bytes": path.stat().st_size,
+                "sha256": sha256_file(path),
+            })
+    return {
+        "generated_source_root": str(root),
+        "file_count": len(records),
+        "files": records,
+        "inventory_sha256": canonical_sha256(records),
+    }

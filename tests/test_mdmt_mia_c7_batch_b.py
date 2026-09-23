@@ -31,15 +31,24 @@ from tracking.mdmt_mia_c7_batch_b_schema import (
     ALLOWED_PARENT_ENV_KEYS,
     CELL_AGGREGATE_SCHEMA,
     CELL_QUALIFICATION_SCHEMA,
+    EXECUTION_RESOURCE_CLASS_CHECKPOINT,
+    EXECUTION_RESOURCE_CLASS_DIRECTORY,
+    EXECUTION_RESOURCE_CLASS_FILE,
+    MVE_AUTHORIZATION_ROLE,
+    MVE_AUTHORIZATION_SCHEMA,
+    MVE_AUTHORIZATION_STATUS_AUTHORIZED,
     REGISTERED_C7_CONFIG_CLASS_ID,
     REGISTERED_C7_CONFIG_FILES_KIND,
     REGISTERED_C7_INPUT_CLASS_ID,
     REGISTERED_C7_INPUT_FILES_KIND,
     REGISTERED_SOURCE_RELATIVE_PATHS,
     SOURCE_HASH_KEYS,
+    authority_bindings,
     canonical_sha256,
+    inventory_generated_source,
     registered_cells,
     sha256_file,
+    validate_mve_authorization,
 )
 from tracking.mdmt_mia_c7_batch_b_validator import (
     C7BatchBValidationError,
@@ -52,6 +61,12 @@ from tracking.mdmt_mia_c7_batch_b_validator import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+CHILD_PATH = ROOT / "scripts/run_mdmt_mia_c7_real_child.py"
+CHILD_SPEC = importlib.util.spec_from_file_location("c7_child", CHILD_PATH)
+assert CHILD_SPEC and CHILD_SPEC.loader
+CHILD = importlib.util.module_from_spec(CHILD_SPEC)
+CHILD_SPEC.loader.exec_module(CHILD)
 
 
 def _cell(
@@ -755,7 +770,7 @@ def test_p1_bb_04_real_child_self_authorization_cannot_execute_wrapper(tmp_path)
         "generated_source_root": str(tmp_path / "generated-source"),
         "split": "train",
     }
-    with pytest.raises(child.C7ChildError, match="unconditionally blocked"):
+    with pytest.raises(child.C7ChildError, match="MVE authorization path is required"):
         child.execute_child(child_spec)
     assert not sentinel.exists()
 
@@ -1124,3 +1139,468 @@ def test_outcome_firewall_static_production_dependencies():
     for path in production:
         source = path.read_text(encoding="utf-8").casefold()
         assert all(token not in source for token in forbidden), path
+
+
+def _mve_test_resources(tmp_path: Path) -> dict[str, Any]:
+    """Create fake but structurally valid MVE execution resources."""
+    resources_root = tmp_path / "mve_resources"
+    resources_root.mkdir()
+
+    mdmt_root = resources_root / "mdmt"
+    mdmt_root.mkdir()
+    (mdmt_root / "train").mkdir()
+    (mdmt_root / "train" / "1").mkdir()
+    (mdmt_root / "train" / "2").mkdir()
+    (mdmt_root / "new_xml" / "1").mkdir(parents=True)
+    (mdmt_root / "new_xml" / "2").mkdir(parents=True)
+    (mdmt_root / "checkpoints" / "work_dirsfaster_rcnn_r50_fpn_carafe_1x_full_mdmt").mkdir(parents=True)
+
+    seq1 = mdmt_root / "train" / "1" / "23-1"
+    seq1.mkdir()
+    seq2 = mdmt_root / "train" / "2" / "23-2"
+    seq2.mkdir()
+
+    xml1 = mdmt_root / "new_xml" / "1" / "23-1.xml"
+    xml1.write_text("<xml>view1</xml>", encoding="utf-8")
+    xml2 = mdmt_root / "new_xml" / "2" / "23-2.xml"
+    xml2.write_text("<xml>view2</xml>", encoding="utf-8")
+
+    config = resources_root / "mia_config.py"
+    config.write_text("# mia config\n", encoding="utf-8")
+
+    checkpoint = mdmt_root / "checkpoints" / "work_dirsfaster_rcnn_r50_fpn_carafe_1x_full_mdmt" / "epoch_12.pth"
+    checkpoint.write_bytes(b"FAKE_CHECKPOINT_BYTES")
+
+    mia_root = resources_root / "mia"
+    mia_root.mkdir()
+    upstream = mia_root / "upstream"
+    upstream.mkdir()
+
+    # These roots are created by the wrapper/child at runtime; pre-create them
+    # so structural validation passes without executing the wrapper.
+    (tmp_path / "run_inputs").mkdir()
+    (tmp_path / "author_outputs").mkdir()
+
+    return {
+        "mdmt_root": str(mdmt_root),
+        "mia_root": str(mia_root),
+        "mia_source_root": str(tmp_path / "generated_source"),
+        "mia_config_path": str(config),
+        "mia_config_sha256": sha256_file(config),
+        "mia_run_input_root": str(tmp_path / "run_inputs"),
+        "mia_output_root": str(tmp_path / "author_outputs"),
+        "device": "cpu",
+        "checkpoint_path": str(checkpoint),
+        "checkpoint_sha256": sha256_file(checkpoint),
+        "sequence_resources": [
+            {
+                "role": "view1_sequence",
+                "canonical_path": str(seq1),
+                "resource_class": EXECUTION_RESOURCE_CLASS_DIRECTORY,
+            },
+            {
+                "role": "view2_sequence",
+                "canonical_path": str(seq2),
+                "resource_class": EXECUTION_RESOURCE_CLASS_DIRECTORY,
+            },
+        ],
+        "xml_resources": [
+            {
+                "role": "view1_xml",
+                "canonical_path": str(xml1),
+                "sha256": sha256_file(xml1),
+                "resource_class": EXECUTION_RESOURCE_CLASS_FILE,
+            },
+            {
+                "role": "view2_xml",
+                "canonical_path": str(xml2),
+                "sha256": sha256_file(xml2),
+                "resource_class": EXECUTION_RESOURCE_CLASS_FILE,
+            },
+        ],
+    }
+
+
+def _mve_authorization(
+    tmp_path: Path,
+    *,
+    harness_head: str,
+    resources: dict[str, Any] | None = None,
+    mutations: dict[str, Any] | None = None,
+) -> tuple[Path, dict[str, Any]]:
+    """Build a valid MVE authorization file; mutations override fields."""
+    if resources is None:
+        resources = _mve_test_resources(tmp_path)
+    if mutations is not None:
+        resources = {**resources, **mutations}
+
+    wrapper_path = ROOT / "scripts/run_mdmt_mia_author_sync.sh"
+    preparer_path = ROOT / "scripts/prepare_mdmt_mia_async_packet_variant.py"
+
+    authorization = {
+        "schema_version": MVE_AUTHORIZATION_SCHEMA,
+        "authorization_role": MVE_AUTHORIZATION_ROLE,
+        "status": MVE_AUTHORIZATION_STATUS_AUTHORIZED,
+        "scientific_core_authority": "9140104ca2bf3d395b3012dcae32506e5abfb9cf",
+        "execution_harness_authority": harness_head,
+        "mve_run_id": "exp_20260923_001_p23_p20",
+        "mve_cell_id": "P23__P20",
+        "pair_id": "P23",
+        "capacity_id": "P20",
+        "execution_scope": "ONE_NATIVE_P23_PRODUCTION_UNIT",
+        "output_root": str(tmp_path / "mve_output"),
+        "execution_resources": resources,
+        "wrapper_identity": {
+            "canonical_path": str(wrapper_path),
+            "sha256": sha256_file(wrapper_path),
+        },
+        "generated_source_preparer_identity": {
+            "canonical_path": str(preparer_path),
+            "sha256": sha256_file(preparer_path),
+        },
+        "outcome_blind_policy": "NO_TRACKING_OUTCOME_READ",
+        "single_run_scope": True,
+    }
+    auth_path = tmp_path / "MVE_AUTHORIZATION.json"
+    atomic_write_json(auth_path, authorization)
+    return auth_path, authorization
+
+
+def _mve_cell() -> dict[str, Any]:
+    return {
+        "cell_id": "P23__P20",
+        "pair_id": "P23",
+        "frame_count": 700,
+        "capacity_id": "P20",
+        "capacity_bytes": 16649,
+        "stable_pair_order": 0,
+        "stable_capacity_order": 0,
+    }
+
+
+def _mve_spec(tmp_path: Path, auth_path: Path, harness_head: str, **overrides) -> dict[str, Any]:
+    spec = {
+        "schema_version": "C7_CHILD_SPEC_V1",
+        "mode": "REAL_C7_CELL",
+        "dry_run": False,
+        "authorities": authority_bindings(),
+        "run_id": "exp_20260923_001_p23_p20",
+        "cell": _mve_cell(),
+        "split": "train",
+        "output_root": str(tmp_path / "mve_output"),
+        "mve_authorization_path": str(auth_path),
+        "execution_harness_head": harness_head,
+    }
+    spec.update(overrides)
+    return spec
+
+
+def _mock_subprocess_for_mve(
+    monkeypatch, tmp_path: Path, *, wrapper_returncode: int = 0, mutate_generated: bool = False,
+):
+    """Mock subprocess.run for MVE tests: git head, preparer, wrapper."""
+    original_run = subprocess.run
+
+    def _command_has(command: list[str], substring: str) -> bool:
+        return any(substring in arg for arg in command)
+
+    def _fake_run(args, **kwargs):
+        command = [str(a) for a in args]
+
+        # git rev-parse HEAD
+        if command[:3] == ["git", "rev-parse", "HEAD"]:
+            class _Result:
+                stdout = "MOCK_HARNESS_HEAD\n"
+                stderr = ""
+                returncode = 0
+            return _Result()
+
+        # generated-source preparer
+        if _command_has(command, "prepare_mdmt_mia_async_packet_variant.py"):
+            variant_root = None
+            for index, arg in enumerate(command):
+                if arg == "--variant-root" and index + 1 < len(command):
+                    variant_root = Path(command[index + 1])
+                    break
+            if variant_root is not None:
+                variant_root.mkdir(parents=True, exist_ok=True)
+                (variant_root / "demo").mkdir()
+                (variant_root / "demo" / "supplement_MIA.py").write_text("# generated\n")
+                (variant_root / "async_deadline_manifest.json").write_text("{}\n")
+            class _Result:
+                stdout = ""
+                stderr = ""
+                returncode = 0
+            return _Result()
+
+        # wrapper
+        if _command_has(command, "run_mdmt_mia_author_sync.sh"):
+            env = kwargs.get("env", {})
+            # Verify explicit environment binding.
+            assert env.get("MDMT_ROOT")
+            assert env.get("MIA_ROOT")
+            assert env.get("MIA_SOURCE_ROOT")
+            assert env.get("MIA_CONFIG")
+            assert env.get("MIA_RUN_INPUT_ROOT")
+            assert env.get("MIA_OUTPUT_ROOT")
+            assert env.get("DEVICE")
+
+            if mutate_generated:
+                source_root = env.get("MIA_SOURCE_ROOT")
+                if source_root:
+                    (Path(source_root) / "demo" / "supplement_MIA.py").write_text("# mutated\n")
+
+            class _Result:
+                stdout = "[author-sync] complete"
+                stderr = ""
+                returncode = wrapper_returncode
+            return _Result()
+
+        return original_run(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+
+def test_mve_non_dry_without_authorization_rejects(tmp_path):
+    spec = {
+        "schema_version": "C7_CHILD_SPEC_V1",
+        "mode": "REAL_C7_CELL",
+        "dry_run": False,
+        "authorities": authority_bindings(),
+        "run_id": "exp_20260923_001_p23_p20",
+        "cell": _mve_cell(),
+        "output_root": str(tmp_path / "out"),
+    }
+    with pytest.raises(CHILD.C7ChildError, match="authorization"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_wrong_authorization_role_rejects(tmp_path):
+    auth_path, authorization = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    authorization["authorization_role"] = "BAD_ROLE"
+    atomic_write_json(auth_path, authorization)
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    with pytest.raises(CHILD.C7ChildError, match="role"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_wrong_run_id_rejects(tmp_path, monkeypatch):
+    _mock_subprocess_for_mve(monkeypatch, tmp_path)
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD", run_id="wrong-run")
+    with pytest.raises(CHILD.C7ChildError, match="run_id"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_wrong_cell_rejects(tmp_path, monkeypatch):
+    _mock_subprocess_for_mve(monkeypatch, tmp_path)
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD", cell={"cell_id": "P44__P20", "pair_id": "P44", "capacity_id": "P20", "capacity_bytes": 16649})
+    with pytest.raises(CHILD.C7ChildError, match="cell_id"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_wrong_capacity_rejects(tmp_path, monkeypatch):
+    _mock_subprocess_for_mve(monkeypatch, tmp_path)
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    cell = _mve_cell()
+    cell["capacity_id"] = "P30"
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD", cell=cell)
+    with pytest.raises(CHILD.C7ChildError, match="capacity_id"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_wrong_output_root_rejects(tmp_path, monkeypatch):
+    _mock_subprocess_for_mve(monkeypatch, tmp_path)
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD", output_root=str(tmp_path / "other"))
+    with pytest.raises(CHILD.C7ChildError, match="output_root"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_wrong_implementation_head_rejects(tmp_path, monkeypatch):
+    _mock_subprocess_for_mve(monkeypatch, tmp_path)
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="EXPECTED_HEAD")
+    spec = _mve_spec(tmp_path, auth_path, "ACTUAL_HEAD")
+    with pytest.raises(CHILD.C7ChildError, match="execution_harness_authority"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_wrong_wrapper_digest_rejects(tmp_path, monkeypatch):
+    _mock_subprocess_for_mve(monkeypatch, tmp_path)
+    auth_path, authorization = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    authorization["wrapper_identity"]["sha256"] = "0" * 64
+    atomic_write_json(auth_path, authorization)
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    with pytest.raises(CHILD.C7ChildError, match="wrapper digest"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_wrong_config_digest_rejects(tmp_path, monkeypatch):
+    _mock_subprocess_for_mve(monkeypatch, tmp_path)
+    resources = _mve_test_resources(tmp_path)
+    resources["mia_config_sha256"] = "0" * 64
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD", resources=resources)
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    with pytest.raises(CHILD.C7ChildError, match="digest mismatch"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_wrong_checkpoint_digest_rejects(tmp_path, monkeypatch):
+    _mock_subprocess_for_mve(monkeypatch, tmp_path)
+    resources = _mve_test_resources(tmp_path)
+    resources["checkpoint_sha256"] = "0" * 64
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD", resources=resources)
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    with pytest.raises(CHILD.C7ChildError, match="digest mismatch"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_hidden_execution_resource_mismatch_rejects(tmp_path, monkeypatch):
+    """If authorization config path differs from what wrapper would default to, fail closed."""
+    original_run = subprocess.run
+    captured = []
+
+    def _wrapper_capturing_run(args, **kwargs):
+        command = [str(a) for a in args]
+        if any("run_mdmt_mia_author_sync.sh" in arg for arg in command):
+            captured.append(kwargs.get("env", {}))
+            class _Result:
+                stdout = ""
+                stderr = ""
+                returncode = 0
+            return _Result()
+        if any("prepare_mdmt_mia_async_packet_variant.py" in arg for arg in command):
+            for index, arg in enumerate(command):
+                if arg == "--variant-root" and index + 1 < len(command):
+                    variant_root = Path(command[index + 1])
+                    variant_root.mkdir(parents=True, exist_ok=True)
+                    (variant_root / "demo").mkdir()
+                    (variant_root / "demo" / "supplement_MIA.py").write_text("# generated\n")
+                    (variant_root / "async_deadline_manifest.json").write_text("{}\n")
+                    break
+            class _Result:
+                stdout = ""
+                stderr = ""
+                returncode = 0
+            return _Result()
+        return original_run(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _wrapper_capturing_run)
+    resources = _mve_test_resources(tmp_path)
+    other_config = tmp_path / "other_config.py"
+    other_config.write_text("# other\n", encoding="utf-8")
+    resources["mia_config_path"] = str(other_config)
+    resources["mia_config_sha256"] = sha256_file(other_config)
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD", resources=resources)
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    CHILD.execute_child(spec)
+    assert captured
+    assert captured[0]["MIA_CONFIG"] == str(other_config)
+
+
+def test_mve_unknown_parent_env_sentinel_not_forwarded(tmp_path, monkeypatch):
+    original_run = subprocess.run
+    captured = []
+
+    def _wrapper_capturing_run(args, **kwargs):
+        command = [str(a) for a in args]
+        if any("run_mdmt_mia_author_sync.sh" in arg for arg in command):
+            captured.append(kwargs.get("env", {}))
+            class _Result:
+                stdout = ""
+                stderr = ""
+                returncode = 0
+            return _Result()
+        if any("prepare_mdmt_mia_async_packet_variant.py" in arg for arg in command):
+            for index, arg in enumerate(command):
+                if arg == "--variant-root" and index + 1 < len(command):
+                    variant_root = Path(command[index + 1])
+                    variant_root.mkdir(parents=True, exist_ok=True)
+                    (variant_root / "demo").mkdir()
+                    (variant_root / "demo" / "supplement_MIA.py").write_text("# generated\n")
+                    (variant_root / "async_deadline_manifest.json").write_text("{}\n")
+                    break
+            class _Result:
+                stdout = ""
+                stderr = ""
+                returncode = 0
+            return _Result()
+        return original_run(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _wrapper_capturing_run)
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    monkeypatch.setenv("C7_MVE_FORBIDDEN_PARENT_SENTINEL", "DO_NOT_FORWARD")
+    CHILD.execute_child(spec)
+    assert captured
+    assert "C7_MVE_FORBIDDEN_PARENT_SENTINEL" not in captured[0]
+    status_path = Path(spec["output_root"]) / "CHILD_STATUS.json"
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    assert "C7_MVE_FORBIDDEN_PARENT_SENTINEL" not in status["allowed_parent_environment"]
+    assert "C7_MVE_FORBIDDEN_PARENT_SENTINEL" not in status["bound_environment"]
+
+
+def test_mve_valid_authorization_gate_opens_to_wrapper_boundary(tmp_path, monkeypatch):
+    _mock_subprocess_for_mve(monkeypatch, tmp_path)
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    status = CHILD.execute_child(spec)
+    assert status["status"] == "EXECUTED"
+    assert status["real_input_executed"] is True
+    assert status["authorization_valid"] is True
+    assert status["generated_source_materialized"] is True
+    assert status["generated_source_inventory_stable"] is True
+    assert status["wrapper_returncode"] == 0
+    assert "outcome_quarantine_paths" in status
+
+
+def test_mve_generated_source_inventory_is_deterministic(tmp_path):
+    root = tmp_path / "generated"
+    root.mkdir()
+    (root / "a.py").write_text("a\n")
+    (root / "b").mkdir()
+    (root / "b" / "c.py").write_text("c\n")
+    inv1 = inventory_generated_source(root)
+    inv2 = inventory_generated_source(root)
+    assert inv1["inventory_sha256"] == inv2["inventory_sha256"]
+    assert inv1["file_count"] == 2
+
+
+def test_mve_generated_source_mutation_after_inventory_rejects(tmp_path, monkeypatch):
+    _mock_subprocess_for_mve(monkeypatch, tmp_path, mutate_generated=True)
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    with pytest.raises(CHILD.C7ChildError, match="inventory changed"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_wrapper_failure_reports_engineering_status(tmp_path, monkeypatch):
+    _mock_subprocess_for_mve(monkeypatch, tmp_path, wrapper_returncode=1)
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    with pytest.raises(CHILD.C7ChildError, match="wrapper execution failed"):
+        CHILD.execute_child(spec)
+    status_path = Path(spec["output_root"]) / "CHILD_STATUS.json"
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    assert status["status"] == "WRAPPER_FAILED"
+    assert status["wrapper_returncode"] == 1
+    assert "N_stale" not in json.dumps(status)
+    assert "N_eligible" not in json.dumps(status)
+
+
+def test_mve_status_does_not_read_outcome_quarantine(tmp_path, monkeypatch):
+    _mock_subprocess_for_mve(monkeypatch, tmp_path)
+    auth_path, authorization = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    mia_output_root = Path(authorization["execution_resources"]["mia_output_root"])
+    quarantine = mia_output_root / "mia" / "train_23" / "results"
+    quarantine.mkdir(parents=True)
+    quarantine_file = quarantine / "tracking_result.txt"
+    quarantine_file.write_text("idf1=0.99\n", encoding="utf-8")
+    status = CHILD.execute_child(spec)
+    # Status contains paths only; it does not read or include result content.
+    assert status["outcome_quarantine_paths"]["result_dir"] == str(quarantine)
+    status_text = json.dumps(status)
+    assert "idf1" not in status_text
+    assert "0.99" not in status_text
