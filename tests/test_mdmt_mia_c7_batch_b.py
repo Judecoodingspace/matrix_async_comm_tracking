@@ -1787,6 +1787,7 @@ def test_mve_unknown_parent_env_sentinel_not_forwarded(tmp_path, monkeypatch):
     monkeypatch.setenv("C7_MVE_FORBIDDEN_PARENT_SENTINEL", "DO_NOT_FORWARD")
     CHILD.execute_child(spec)
     assert captured
+    assert captured[0]["PYTHONDONTWRITEBYTECODE"] == "1"
     assert "C7_MVE_FORBIDDEN_PARENT_SENTINEL" not in captured[0]
     status_path = Path(spec["output_root"]) / "CHILD_STATUS.json"
     status = json.loads(status_path.read_text(encoding="utf-8"))

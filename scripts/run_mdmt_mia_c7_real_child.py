@@ -202,6 +202,7 @@ def _build_wrapper_environment(spec: dict, authorization: dict) -> dict[str, str
         key: os.environ[key] for key in ALLOWED_PARENT_ENV_KEYS if key in os.environ
     }
     environment.update({
+        "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONNOUSERSITE": "1",
         "PYTHONHASHSEED": "0",
         "PYTHONPATH": str(SRC),
