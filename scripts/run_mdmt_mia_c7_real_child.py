@@ -19,10 +19,9 @@ if str(SRC) not in sys.path:
 from tracking.mdmt_mia_c7_batch_b_package import atomic_write_json, atomic_write_jsonl
 from tracking.mdmt_mia_c7_batch_b_schema import (
     ALLOWED_PARENT_ENV_KEYS,
-    EXECUTION_RESOURCE_CLASS_DIRECTORY,
     authority_bindings,
-    canonical_sha256,
     inventory_generated_source,
+    registered_cells,
     sha256_file,
     validate_mve_authorization,
 )
@@ -70,25 +69,45 @@ def _environment_attestation(*, include_mve_bound_keys: bool = False) -> dict:
     }
 
 
-def _execution_harness_head(spec: dict) -> str:
-    override = spec.get("execution_harness_head")
-    if isinstance(override, str) and override:
-        return override
+def _run_git(*args: str, cwd: Path | str | None = None) -> str:
+    """Run a git command and return stripped stdout."""
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=ROOT,
+            ["git", *args],
+            cwd=str(cwd) if cwd is not None else ROOT,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             check=True,
         )
     except subprocess.CalledProcessError as exc:
-        raise C7ChildError("cannot determine execution harness HEAD") from exc
+        raise C7ChildError("git command failed: {}".format(" ".join(args))) from exc
     return result.stdout.strip()
 
 
-def _load_authorization(spec: dict) -> dict:
+def _observe_git_identity(expected_root: Path | str) -> dict[str, str | bool]:
+    """Observe actual repository identity and cleanliness.
+
+    Returns the resolved repo root, current HEAD, and whether the worktree is
+    clean.  The caller must reject any non-dry execution where the observed
+    facts do not match the authorization or the expected repository root.
+    """
+    expected_root = Path(expected_root).resolve()
+    repo_root = Path(_run_git("rev-parse", "--show-toplevel")).resolve()
+    if repo_root != expected_root:
+        raise C7ChildError(
+            "execution repository root mismatch: {} != {}".format(
+                repo_root, expected_root))
+    head = _run_git("rev-parse", "HEAD")
+    status = _run_git("status", "--porcelain", "--untracked-files=all")
+    return {
+        "repo_root": str(repo_root),
+        "head": head,
+        "worktree_clean": status == "",
+    }
+
+
+def _load_authorization(spec: dict, *, observed_head: str) -> dict:
     auth_path = spec.get("mve_authorization_path")
     if not auth_path:
         raise C7ChildError("MVE authorization path is required for non-dry execution")
@@ -98,18 +117,27 @@ def _load_authorization(spec: dict) -> dict:
         raise C7ChildError("invalid MVE authorization file") from exc
     try:
         return validate_mve_authorization(
-            authorization, execution_harness_head=_execution_harness_head(spec))
+            authorization, execution_harness_head=observed_head)
     except ValueError as exc:
         raise C7ChildError("MVE authorization validation failed: {}".format(exc)) from exc
 
 
 def _validate_authorization_scope(spec: dict, authorization: dict) -> None:
-    cell = spec.get("cell", {})
+    cells_by_id = {cell["cell_id"]: cell for cell in registered_cells()}
+    expected_cell = cells_by_id[authorization["mve_cell_id"]]
+    cell = spec.get("cell")
+    if not isinstance(cell, dict) or set(cell) != set(expected_cell):
+        raise C7ChildError("MVE child cell schema does not match canonical registered cell")
+    for key, expected_value in expected_cell.items():
+        if cell[key] != expected_value:
+            raise C7ChildError(
+                "MVE child cell {} does not match canonical registered cell".format(key))
     checks = [
         (authorization["mve_run_id"], spec.get("run_id"), "run_id"),
-        (authorization["mve_cell_id"], cell.get("cell_id"), "cell_id"),
-        (authorization["pair_id"], cell.get("pair_id"), "pair_id"),
-        (authorization["capacity_id"], cell.get("capacity_id"), "capacity_id"),
+        (authorization["mve_cell_id"], cell["cell_id"], "cell_id"),
+        (authorization["pair_id"], cell["pair_id"], "pair_id"),
+        (authorization["capacity_id"], cell["capacity_id"], "capacity_id"),
+        (authorization["split"], spec.get("split"), "split"),
         (authorization["output_root"], str(Path(spec["output_root"]).resolve()), "output_root"),
     ]
     for auth_value, spec_value, label in checks:
@@ -128,6 +156,9 @@ def _materialize_generated_source(authorization: dict) -> dict:
     variant_root = Path(resources["mia_source_root"])
     runtime_source = SRC / "tracking/mdmt_mia_async_deadline_runtime.py"
 
+    expected_sha256 = authorization["generated_source_preparer_identity"]["sha256"]
+    if not preparer_path.is_file() or sha256_file(preparer_path) != expected_sha256:
+        raise C7ChildError("generated-source preparer identity mismatch")
     if variant_root.exists():
         raise C7ChildError("generated source root already exists: {}".format(variant_root))
 
@@ -183,9 +214,16 @@ def _build_wrapper_environment(spec: dict, authorization: dict) -> dict[str, str
     return environment
 
 
-def _execute_wrapper(spec: dict, authorization: dict) -> dict:
+def _execute_wrapper(spec: dict, authorization: dict, *, observed_head: str) -> dict:
     """Execute the authorized wrapper with explicit environment and resources."""
     _verify_authorities(spec)
+    try:
+        validate_mve_authorization(
+            authorization, execution_harness_head=observed_head)
+    except ValueError as exc:
+        raise C7ChildError(
+            "MVE launch resource validation failed: {}".format(exc)) from exc
+    _validate_authorization_scope(spec, authorization)
     cell = spec.get("cell", {})
     pair_id = str(cell.get("pair_id", ""))
     if pair_id not in {"P23", "P44", "P66"}:
@@ -197,7 +235,7 @@ def _execute_wrapper(spec: dict, authorization: dict) -> dict:
         raise C7ChildError("author wrapper identity mismatch")
 
     environment = _build_wrapper_environment(spec, authorization)
-    command = [str(wrapper), "mia", str(spec.get("split", "train")), pair_id[1:]]
+    command = [str(wrapper), "mia", authorization["split"], pair_id[1:]]
 
     output_root = Path(spec["output_root"]).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
@@ -287,12 +325,20 @@ def execute_child(spec: dict) -> dict:
         return status
 
     # Non-dry REAL_C7_CELL requires an exact MVE authorization artifact.
-    authorization = _load_authorization(spec)
+    if not spec.get("mve_authorization_path"):
+        raise C7ChildError("MVE authorization path is required for non-dry execution")
+    if "execution_harness_head" in spec:
+        raise C7ChildError("caller execution_harness_head is forbidden")
+    observed_git = _observe_git_identity(ROOT)
+    if observed_git["worktree_clean"] is not True:
+        raise C7ChildError("execution worktree must be clean")
+    authorization = _load_authorization(spec, observed_head=str(observed_git["head"]))
     _validate_authorization_scope(spec, authorization)
 
     pre_inventory = _materialize_generated_source(authorization)
 
-    wrapper_result = _execute_wrapper(spec, authorization)
+    wrapper_result = _execute_wrapper(
+        spec, authorization, observed_head=str(observed_git["head"]))
 
     # Re-inventory generated source to detect unexpected post-execution mutation.
     post_inventory = inventory_generated_source(
@@ -302,10 +348,12 @@ def execute_child(spec: dict) -> dict:
 
     resources = authorization["execution_resources"]
     mia_output_root = Path(resources["mia_output_root"]).resolve()
+    pair_number = authorization["pair_id"][1:]
+    run_directory = "{}_{}".format(authorization["split"], pair_number)
     outcome_quarantine = {
-        "result_dir": str(mia_output_root / "mia" / "train_23" / "results"),
-        "view1_output": str(mia_output_root / "mia" / "train_23" / "view1"),
-        "view2_output": str(mia_output_root / "mia" / "train_23" / "view2"),
+        "result_dir": str(mia_output_root / "mia" / run_directory / "results"),
+        "view1_output": str(mia_output_root / "mia" / run_directory / "view1"),
+        "view2_output": str(mia_output_root / "mia" / run_directory / "view2"),
     }
 
     status = {
@@ -317,6 +365,9 @@ def execute_child(spec: dict) -> dict:
         "wrapper_returncode": wrapper_result["returncode"],
         "wrapper_command": wrapper_result["command"],
         "implementation_head_matched": True,
+        "observed_repository_root": observed_git["repo_root"],
+        "observed_execution_harness_head": observed_git["head"],
+        "observed_worktree_clean": observed_git["worktree_clean"],
         "authorization_valid": True,
         "generated_source_materialized": True,
         "generated_source_inventory_stable": True,

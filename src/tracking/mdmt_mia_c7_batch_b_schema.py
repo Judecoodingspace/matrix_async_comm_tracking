@@ -7,6 +7,7 @@ these declarations and canonical serialization helpers.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 from pathlib import Path
@@ -35,6 +36,16 @@ PACKAGE_COMMIT_SCHEMA = "C7_PACKAGE_COMMIT_V1"
 MVE_AUTHORIZATION_SCHEMA = "C7_MVE_AUTHORIZATION_V1"
 MVE_AUTHORIZATION_ROLE = "C7_OUTCOME_BLIND_REAL_INPUT_MVE_EXECUTION"
 MVE_AUTHORIZATION_STATUS_AUTHORIZED = "AUTHORIZED"
+MVE_ALLOWED_EXECUTION_SCOPES = frozenset({
+    "ONE_NATIVE_P23_PRODUCTION_UNIT",
+})
+MVE_SUPPORTED_CELL_ID = "P23__P20"
+MVE_SUPPORTED_SPLIT = "train"
+
+# Frozen scientific core authority for real-input MVE execution.
+SCIENTIFIC_CORE_AUTHORITY = (
+    "9140104ca2bf3d395b3012dcae32506e5abfb9cf"
+)
 
 MVE_REQUIRED_AUTHORIZATION_KEYS = frozenset({
     "schema_version",
@@ -46,6 +57,7 @@ MVE_REQUIRED_AUTHORIZATION_KEYS = frozenset({
     "mve_cell_id",
     "pair_id",
     "capacity_id",
+    "split",
     "execution_scope",
     "output_root",
     "execution_resources",
@@ -441,6 +453,8 @@ def _validate_file_resource(resource: Any, label: str) -> None:
     path = Path(resource["canonical_path"])
     if not path.is_absolute():
         raise ValueError("{} path must be absolute".format(label))
+    if str(path) != str(path.resolve()):
+        raise ValueError("{} path must be canonical".format(label))
     if not path.is_file():
         raise ValueError("{} file does not exist: {}".format(label, path))
     actual = sha256_file(path)
@@ -457,8 +471,32 @@ def _validate_directory_resource(resource: Any, label: str) -> None:
     path = Path(resource["canonical_path"])
     if not path.is_absolute():
         raise ValueError("{} path must be absolute".format(label))
+    if str(path) != str(path.resolve()):
+        raise ValueError("{} path must be canonical".format(label))
     if not path.is_dir():
         raise ValueError("{} directory does not exist: {}".format(label, path))
+
+
+def _config_checkpoint_path(config_path: Path) -> Path:
+    """Read the literal detector checkpoint bound by the authorized config."""
+    try:
+        tree = ast.parse(config_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, SyntaxError) as exc:
+        raise ValueError("MVE mia_config_path is not inspectable Python") from exc
+    values = [
+        node.value.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.keyword)
+        and node.arg == "checkpoint"
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    ]
+    if len(values) != 1:
+        raise ValueError("MVE config must bind exactly one literal checkpoint")
+    path = Path(values[0])
+    if not path.is_absolute():
+        raise ValueError("MVE config checkpoint path must be absolute")
+    return path.resolve()
 
 
 def validate_mve_authorization(
@@ -487,8 +525,8 @@ def validate_mve_authorization(
     if auth["single_run_scope"] is not True:
         raise ValueError("MVE authorization must be single-run scope")
 
-    if not isinstance(auth["scientific_core_authority"], str):
-        raise ValueError("MVE scientific_core_authority must be a string")
+    if auth["scientific_core_authority"] != SCIENTIFIC_CORE_AUTHORITY:
+        raise ValueError("MVE scientific_core_authority mismatch")
     if not isinstance(auth["execution_harness_authority"], str):
         raise ValueError("MVE execution_harness_authority must be a string")
     if auth["execution_harness_authority"] != execution_harness_head:
@@ -496,9 +534,29 @@ def validate_mve_authorization(
             "MVE authorization execution_harness_authority mismatch: "
             "expected {}".format(execution_harness_head))
 
-    for key in ("mve_run_id", "mve_cell_id", "pair_id", "capacity_id", "execution_scope"):
+    for key in (
+        "mve_run_id", "mve_cell_id", "pair_id", "capacity_id",
+        "split", "execution_scope",
+    ):
         if not isinstance(auth[key], str) or not auth[key]:
             raise ValueError("MVE {} must be a non-empty string".format(key))
+
+    if auth["execution_scope"] not in MVE_ALLOWED_EXECUTION_SCOPES:
+        raise ValueError(
+            "MVE execution_scope not allowed: {}".format(auth["execution_scope"]))
+    if auth["mve_cell_id"] != MVE_SUPPORTED_CELL_ID:
+        raise ValueError("MVE cell is not the supported native P23/P20 unit")
+    if auth["split"] != MVE_SUPPORTED_SPLIT:
+        raise ValueError("MVE split must be train")
+
+    cells_by_id = {cell["cell_id"]: cell for cell in registered_cells()}
+    expected_cell = cells_by_id.get(auth["mve_cell_id"])
+    if expected_cell is None:
+        raise ValueError("MVE cell is not registered")
+    if auth["pair_id"] != expected_cell["pair_id"]:
+        raise ValueError("MVE pair_id does not match registered cell")
+    if auth["capacity_id"] != expected_cell["capacity_id"]:
+        raise ValueError("MVE capacity_id does not match registered cell")
 
     output_root = Path(auth["output_root"])
     if not output_root.is_absolute():
@@ -509,6 +567,8 @@ def validate_mve_authorization(
     wrapper_path = Path(wrapper["canonical_path"])
     if not wrapper_path.is_absolute() or not wrapper_path.is_file():
         raise ValueError("MVE wrapper path does not exist")
+    if str(wrapper_path) != str(wrapper_path.resolve()):
+        raise ValueError("MVE wrapper path must be canonical")
     if sha256_file(wrapper_path) != wrapper["sha256"]:
         raise ValueError("MVE wrapper digest mismatch")
 
@@ -519,6 +579,8 @@ def validate_mve_authorization(
     preparer_path = Path(preparer["canonical_path"])
     if not preparer_path.is_absolute() or not preparer_path.is_file():
         raise ValueError("MVE generated-source preparer path does not exist")
+    if str(preparer_path) != str(preparer_path.resolve()):
+        raise ValueError("MVE generated-source preparer path must be canonical")
     if sha256_file(preparer_path) != preparer["sha256"]:
         raise ValueError("MVE generated-source preparer digest mismatch")
 
@@ -549,13 +611,15 @@ def validate_mve_authorization(
     mia_source_root = Path(resources["mia_source_root"])
     if not mia_source_root.is_absolute():
         raise ValueError("MVE mia_source_root must be absolute")
+    if str(mia_source_root) != str(mia_source_root.resolve()):
+        raise ValueError("MVE mia_source_root must be canonical")
 
     if not isinstance(resources["device"], str) or not resources["device"]:
         raise ValueError("MVE device must be a non-empty string")
 
     sequences = resources["sequence_resources"]
-    if not isinstance(sequences, (list, tuple)) or not sequences:
-        raise ValueError("MVE sequence_resources must be a non-empty list")
+    if not isinstance(sequences, (list, tuple)) or len(sequences) != 2:
+        raise ValueError("MVE sequence_resources must contain exactly two entries")
     for index, seq in enumerate(sequences):
         _require_exact_keys(
             seq, MVE_REQUIRED_SEQUENCE_RESOURCE_KEYS,
@@ -565,9 +629,23 @@ def validate_mve_authorization(
              "resource_class": seq["resource_class"]},
             "MVE sequence_resources[{}]".format(index))
 
+    pair_number = expected_cell["pair_id"][1:]
+    mdmt_root = Path(resources["mdmt_root"]).resolve()
+    expected_sequences = {
+        "view1_sequence": mdmt_root / auth["split"] / "1" / (pair_number + "-1"),
+        "view2_sequence": mdmt_root / auth["split"] / "2" / (pair_number + "-2"),
+    }
+    observed_sequences = {
+        seq["role"]: Path(seq["canonical_path"]).resolve() for seq in sequences
+    }
+    if observed_sequences != expected_sequences:
+        raise ValueError("MVE sequence resources do not match native pair input")
+    if any(seq["resource_class"] != EXECUTION_RESOURCE_CLASS_DIRECTORY for seq in sequences):
+        raise ValueError("MVE sequence resource_class mismatch")
+
     xmls = resources["xml_resources"]
-    if not isinstance(xmls, (list, tuple)) or not xmls:
-        raise ValueError("MVE xml_resources must be a non-empty list")
+    if not isinstance(xmls, (list, tuple)) or len(xmls) != 2:
+        raise ValueError("MVE xml_resources must contain exactly two entries")
     for index, xml in enumerate(xmls):
         _require_exact_keys(
             xml, MVE_REQUIRED_XML_RESOURCE_KEYS,
@@ -577,6 +655,39 @@ def validate_mve_authorization(
              "sha256": xml["sha256"],
              "resource_class": xml["resource_class"]},
             "MVE xml_resources[{}]".format(index))
+
+    expected_xmls = {
+        "view1_xml": mdmt_root / "new_xml" / "1" / (pair_number + "-1.xml"),
+        "view2_xml": mdmt_root / "new_xml" / "2" / (pair_number + "-2.xml"),
+    }
+    observed_xmls = {
+        xml["role"]: Path(xml["canonical_path"]).resolve() for xml in xmls
+    }
+    if observed_xmls != expected_xmls:
+        raise ValueError("MVE XML resources do not match native pair input")
+    if any(xml["resource_class"] != EXECUTION_RESOURCE_CLASS_FILE for xml in xmls):
+        raise ValueError("MVE XML resource_class mismatch")
+
+    effective_run_input = (
+        Path(resources["mia_run_input_root"]).resolve()
+        / pair_number
+        / auth["split"]
+    )
+    if effective_run_input.exists():
+        raise ValueError("MVE effective run-input slot must not pre-exist")
+
+    checkpoint_path = Path(resources["checkpoint_path"]).resolve()
+    expected_checkpoint = (
+        mdmt_root
+        / "checkpoints"
+        / "work_dirsfaster_rcnn_r50_fpn_carafe_1x_full_mdmt"
+        / "epoch_12.pth"
+    )
+    if checkpoint_path != expected_checkpoint:
+        raise ValueError("MVE checkpoint does not match wrapper checkpoint")
+    config_checkpoint = _config_checkpoint_path(Path(resources["mia_config_path"]))
+    if config_checkpoint != checkpoint_path:
+        raise ValueError("MVE config checkpoint binding mismatch")
 
     return auth
 

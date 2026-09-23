@@ -1165,11 +1165,15 @@ def _mve_test_resources(tmp_path: Path) -> dict[str, Any]:
     xml2 = mdmt_root / "new_xml" / "2" / "23-2.xml"
     xml2.write_text("<xml>view2</xml>", encoding="utf-8")
 
-    config = resources_root / "mia_config.py"
-    config.write_text("# mia config\n", encoding="utf-8")
-
     checkpoint = mdmt_root / "checkpoints" / "work_dirsfaster_rcnn_r50_fpn_carafe_1x_full_mdmt" / "epoch_12.pth"
     checkpoint.write_bytes(b"FAKE_CHECKPOINT_BYTES")
+
+    config = resources_root / "mia_config.py"
+    config.write_text(
+        "model = dict(init_cfg=dict(type='Pretrained', checkpoint={!r}))\n".format(
+            str(checkpoint)),
+        encoding="utf-8",
+    )
 
     mia_root = resources_root / "mia"
     mia_root.mkdir()
@@ -1247,6 +1251,7 @@ def _mve_authorization(
         "mve_cell_id": "P23__P20",
         "pair_id": "P23",
         "capacity_id": "P20",
+        "split": "train",
         "execution_scope": "ONE_NATIVE_P23_PRODUCTION_UNIT",
         "output_root": str(tmp_path / "mve_output"),
         "execution_resources": resources,
@@ -1289,31 +1294,24 @@ def _mve_spec(tmp_path: Path, auth_path: Path, harness_head: str, **overrides) -
         "split": "train",
         "output_root": str(tmp_path / "mve_output"),
         "mve_authorization_path": str(auth_path),
-        "execution_harness_head": harness_head,
     }
     spec.update(overrides)
     return spec
 
 
 def _mock_subprocess_for_mve(
-    monkeypatch, tmp_path: Path, *, wrapper_returncode: int = 0, mutate_generated: bool = False,
+    monkeypatch, tmp_path: Path, *, wrapper_returncode: int = 0,
+    mutate_generated: bool = False, mutate_config: bool = False,
 ):
-    """Mock subprocess.run for MVE tests: git head, preparer, wrapper."""
+    """Mock subprocess.run for MVE tests: preparer and wrapper only."""
     original_run = subprocess.run
+    _mock_git_identity(monkeypatch)
 
     def _command_has(command: list[str], substring: str) -> bool:
         return any(substring in arg for arg in command)
 
     def _fake_run(args, **kwargs):
         command = [str(a) for a in args]
-
-        # git rev-parse HEAD
-        if command[:3] == ["git", "rev-parse", "HEAD"]:
-            class _Result:
-                stdout = "MOCK_HARNESS_HEAD\n"
-                stderr = ""
-                returncode = 0
-            return _Result()
 
         # generated-source preparer
         if _command_has(command, "prepare_mdmt_mia_async_packet_variant.py"):
@@ -1327,6 +1325,9 @@ def _mock_subprocess_for_mve(
                 (variant_root / "demo").mkdir()
                 (variant_root / "demo" / "supplement_MIA.py").write_text("# generated\n")
                 (variant_root / "async_deadline_manifest.json").write_text("{}\n")
+            if mutate_config:
+                config = tmp_path / "mve_resources" / "mia_config.py"
+                config.write_text(config.read_text(encoding="utf-8") + "# changed\n")
             class _Result:
                 stdout = ""
                 stderr = ""
@@ -1361,6 +1362,46 @@ def _mock_subprocess_for_mve(
     monkeypatch.setattr(subprocess, "run", _fake_run)
 
 
+def _mock_git_identity(
+    monkeypatch, *, head: str = "MOCK_HARNESS_HEAD", clean: bool = True,
+) -> None:
+    monkeypatch.setattr(
+        CHILD,
+        "_observe_git_identity",
+        lambda expected_root: {
+            "repo_root": str(Path(expected_root).resolve()),
+            "head": head,
+            "worktree_clean": clean,
+        },
+    )
+
+
+def test_mve_observes_actual_repo_root_head_and_porcelain_status(tmp_path, monkeypatch):
+    calls = []
+    responses = {
+        ("rev-parse", "--show-toplevel"): str(tmp_path),
+        ("rev-parse", "HEAD"): "OBSERVED_HEAD",
+        ("status", "--porcelain", "--untracked-files=all"): "",
+    }
+
+    def _fake_run_git(*args, **kwargs):
+        calls.append((args, kwargs))
+        return responses[args]
+
+    monkeypatch.setattr(CHILD, "_run_git", _fake_run_git)
+    observed = CHILD._observe_git_identity(tmp_path)
+    assert observed == {
+        "repo_root": str(tmp_path.resolve()),
+        "head": "OBSERVED_HEAD",
+        "worktree_clean": True,
+    }
+    assert [args for args, _ in calls] == [
+        ("rev-parse", "--show-toplevel"),
+        ("rev-parse", "HEAD"),
+        ("status", "--porcelain", "--untracked-files=all"),
+    ]
+
+
 def test_mve_non_dry_without_authorization_rejects(tmp_path):
     spec = {
         "schema_version": "C7_CHILD_SPEC_V1",
@@ -1375,7 +1416,8 @@ def test_mve_non_dry_without_authorization_rejects(tmp_path):
         CHILD.execute_child(spec)
 
 
-def test_mve_wrong_authorization_role_rejects(tmp_path):
+def test_mve_wrong_authorization_role_rejects(tmp_path, monkeypatch):
+    _mock_git_identity(monkeypatch)
     auth_path, authorization = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
     authorization["authorization_role"] = "BAD_ROLE"
     atomic_write_json(auth_path, authorization)
@@ -1395,7 +1437,10 @@ def test_mve_wrong_run_id_rejects(tmp_path, monkeypatch):
 def test_mve_wrong_cell_rejects(tmp_path, monkeypatch):
     _mock_subprocess_for_mve(monkeypatch, tmp_path)
     auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
-    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD", cell={"cell_id": "P44__P20", "pair_id": "P44", "capacity_id": "P20", "capacity_bytes": 16649})
+    cell = _mve_cell()
+    cell["cell_id"] = "P44__P20"
+    cell["pair_id"] = "P44"
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD", cell=cell)
     with pytest.raises(CHILD.C7ChildError, match="cell_id"):
         CHILD.execute_child(spec)
 
@@ -1407,6 +1452,29 @@ def test_mve_wrong_capacity_rejects(tmp_path, monkeypatch):
     cell["capacity_id"] = "P30"
     spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD", cell=cell)
     with pytest.raises(CHILD.C7ChildError, match="capacity_id"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_wrong_capacity_bytes_rejects(tmp_path, monkeypatch):
+    _mock_subprocess_for_mve(monkeypatch, tmp_path)
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    cell = _mve_cell()
+    cell["capacity_bytes"] = 29620
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD", cell=cell)
+    with pytest.raises(CHILD.C7ChildError, match="capacity_bytes"):
+        CHILD.execute_child(spec)
+
+
+@pytest.mark.parametrize("field", ["stable_pair_order", "stable_capacity_order", "frame_count"])
+def test_mve_canonical_registered_cell_field_mismatch_rejects(
+    tmp_path, monkeypatch, field,
+):
+    _mock_subprocess_for_mve(monkeypatch, tmp_path)
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    cell = _mve_cell()
+    cell[field] += 1
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD", cell=cell)
+    with pytest.raises(CHILD.C7ChildError, match=field):
         CHILD.execute_child(spec)
 
 
@@ -1423,6 +1491,63 @@ def test_mve_wrong_implementation_head_rejects(tmp_path, monkeypatch):
     auth_path, _ = _mve_authorization(tmp_path, harness_head="EXPECTED_HEAD")
     spec = _mve_spec(tmp_path, auth_path, "ACTUAL_HEAD")
     with pytest.raises(CHILD.C7ChildError, match="execution_harness_authority"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_caller_supplied_fake_head_cannot_override_observed_head(tmp_path, monkeypatch):
+    _mock_git_identity(monkeypatch, head="OBSERVED_HEAD")
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="OBSERVED_HEAD")
+    spec = _mve_spec(
+        tmp_path,
+        auth_path,
+        "IGNORED",
+        execution_harness_head="CALLER_FORGED_HEAD",
+    )
+    with pytest.raises(CHILD.C7ChildError, match="caller execution_harness_head is forbidden"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_dirty_actual_worktree_rejects_before_materialization(tmp_path, monkeypatch):
+    _mock_git_identity(monkeypatch, clean=False)
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+
+    def _must_not_run(*args, **kwargs):
+        raise AssertionError("subprocess boundary reached after dirty-worktree rejection")
+
+    monkeypatch.setattr(subprocess, "run", _must_not_run)
+    with pytest.raises(CHILD.C7ChildError, match="worktree must be clean"):
+        CHILD.execute_child(spec)
+    assert not (tmp_path / "generated_source").exists()
+
+
+def test_mve_wrong_scientific_core_authority_rejects(tmp_path, monkeypatch):
+    _mock_git_identity(monkeypatch)
+    auth_path, authorization = _mve_authorization(
+        tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    authorization["scientific_core_authority"] = "0" * 40
+    atomic_write_json(auth_path, authorization)
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    with pytest.raises(CHILD.C7ChildError, match="scientific_core_authority"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_split_mismatch_rejects(tmp_path, monkeypatch):
+    _mock_subprocess_for_mve(monkeypatch, tmp_path)
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD", split="val")
+    with pytest.raises(CHILD.C7ChildError, match="split"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_unsupported_execution_scope_rejects(tmp_path, monkeypatch):
+    _mock_git_identity(monkeypatch)
+    auth_path, authorization = _mve_authorization(
+        tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    authorization["execution_scope"] = "ANOTHER_MODE"
+    atomic_write_json(auth_path, authorization)
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    with pytest.raises(CHILD.C7ChildError, match="execution_scope"):
         CHILD.execute_child(spec)
 
 
@@ -1446,6 +1571,14 @@ def test_mve_wrong_config_digest_rejects(tmp_path, monkeypatch):
         CHILD.execute_child(spec)
 
 
+def test_mve_config_changed_after_gate_before_launch_rejects(tmp_path, monkeypatch):
+    _mock_subprocess_for_mve(monkeypatch, tmp_path, mutate_config=True)
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    with pytest.raises(CHILD.C7ChildError, match="launch resource validation.*digest"):
+        CHILD.execute_child(spec)
+
+
 def test_mve_wrong_checkpoint_digest_rejects(tmp_path, monkeypatch):
     _mock_subprocess_for_mve(monkeypatch, tmp_path)
     resources = _mve_test_resources(tmp_path)
@@ -1453,6 +1586,43 @@ def test_mve_wrong_checkpoint_digest_rejects(tmp_path, monkeypatch):
     auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD", resources=resources)
     spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
     with pytest.raises(CHILD.C7ChildError, match="digest mismatch"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_native_p23_sequence_resource_mismatch_rejects(tmp_path, monkeypatch):
+    _mock_git_identity(monkeypatch)
+    resources = _mve_test_resources(tmp_path)
+    wrong_sequence = Path(resources["mdmt_root"]) / "train" / "1" / "99-1"
+    wrong_sequence.mkdir()
+    resources["sequence_resources"][0]["canonical_path"] = str(wrong_sequence)
+    auth_path, _ = _mve_authorization(
+        tmp_path, harness_head="MOCK_HARNESS_HEAD", resources=resources)
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    with pytest.raises(CHILD.C7ChildError, match="native pair input"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_preexisting_effective_run_input_rejects(tmp_path, monkeypatch):
+    _mock_git_identity(monkeypatch)
+    resources = _mve_test_resources(tmp_path)
+    stale_slot = Path(resources["mia_run_input_root"]) / "23" / "train"
+    stale_slot.mkdir(parents=True)
+    (stale_slot / "unexpected-input").write_text("wrong\n", encoding="utf-8")
+    auth_path, _ = _mve_authorization(
+        tmp_path, harness_head="MOCK_HARNESS_HEAD", resources=resources)
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    with pytest.raises(CHILD.C7ChildError, match="run-input slot"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_xml_digest_mismatch_rejects(tmp_path, monkeypatch):
+    _mock_git_identity(monkeypatch)
+    resources = _mve_test_resources(tmp_path)
+    resources["xml_resources"][0]["sha256"] = "0" * 64
+    auth_path, _ = _mve_authorization(
+        tmp_path, harness_head="MOCK_HARNESS_HEAD", resources=resources)
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    with pytest.raises(CHILD.C7ChildError, match="XML.*digest mismatch|digest mismatch"):
         CHILD.execute_child(spec)
 
 
@@ -1487,9 +1657,14 @@ def test_mve_hidden_execution_resource_mismatch_rejects(tmp_path, monkeypatch):
         return original_run(args, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", _wrapper_capturing_run)
+    _mock_git_identity(monkeypatch)
     resources = _mve_test_resources(tmp_path)
     other_config = tmp_path / "other_config.py"
-    other_config.write_text("# other\n", encoding="utf-8")
+    other_config.write_text(
+        "model = dict(init_cfg=dict(checkpoint={!r}))\n".format(
+            resources["checkpoint_path"]),
+        encoding="utf-8",
+    )
     resources["mia_config_path"] = str(other_config)
     resources["mia_config_sha256"] = sha256_file(other_config)
     auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD", resources=resources)
@@ -1529,6 +1704,7 @@ def test_mve_unknown_parent_env_sentinel_not_forwarded(tmp_path, monkeypatch):
         return original_run(args, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", _wrapper_capturing_run)
+    _mock_git_identity(monkeypatch)
     auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
     spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
     monkeypatch.setenv("C7_MVE_FORBIDDEN_PARENT_SENTINEL", "DO_NOT_FORWARD")
