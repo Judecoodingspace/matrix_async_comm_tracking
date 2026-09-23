@@ -151,14 +151,19 @@ def _materialize_generated_source(authorization: dict) -> dict:
     """Run the authorized generated-source preparer and inventory result."""
     preparer_path = Path(authorization["generated_source_preparer_identity"]["canonical_path"])
     resources = authorization["execution_resources"]
-    mia_root = Path(resources["mia_root"])
-    source_root = mia_root / "upstream"
+    mia_root = Path(resources["mia_root"]).resolve()
+    source_root = (mia_root / "variants" / "packetized_active_sync").resolve()
     variant_root = Path(resources["mia_source_root"])
     runtime_source = SRC / "tracking/mdmt_mia_async_deadline_runtime.py"
 
     expected_sha256 = authorization["generated_source_preparer_identity"]["sha256"]
     if not preparer_path.is_file() or sha256_file(preparer_path) != expected_sha256:
         raise C7ChildError("generated-source preparer identity mismatch")
+    if not source_root.is_dir():
+        raise C7ChildError(
+            "generated-source base root does not exist: {}".format(source_root))
+    if not (source_root / "demo" / "supplement_MIA.py").is_file():
+        raise C7ChildError("generated-source base entry does not exist")
     if variant_root.exists():
         raise C7ChildError("generated source root already exists: {}".format(variant_root))
 

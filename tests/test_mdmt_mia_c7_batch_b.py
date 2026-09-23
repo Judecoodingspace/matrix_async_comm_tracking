@@ -1179,6 +1179,12 @@ def _mve_test_resources(tmp_path: Path) -> dict[str, Any]:
     mia_root.mkdir()
     upstream = mia_root / "upstream"
     upstream.mkdir()
+    generated_source_base = mia_root / "variants" / "packetized_active_sync"
+    (generated_source_base / "demo").mkdir(parents=True)
+    (generated_source_base / "demo" / "supplement_MIA.py").write_text(
+        "from utils.active_packet_runtime import PacketRuntime\n",
+        encoding="utf-8",
+    )
 
     # These roots are created by the wrapper/child at runtime; pre-create them
     # so structural validation passes without executing the wrapper.
@@ -1302,6 +1308,7 @@ def _mve_spec(tmp_path: Path, auth_path: Path, harness_head: str, **overrides) -
 def _mock_subprocess_for_mve(
     monkeypatch, tmp_path: Path, *, wrapper_returncode: int = 0,
     mutate_generated: bool = False, mutate_config: bool = False,
+    observed: dict[str, Any] | None = None,
 ):
     """Mock subprocess.run for MVE tests: preparer and wrapper only."""
     original_run = subprocess.run
@@ -1315,6 +1322,8 @@ def _mock_subprocess_for_mve(
 
         # generated-source preparer
         if _command_has(command, "prepare_mdmt_mia_async_packet_variant.py"):
+            if observed is not None:
+                observed["preparer_command"] = command
             variant_root = None
             for index, arg in enumerate(command):
                 if arg == "--variant-root" and index + 1 < len(command):
@@ -1337,6 +1346,8 @@ def _mock_subprocess_for_mve(
         # wrapper
         if _command_has(command, "run_mdmt_mia_author_sync.sh"):
             env = kwargs.get("env", {})
+            if observed is not None:
+                observed["wrapper_environment"] = dict(env)
             # Verify explicit environment binding.
             assert env.get("MDMT_ROOT")
             assert env.get("MIA_ROOT")
@@ -1400,6 +1411,72 @@ def test_mve_observes_actual_repo_root_head_and_porcelain_status(tmp_path, monke
         ("rev-parse", "HEAD"),
         ("status", "--porcelain", "--untracked-files=all"),
     ]
+
+
+def test_mve_uses_qualified_generated_source_base_only(tmp_path, monkeypatch):
+    observed = {}
+    _mock_subprocess_for_mve(monkeypatch, tmp_path, observed=observed)
+    auth_path, authorization = _mve_authorization(
+        tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+
+    CHILD.execute_child(spec)
+
+    resources = authorization["execution_resources"]
+    mia_root = Path(resources["mia_root"]).resolve()
+    command = observed["preparer_command"]
+    source_root = Path(command[command.index("--source-root") + 1])
+    variant_root = Path(command[command.index("--variant-root") + 1])
+    assert source_root == mia_root / "variants" / "packetized_active_sync"
+    assert source_root != mia_root / "upstream"
+    assert variant_root == Path(resources["mia_source_root"])
+    assert observed["wrapper_environment"]["MIA_ROOT"] == str(mia_root)
+    assert observed["wrapper_environment"]["MIA_SOURCE_ROOT"] == str(
+        Path(resources["mia_source_root"]).resolve())
+
+
+def test_mve_missing_generated_source_base_rejects_before_preparer(
+    tmp_path, monkeypatch,
+):
+    resources = _mve_test_resources(tmp_path)
+    base_root = (
+        Path(resources["mia_root"]) / "variants" / "packetized_active_sync")
+    (base_root / "demo" / "supplement_MIA.py").unlink()
+    (base_root / "demo").rmdir()
+    base_root.rmdir()
+    auth_path, _ = _mve_authorization(
+        tmp_path, harness_head="MOCK_HARNESS_HEAD", resources=resources)
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    _mock_git_identity(monkeypatch)
+
+    def _must_not_run(*args, **kwargs):
+        raise AssertionError("preparer reached with missing generated-source base")
+
+    monkeypatch.setattr(subprocess, "run", _must_not_run)
+    with pytest.raises(CHILD.C7ChildError, match="base root does not exist"):
+        CHILD.execute_child(spec)
+
+
+def test_mve_missing_generated_source_base_entry_rejects_before_preparer(
+    tmp_path, monkeypatch,
+):
+    resources = _mve_test_resources(tmp_path)
+    base_entry = (
+        Path(resources["mia_root"])
+        / "variants" / "packetized_active_sync" / "demo" / "supplement_MIA.py"
+    )
+    base_entry.unlink()
+    auth_path, _ = _mve_authorization(
+        tmp_path, harness_head="MOCK_HARNESS_HEAD", resources=resources)
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
+    _mock_git_identity(monkeypatch)
+
+    def _must_not_run(*args, **kwargs):
+        raise AssertionError("preparer reached with missing generated-source base entry")
+
+    monkeypatch.setattr(subprocess, "run", _must_not_run)
+    with pytest.raises(CHILD.C7ChildError, match="base entry does not exist"):
+        CHILD.execute_child(spec)
 
 
 def test_mve_non_dry_without_authorization_rejects(tmp_path):
