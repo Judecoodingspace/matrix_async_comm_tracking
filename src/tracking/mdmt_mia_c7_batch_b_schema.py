@@ -40,6 +40,10 @@ MVE_ALLOWED_EXECUTION_SCOPES = frozenset({
     "ONE_NATIVE_P23_PRODUCTION_UNIT",
 })
 MVE_SUPPORTED_CELL_ID = "P23__P20"
+
+FULL_CENSUS_AUTHORIZATION_SCHEMA = "C7_FULL_CENSUS_AUTHORIZATION_V1"
+FULL_CENSUS_AUTHORIZATION_ROLE = "FULL_REGISTERED_21_CELL_CENSUS"
+FULL_CENSUS_EXECUTION_POLICY = "FIXED_ORDER_FAIL_STOP_NO_RESUME"
 MVE_SUPPORTED_SPLIT = "train"
 
 # Frozen scientific core authority for real-input MVE execution.
@@ -713,3 +717,229 @@ def inventory_generated_source(root: Path | str) -> dict[str, Any]:
         "files": records,
         "inventory_sha256": canonical_sha256(records),
     }
+
+
+def full_census_cell_resources(authorization: Mapping[str, Any], cell: Mapping[str, Any]) -> dict[str, Any]:
+    """Derive one isolated native execution resource set from full-domain authority."""
+    root = Path(authorization["output_root"])
+    child = root / "operational" / "child" / cell["cell_id"]
+    shared = authorization["execution_resources"]
+    pair = shared["pair_resources"][cell["pair_id"]]
+    return {
+        "mdmt_root": shared["mdmt_root"],
+        "mia_root": shared["mia_root"],
+        "mia_source_root": str(child / "generated_source"),
+        "mia_config_path": shared["mia_config_path"],
+        "mia_config_sha256": shared["mia_config_sha256"],
+        "mia_run_input_root": str(child / "run_inputs"),
+        "mia_output_root": str(child / "author_outputs"),
+        "device": shared["device"],
+        "checkpoint_path": shared["checkpoint_path"],
+        "checkpoint_sha256": shared["checkpoint_sha256"],
+        "sequence_resources": pair["sequence_resources"],
+        "xml_resources": pair["xml_resources"],
+    }
+
+
+def full_census_child_spec(
+    authorization: Mapping[str, Any], *, cell: Mapping[str, Any],
+    authorization_path: Path | str, authorization_sha256: str,
+) -> dict[str, Any]:
+    """The only legal per-cell child identity for a full Census."""
+    canonical = list(registered_cells())
+    if cell not in canonical:
+        raise ValueError("full Census child is not a canonical registered cell")
+    return {
+        "schema_version": "C7_CHILD_SPEC_V1",
+        "mode": "REAL_C7_EVIDENCE_CELL",
+        "dry_run": False,
+        "authorities": authority_bindings(),
+        "run_id": authorization["run_id"],
+        "cell": dict(cell),
+        "split": authorization["split"],
+        "output_root": str(
+            Path(authorization["output_root"]) / "operational" / "child" / cell["cell_id"]),
+        "census_authorization_path": str(Path(authorization_path).resolve()),
+        "parent_census_authorization_sha256": authorization_sha256,
+        "stable_cell_index": canonical.index(cell),
+    }
+
+
+def _full_census_identity_files(
+    identity: Any, *, kind: str, count: int,
+) -> list[dict[str, Any]]:
+    checked = _require_exact_keys(identity, frozenset({"kind", "files"}), kind)
+    if checked["kind"] != kind or not isinstance(checked["files"], list):
+        raise ValueError("full Census registered identity kind/files mismatch")
+    rows = checked["files"]
+    if len(rows) != count:
+        raise ValueError("full Census registered identity file count mismatch")
+    seen = set()
+    contents = []
+    class_id = registered_file_class_id(kind)
+    for row in rows:
+        _require_exact_keys(row, frozenset({"path", "sha256"}), kind)
+        path = Path(row["path"])
+        if not path.is_absolute() or str(path) != str(path.resolve()) or not path.is_file():
+            raise ValueError("full Census registered identity path mismatch")
+        if str(path) in seen:
+            raise ValueError("full Census duplicate registered identity file")
+        seen.add(str(path))
+        raw = path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != row["sha256"]:
+            raise ValueError("full Census registered identity digest mismatch")
+        contents.append(validate_registered_communication_content(
+            raw, class_id=class_id, label="full Census registered identity"))
+    return contents
+
+
+def validate_full_census_authorization(
+    authorization: Any, *, execution_harness_head: str,
+    execution_root: Path | str, require_fresh_root: bool = False,
+) -> dict[str, Any]:
+    """Validate the independent, fixed-domain real Census authorization."""
+    keys = frozenset({
+        "schema_version", "authorization_role", "status",
+        "scientific_core_authority", "execution_harness_authority",
+        "run_id", "split", "execution_scope", "execution_policy",
+        "output_root", "cells", "pair_domain", "capacity_domain",
+        "frame_domains", "execution_resources", "input_identity",
+        "config_identity", "wrapper_identity", "generated_source_preparer_identity",
+        "packet_definition_identity", "outcome_blind_policy", "single_run_scope",
+    })
+    auth = _require_exact_keys(authorization, keys, "full Census authorization")
+    expected = {
+        "schema_version": FULL_CENSUS_AUTHORIZATION_SCHEMA,
+        "authorization_role": FULL_CENSUS_AUTHORIZATION_ROLE,
+        "status": "AUTHORIZED",
+        "scientific_core_authority": SCIENTIFIC_CORE_AUTHORITY,
+        "execution_harness_authority": execution_harness_head,
+        "split": "train",
+        "execution_scope": "FULL_REGISTERED_21_CELL_CENSUS",
+        "execution_policy": FULL_CENSUS_EXECUTION_POLICY,
+        "outcome_blind_policy": "NO_TRACKING_OUTCOME_READ",
+        "single_run_scope": True,
+        "cells": list(registered_cells()),
+        "pair_domain": [
+            {"pair_id": pair_id, "frame_count": frames}
+            for pair_id, frames in PAIR_DOMAIN],
+        "capacity_domain": [
+            {"capacity_id": capacity_id, "capacity_bytes": amount}
+            for capacity_id, amount in CAPACITY_DOMAIN],
+        "frame_domains": authorized_frame_domains(False),
+    }
+    for key, value in expected.items():
+        if auth[key] != value:
+            raise ValueError("full Census {} mismatch".format(key))
+    run_id = auth["run_id"]
+    if (not isinstance(run_id, str) or not run_id or "/" in run_id
+            or "\\" in run_id or run_id in {".", ".."}):
+        raise ValueError("full Census run_id is invalid")
+    root = Path(auth["output_root"])
+    if not root.is_absolute() or str(root) != str(root.resolve()):
+        raise ValueError("full Census output_root must be canonical absolute")
+    if require_fresh_root and root.exists():
+        raise ValueError("full Census output_root must be fresh")
+    repository = Path(execution_root).resolve()
+    identities = (
+        ("wrapper_identity", "wrapper"),
+        ("generated_source_preparer_identity", "generated_source_preparer"),
+        ("packet_definition_identity", "packet_definitions"),
+    )
+    for key, source_key in identities:
+        item = _require_exact_keys(auth[key], frozenset({"canonical_path", "sha256"}), key)
+        path = repository / REGISTERED_SOURCE_RELATIVE_PATHS[source_key]
+        if item["canonical_path"] != str(path.resolve()) or not path.is_file():
+            raise ValueError("full Census {} path mismatch".format(key))
+        if item["sha256"] != sha256_file(path):
+            raise ValueError("full Census {} digest mismatch".format(key))
+
+    resources = _require_exact_keys(auth["execution_resources"], frozenset({
+        "mdmt_root", "mia_root", "mia_config_path", "mia_config_sha256",
+        "device", "checkpoint_path", "checkpoint_sha256", "pair_resources",
+    }), "full Census execution_resources")
+    for key in ("mdmt_root", "mia_root"):
+        _validate_directory_resource({
+            "canonical_path": resources[key], "resource_class": EXECUTION_RESOURCE_CLASS_DIRECTORY,
+        }, "full Census {}".format(key))
+    for key, digest_key, resource_class in (
+        ("mia_config_path", "mia_config_sha256", EXECUTION_RESOURCE_CLASS_FILE),
+        ("checkpoint_path", "checkpoint_sha256", EXECUTION_RESOURCE_CLASS_CHECKPOINT),
+    ):
+        _validate_file_resource({
+            "canonical_path": resources[key], "sha256": resources[digest_key],
+            "resource_class": resource_class,
+        }, "full Census {}".format(key))
+    mdmt_root = Path(resources["mdmt_root"])
+    if Path(resources["checkpoint_path"]) != (
+        mdmt_root / "checkpoints" /
+        "work_dirsfaster_rcnn_r50_fpn_carafe_1x_full_mdmt" / "epoch_12.pth"
+    ) or _config_checkpoint_path(Path(resources["mia_config_path"])) != Path(resources["checkpoint_path"]):
+        raise ValueError("full Census effective checkpoint binding mismatch")
+    if not isinstance(resources["device"], str) or not resources["device"]:
+        raise ValueError("full Census device is invalid")
+    pairs = _require_exact_keys(
+        resources["pair_resources"], frozenset(pair for pair, _ in PAIR_DOMAIN),
+        "full Census pair_resources")
+    for pair_id, _ in PAIR_DOMAIN:
+        pair = _require_exact_keys(
+            pairs[pair_id], frozenset({"sequence_resources", "xml_resources"}),
+            "full Census pair")
+        number = pair_id[1:]
+        for key, is_file, expected_paths in (
+            ("sequence_resources", False, (
+                mdmt_root / "train" / "1" / (number + "-1"),
+                mdmt_root / "train" / "2" / (number + "-2"))),
+            ("xml_resources", True, (
+                mdmt_root / "new_xml" / "1" / (number + "-1.xml"),
+                mdmt_root / "new_xml" / "2" / (number + "-2.xml"))),
+        ):
+            rows = pair[key]
+            if not isinstance(rows, list) or len(rows) != 2:
+                raise ValueError("full Census {} count mismatch".format(key))
+            for index, row in enumerate(rows):
+                required = MVE_REQUIRED_XML_RESOURCE_KEYS if is_file else MVE_REQUIRED_SEQUENCE_RESOURCE_KEYS
+                _require_exact_keys(row, required, key)
+                role = "view{}_{}".format(index + 1, "xml" if is_file else "sequence")
+                if row["role"] != role or row["canonical_path"] != str(expected_paths[index]):
+                    raise ValueError("full Census {} native path/role mismatch".format(key))
+                if is_file:
+                    if row["resource_class"] != EXECUTION_RESOURCE_CLASS_FILE:
+                        raise ValueError("full Census XML resource class mismatch")
+                    _validate_file_resource({
+                        "canonical_path": row["canonical_path"], "sha256": row["sha256"],
+                        "resource_class": row["resource_class"],
+                    }, key)
+                else:
+                    if row["resource_class"] != EXECUTION_RESOURCE_CLASS_DIRECTORY:
+                        raise ValueError("full Census sequence resource class mismatch")
+                    _validate_directory_resource({
+                        "canonical_path": row["canonical_path"],
+                        "resource_class": row["resource_class"],
+                    }, key)
+    inputs = _full_census_identity_files(
+        auth["input_identity"], kind=REGISTERED_C7_INPUT_FILES_KIND, count=21)
+    for cell, content in zip(registered_cells(), inputs):
+        derived = full_census_cell_resources(auth, cell)
+        seq, xml = derived["sequence_resources"], derived["xml_resources"]
+        expected_input = {
+            "schema_version": REGISTERED_C7_INPUT_CLASS_ID,
+            "view1_sequence_path": seq[0]["canonical_path"],
+            "view2_sequence_path": seq[1]["canonical_path"],
+            "view1_xml_path": xml[0]["canonical_path"],
+            "view2_xml_path": xml[1]["canonical_path"],
+            "run_input_root": derived["mia_run_input_root"],
+            "split": auth["split"], "pair_id": cell["pair_id"],
+        }
+        if content != expected_input:
+            raise ValueError("full Census input identity does not bind cell")
+    configs = _full_census_identity_files(
+        auth["config_identity"], kind=REGISTERED_C7_CONFIG_FILES_KIND, count=1)
+    if configs[0] != {
+        "schema_version": REGISTERED_C7_CONFIG_CLASS_ID,
+        "mia_config_path": resources["mia_config_path"],
+        "checkpoint_path": resources["checkpoint_path"],
+        "device": resources["device"], "stage": "C7_FULL_CENSUS",
+    }:
+        raise ValueError("full Census config identity mismatch")
+    return auth

@@ -497,6 +497,42 @@ def test_p1_bb_03_missing_one_of_21_sealed_cells_blocks_package(tmp_path):
     assert not (tmp_path / "package").exists()
 
 
+def test_full_census_synthetic_package_rejects_22nd_cell(tmp_path):
+    manifest = _manifest(tmp_path)
+    _seal_all_synthetic_cells(tmp_path, manifest)
+    extra = tmp_path / "cells" / "UNREGISTERED_EXTRA"
+    extra.mkdir()
+    (extra / "marker").write_text("synthetic only", encoding="utf-8")
+    with pytest.raises((C7BatchBValidationError, C7BatchBPackageError), match="21-cell"):
+        write_selection_package(output_root=tmp_path, manifest=manifest)
+    assert not (tmp_path / "package").exists()
+
+
+@pytest.mark.parametrize("mutation", ["duplicate", "run_id", "cell_authority", "inventory"])
+def test_full_census_synthetic_package_rejects_cell_mutations(tmp_path, mutation):
+    manifest = _manifest(tmp_path)
+    _seal_all_synthetic_cells(tmp_path, manifest)
+    if mutation == "duplicate":
+        manifest["cells"][1] = dict(manifest["cells"][0])
+    else:
+        cell_root = tmp_path / "cells" / manifest["cells"][0]["cell_id"]
+        if mutation == "inventory":
+            path = cell_root / "cell_inventory.json"
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload["files"] = []
+        else:
+            path = cell_root / "cell_manifest.json"
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if mutation == "run_id":
+                payload["run_id"] = "other-run"
+            else:
+                payload["cell"]["capacity_bytes"] = 29620
+        atomic_write_json(path, payload)
+    with pytest.raises((C7BatchBValidationError, C7BatchBPackageError)):
+        write_selection_package(output_root=tmp_path, manifest=manifest)
+    assert not (tmp_path / "package").exists()
+
+
 def test_p1_bb_03_tampered_cell_seal_blocks_package(tmp_path):
     manifest = _manifest(tmp_path)
     _seal_all_synthetic_cells(tmp_path, manifest)

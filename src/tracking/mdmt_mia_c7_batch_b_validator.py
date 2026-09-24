@@ -1222,6 +1222,13 @@ def reconstruct_verified_cell_inventory(
     """Rebuild the exact qualification set from 21 verified sealed cells."""
     validate_manifest(manifest)
     root = Path(output_root)
+    cells_root = root / "cells"
+    if not cells_root.is_dir():
+        raise C7BatchBValidationError("exact 21-cell directory is missing")
+    expected_names = sorted(cell["cell_id"] for cell in manifest["cells"])
+    observed_names = sorted(entry.name for entry in cells_root.iterdir())
+    if observed_names != expected_names:
+        raise C7BatchBValidationError("exact 21-cell directory inventory required")
     manifest_sha = canonical_sha256(manifest)
     inventory_rows = []
     qualifications = []

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -20,9 +21,12 @@ from tracking.mdmt_mia_c7_batch_b_package import atomic_write_json, atomic_write
 from tracking.mdmt_mia_c7_batch_b_schema import (
     ALLOWED_PARENT_ENV_KEYS,
     authority_bindings,
+    full_census_cell_resources,
+    full_census_child_spec,
     inventory_generated_source,
     registered_cells,
     sha256_file,
+    validate_full_census_authorization,
     validate_mve_authorization,
 )
 from tracking.mdmt_mia_c7_batch_b_validator import read_jsonl
@@ -152,6 +156,46 @@ def _validate_authorization_scope(spec: dict, authorization: dict) -> None:
         raise C7ChildError("MVE authorization requires REAL_C7_EVIDENCE_CELL mode")
 
 
+def _load_census_authorization(spec: dict, *, observed_head: str) -> tuple[dict, dict]:
+    """Bind a Census child to the exact immutable parent authorization."""
+    if spec.get("mve_authorization_path"):
+        raise C7ChildError("Census child cannot use MVE authorization")
+    path_value = spec.get("census_authorization_path")
+    if not isinstance(path_value, str) or not path_value:
+        raise C7ChildError("Census authorization path is required")
+    path = Path(path_value)
+    if str(path) != str(path.resolve()) or not path.is_file():
+        raise C7ChildError("Census authorization path is not canonical")
+    try:
+        raw_authorization = path.read_bytes()
+        digest = hashlib.sha256(raw_authorization).hexdigest()
+        if digest != spec.get("parent_census_authorization_sha256"):
+            raise ValueError("Census authorization digest mismatch")
+        full = json.loads(raw_authorization.decode("utf-8"))
+        validate_full_census_authorization(
+            full, execution_harness_head=observed_head, execution_root=ROOT)
+        cell = spec.get("cell")
+        expected = full_census_child_spec(
+            full, cell=cell, authorization_path=path,
+            authorization_sha256=digest)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
+        raise C7ChildError("Census authorization validation failed") from exc
+    if spec != expected:
+        raise C7ChildError("Census child spec does not match derived registered cell")
+    resources = full_census_cell_resources(full, cell)
+    slot = Path(resources["mia_run_input_root"]) / cell["pair_id"][1:] / full["split"]
+    if slot.exists():
+        raise C7ChildError("Census run-input slot already exists")
+    scoped = {
+        "generated_source_preparer_identity": full["generated_source_preparer_identity"],
+        "wrapper_identity": full["wrapper_identity"],
+        "execution_resources": resources,
+        "pair_id": cell["pair_id"],
+        "split": full["split"],
+    }
+    return full, scoped
+
+
 def _materialize_generated_source(authorization: dict, *, c7_evidence: bool = False) -> dict:
     """Run the authorized generated-source preparer and inventory result."""
     preparer_path = Path(authorization["generated_source_preparer_identity"]["canonical_path"])
@@ -245,13 +289,18 @@ def _build_wrapper_environment(spec: dict, authorization: dict) -> dict[str, str
 def _execute_wrapper(spec: dict, authorization: dict, *, observed_head: str) -> dict:
     """Execute the authorized wrapper with explicit environment and resources."""
     _verify_authorities(spec)
-    try:
-        validate_mve_authorization(
-            authorization, execution_harness_head=observed_head)
-    except ValueError as exc:
-        raise C7ChildError(
-            "MVE launch resource validation failed: {}".format(exc)) from exc
-    _validate_authorization_scope(spec, authorization)
+    if spec.get("census_authorization_path"):
+        _, refreshed = _load_census_authorization(spec, observed_head=observed_head)
+        if refreshed != authorization:
+            raise C7ChildError("Census launch resources changed")
+    else:
+        try:
+            validate_mve_authorization(
+                authorization, execution_harness_head=observed_head)
+        except ValueError as exc:
+            raise C7ChildError(
+                "MVE launch resource validation failed: {}".format(exc)) from exc
+        _validate_authorization_scope(spec, authorization)
     cell = spec.get("cell", {})
     pair_id = str(cell.get("pair_id", ""))
     if pair_id not in {"P23", "P44", "P66"}:
@@ -354,15 +403,23 @@ def execute_child(spec: dict) -> dict:
         return status
 
     # Non-dry REAL_C7_CELL requires an exact MVE authorization artifact.
-    if not spec.get("mve_authorization_path"):
+    if not spec.get("mve_authorization_path") and not spec.get("census_authorization_path"):
         raise C7ChildError("MVE authorization path is required for non-dry execution")
     if "execution_harness_head" in spec:
         raise C7ChildError("caller execution_harness_head is forbidden")
     observed_git = _observe_git_identity(ROOT)
     if observed_git["worktree_clean"] is not True:
         raise C7ChildError("execution worktree must be clean")
-    authorization = _load_authorization(spec, observed_head=str(observed_git["head"]))
-    _validate_authorization_scope(spec, authorization)
+    census_lineage = None
+    if spec.get("census_authorization_path"):
+        census_lineage, authorization = _load_census_authorization(
+            spec, observed_head=str(observed_git["head"]))
+        resources = authorization["execution_resources"]
+        Path(resources["mia_run_input_root"]).mkdir(parents=True, exist_ok=False)
+        Path(resources["mia_output_root"]).mkdir(parents=True, exist_ok=False)
+    else:
+        authorization = _load_authorization(spec, observed_head=str(observed_git["head"]))
+        _validate_authorization_scope(spec, authorization)
 
     pre_inventory = _materialize_generated_source(
         authorization, c7_evidence=real_evidence)
@@ -415,6 +472,12 @@ def execute_child(spec: dict) -> dict:
         "generated_source_inventory": pre_inventory,
         "outcome_quarantine_paths": outcome_quarantine,
         "environment_boundary_passed": True,
+        "census_authorization_sha256": (
+            None if census_lineage is None else spec["parent_census_authorization_sha256"]),
+        "census_run_id": (
+            None if census_lineage is None else census_lineage["run_id"]),
+        "stable_cell_index": (
+            None if census_lineage is None else spec["stable_cell_index"]),
         "real_c7_windows_validated": real_windows is not None,
         "real_c7_window_count": 0 if real_windows is None else len(real_windows),
         "real_c7_windows_sha256": (
