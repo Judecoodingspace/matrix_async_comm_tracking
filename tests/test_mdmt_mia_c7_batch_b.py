@@ -1292,7 +1292,7 @@ def _mve_cell() -> dict[str, Any]:
 def _mve_spec(tmp_path: Path, auth_path: Path, harness_head: str, **overrides) -> dict[str, Any]:
     spec = {
         "schema_version": "C7_CHILD_SPEC_V1",
-        "mode": "REAL_C7_CELL",
+        "mode": "REAL_C7_EVIDENCE_CELL",
         "dry_run": False,
         "authorities": authority_bindings(),
         "run_id": "exp_20260923_001_p23_p20",
@@ -1309,10 +1309,14 @@ def _mock_subprocess_for_mve(
     monkeypatch, tmp_path: Path, *, wrapper_returncode: int = 0,
     mutate_generated: bool = False, mutate_config: bool = False,
     observed: dict[str, Any] | None = None,
+    emit_mock_observer: bool = True,
 ):
     """Mock subprocess.run for MVE tests: preparer and wrapper only."""
     original_run = subprocess.run
     _mock_git_identity(monkeypatch)
+    if emit_mock_observer:
+        # These are wrapper-boundary tests, not evidence-reconstruction tests.
+        monkeypatch.setattr(CHILD, "build_real_window_records", lambda raw_run, **kwargs: [])
 
     def _command_has(command: list[str], substring: str) -> bool:
         return any(substring in arg for arg in command)
@@ -1356,6 +1360,11 @@ def _mock_subprocess_for_mve(
             assert env.get("MIA_RUN_INPUT_ROOT")
             assert env.get("MIA_OUTPUT_ROOT")
             assert env.get("DEVICE")
+            if emit_mock_observer and wrapper_returncode == 0:
+                atomic_write_json(
+                    Path(env["MIA_C7_EVIDENCE_ROOT"]) / "raw_observer.json",
+                    {"synthetic_test_only": True},
+                )
 
             if mutate_generated:
                 source_root = env.get("MIA_SOURCE_ROOT")
@@ -1712,6 +1721,8 @@ def test_mve_hidden_execution_resource_mismatch_rejects(tmp_path, monkeypatch):
         command = [str(a) for a in args]
         if any("run_mdmt_mia_author_sync.sh" in arg for arg in command):
             captured.append(kwargs.get("env", {}))
+            atomic_write_json(
+                Path(kwargs["env"]["MIA_C7_EVIDENCE_ROOT"]) / "raw_observer.json", {})
             class _Result:
                 stdout = ""
                 stderr = ""
@@ -1734,6 +1745,7 @@ def test_mve_hidden_execution_resource_mismatch_rejects(tmp_path, monkeypatch):
         return original_run(args, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", _wrapper_capturing_run)
+    monkeypatch.setattr(CHILD, "build_real_window_records", lambda raw_run, **kwargs: [])
     _mock_git_identity(monkeypatch)
     resources = _mve_test_resources(tmp_path)
     other_config = tmp_path / "other_config.py"
@@ -1759,6 +1771,8 @@ def test_mve_unknown_parent_env_sentinel_not_forwarded(tmp_path, monkeypatch):
         command = [str(a) for a in args]
         if any("run_mdmt_mia_author_sync.sh" in arg for arg in command):
             captured.append(kwargs.get("env", {}))
+            atomic_write_json(
+                Path(kwargs["env"]["MIA_C7_EVIDENCE_ROOT"]) / "raw_observer.json", {})
             class _Result:
                 stdout = ""
                 stderr = ""
@@ -1781,6 +1795,7 @@ def test_mve_unknown_parent_env_sentinel_not_forwarded(tmp_path, monkeypatch):
         return original_run(args, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", _wrapper_capturing_run)
+    monkeypatch.setattr(CHILD, "build_real_window_records", lambda raw_run, **kwargs: [])
     _mock_git_identity(monkeypatch)
     auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
     spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD")
@@ -1799,7 +1814,8 @@ def test_real_c7_evidence_mode_rejects_successful_wrapper_without_observer_run(
     tmp_path, monkeypatch,
 ):
     observed = {}
-    _mock_subprocess_for_mve(monkeypatch, tmp_path, observed=observed)
+    _mock_subprocess_for_mve(
+        monkeypatch, tmp_path, observed=observed, emit_mock_observer=False)
     auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
     spec = _mve_spec(
         tmp_path, auth_path, "MOCK_HARNESS_HEAD", mode="REAL_C7_EVIDENCE_CELL")
@@ -1812,6 +1828,23 @@ def test_real_c7_evidence_mode_rejects_successful_wrapper_without_observer_run(
     assert service["mode"] == "fifo"
     assert not (Path(spec["output_root"]) / "windows.jsonl").exists()
     assert not (Path(spec["output_root"]) / "CHILD_STATUS.json").exists()
+
+
+def test_mve_authorization_rejects_legacy_non_dry_mode_before_materialization(
+    tmp_path, monkeypatch,
+):
+    _mock_git_identity(monkeypatch)
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    spec = _mve_spec(tmp_path, auth_path, "MOCK_HARNESS_HEAD", mode="REAL_C7_CELL")
+
+    def _must_not_run(*args, **kwargs):
+        raise AssertionError("generated source or wrapper reached in legacy mode")
+
+    monkeypatch.setattr(CHILD, "_materialize_generated_source", _must_not_run)
+    monkeypatch.setattr(CHILD, "_execute_wrapper", _must_not_run)
+    with pytest.raises(CHILD.C7ChildError, match="requires REAL_C7_EVIDENCE_CELL"):
+        CHILD.execute_child(spec)
+    assert not (Path(spec["output_root"]) / "windows.jsonl").exists()
 
 
 def test_mve_valid_authorization_gate_opens_to_wrapper_boundary(tmp_path, monkeypatch):

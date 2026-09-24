@@ -148,6 +148,9 @@ def _validate_authorization_scope(spec: dict, authorization: dict) -> None:
                 "MVE authorization {} mismatch: {} != {}".format(
                     label, auth_value, spec_value))
 
+    if spec.get("mode") != "REAL_C7_EVIDENCE_CELL":
+        raise C7ChildError("MVE authorization requires REAL_C7_EVIDENCE_CELL mode")
+
 
 def _materialize_generated_source(authorization: dict, *, c7_evidence: bool = False) -> dict:
     """Run the authorized generated-source preparer and inventory result."""
