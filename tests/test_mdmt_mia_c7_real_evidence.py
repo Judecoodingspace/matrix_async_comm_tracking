@@ -1,6 +1,7 @@
 """Synthetic callback tests for real C7 evidence; no author tracking is run."""
 from __future__ import annotations
 
+import base64
 import copy
 import importlib.util
 import hashlib
@@ -15,7 +16,12 @@ from tracking.mdmt_mia_async_deadline_runtime import (
     _snapshot_c5_receiver_state,
 )
 from tracking.mdmt_mia_c7_batch_b import aggregate_cell, raw_no_stale_evidence_from_observer
-from tracking.mdmt_mia_c7_batch_b_schema import registered_cells
+from tracking.mdmt_mia_c7_batch_b_schema import (
+    VALIDATED_WINDOW_SCHEMA, canonical_sha256, registered_cells,
+)
+from tracking.mdmt_mia_c7_batch_b_validator import (
+    C7BatchBValidationError, _window_facts, reject_forbidden_outcome_content,
+)
 from tracking.mdmt_mia_c7_census import C7CoreObserver
 from tracking.mdmt_mia_c7_real_evidence import (
     C7RealEvidenceError, REAL_WINDOW_SCHEMA, analyze_real_window,
@@ -91,6 +97,153 @@ def _analyze(frame, state=None, config=None):
             if state is None else state),
     }
     return analyze_real_window(evidence, cell=CELL, run_id=RUN_ID)
+
+
+def _base64_collision_frame():
+    """Emit a synthetic numeric wire whose Base64 contains a metric token."""
+    encoded_rows = "idsw" + "A" * 28
+    assert base64.b64encode(base64.b64decode(encoded_rows)).decode("ascii") == encoded_rows
+    wire = {
+        "kind": "id_state", "capture_frame": 0, "emitted_frame": 0,
+        "arrival_frame": 0, "source_state_version": 1,
+        "valid_until_frame": 0,
+        "payload": {
+            "stage": "synthetic", "track_rows_view1": {
+                "dtype": "float64", "shape": [0, 5], "data": "",
+            },
+            "track_rows_view2": {
+                "dtype": "float64", "shape": [1, 3], "data": encoded_rows,
+            },
+            "matched_ids": [], "confirmed_ids": [9],
+            "max_id_view1": 0, "max_id_view2": 0,
+            "remap_events": [], "post_state_digest": "0" * 64,
+        },
+    }
+    observer = C7CoreObserver()
+    server = _C4SharedLogicalServer(
+        "fifo", CELL["capacity_bytes"], None,
+        "23-1", RUN_ID, "FIFO_strong", "P23", False)
+    empty_rows = np.empty((0, 5), dtype=np.float64)
+
+    def context(packet_id, frame):
+        return _snapshot_c5_receiver_state(
+            frame, packet_id, empty_rows, empty_rows, (9,), {}, 0)
+
+    server.begin_frame(0, c7_observer=observer, c7_context_provider=context)
+    encoded_wire = json.dumps(wire, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(encoded_wire.encode("utf-8")).hexdigest()
+    server.admit(
+        "id_state", 0, wire, encoded_wire, digest,
+        c7_observer=observer, c7_context_provider=context)
+    server.finalize_pending(0, c7_observer=observer)
+    return raw_no_stale_evidence_from_observer(0, observer)
+
+
+def test_numeric_wire_base64_collision_passes_both_real_window_firewalls():
+    frame = _base64_collision_frame()
+    evidence = {
+        "schema_version": REAL_WINDOW_SCHEMA,
+        "raw_observation": frame, "service_config": _config(),
+        "state_before": {
+            "packet_wires": {}, "first_service_classifications": {},
+            "queue_snapshot": [],
+        },
+    }
+    validation, _ = analyze_real_window(evidence, cell=CELL, run_id=RUN_ID)
+    record = {
+        "schema_version": VALIDATED_WINDOW_SCHEMA,
+        "run_id": RUN_ID, "cell_id": CELL["cell_id"],
+        "pair_id": CELL["pair_id"], "capacity_id": CELL["capacity_id"],
+        "capacity_bytes": CELL["capacity_bytes"], "frame_index": 0,
+        "evidence_kind": "REAL_C7_OBSERVER", "evidence": evidence,
+        "validation": validation,
+        "evidence_sha256": canonical_sha256(evidence),
+        "validation_sha256": canonical_sha256(validation),
+    }
+    assert _window_facts(record, run_id=RUN_ID, cell=CELL)[0] == 0
+
+
+def _collision_firewall_doc():
+    return {
+        "evidence": {
+            "schema_version": REAL_WINDOW_SCHEMA,
+            "raw_observation": _base64_collision_frame(),
+            "service_config": _config(),
+            "state_before": {
+                "packet_wires": {}, "first_service_classifications": {},
+                "queue_snapshot": [],
+            },
+        },
+        "validation": {},
+    }
+
+
+def _first_wire_item(document):
+    return next(
+        row["item"]
+        for row in document["evidence"]["raw_observation"]["observations"]
+        if isinstance(row.get("item"), dict) and isinstance(row["item"].get("wire"), dict)
+    )
+
+
+@pytest.mark.parametrize("token", [
+    "idf1", "idsw", "mota", "hota", "tracking_metric",
+    "tracking_outcome", "tracking_result", "scientific_result",
+])
+@pytest.mark.parametrize("location", ["key", "value"])
+def test_real_wire_exception_does_not_exempt_outcome_content(token, location):
+    document = _collision_firewall_doc()
+    if location == "key":
+        document["validation"][token] = 1
+    else:
+        document["validation"]["ordinary_field"] = token
+    with pytest.raises(C7BatchBValidationError, match="forbidden outcome content"):
+        reject_forbidden_outcome_content(document, real_observer_context=True)
+
+
+@pytest.mark.parametrize("mutation", [
+    "plain_text", "malformed_base64", "noncanonical_base64", "dtype",
+    "shape", "byte_count", "extra_array_outcome", "extra_payload_outcome",
+    "untrusted_wire", "wire_digest",
+])
+def test_real_wire_exception_rejects_unqualified_array(mutation):
+    document = _collision_firewall_doc()
+    item = _first_wire_item(document)
+    wire = item["wire"]
+    array = wire["payload"]["track_rows_view2"]
+    if mutation == "plain_text":
+        array["data"] = "idsw=plain text"
+    elif mutation == "malformed_base64":
+        array["data"] = "idsw!"
+    elif mutation == "noncanonical_base64":
+        array["data"] = "idswAAAAAAB="
+        array["shape"] = [1, 1]
+    elif mutation == "dtype":
+        array["dtype"] = "float32"
+    elif mutation == "shape":
+        array["shape"] = [1, 3, 1]
+    elif mutation == "byte_count":
+        array["shape"] = [1, 4]
+    elif mutation == "extra_array_outcome":
+        array["tracking_outcome"] = "unsafe"
+    elif mutation == "extra_payload_outcome":
+        wire["payload"]["tracking_result"] = "unsafe"
+    elif mutation == "untrusted_wire":
+        wire["kind"] = "local_track"
+    if mutation != "wire_digest":
+        item["wire_digest"] = hashlib.sha256(json.dumps(
+            wire, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    else:
+        item["wire_digest"] = "0" * 64
+    with pytest.raises(C7BatchBValidationError):
+        reject_forbidden_outcome_content(document, real_observer_context=True)
+
+
+def test_real_wire_exception_does_not_apply_at_unapproved_path():
+    document = _collision_firewall_doc()
+    document["evidence"]["raw_observation"]["unexpected_data"] = "idsw" + "A" * 28
+    with pytest.raises(C7BatchBValidationError, match="forbidden outcome content"):
+        reject_forbidden_outcome_content(document, real_observer_context=True)
 
 
 def test_generated_author_entry_attaches_passive_c7_observer():

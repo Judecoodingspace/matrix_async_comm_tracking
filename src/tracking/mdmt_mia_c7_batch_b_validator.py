@@ -6,8 +6,11 @@ window-domain counts, the four gates, the qualified subset, and selection.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
+import math
 import re
 import subprocess
 from pathlib import Path
@@ -181,23 +184,180 @@ def read_jsonl(path: Path | str) -> list[dict[str, Any]]:
     return records
 
 
-def reject_forbidden_outcome_content(value: Any, *, policy_context: bool = False) -> None:
-    """Reject outcome-bearing keys/values while allowing firewall declarations."""
-    if isinstance(value, Mapping):
-        for key, item in value.items():
-            if key == "outcome_firewall_forbidden_families":
+_C7_WIRE_KEYS = frozenset({
+    "kind", "capture_frame", "emitted_frame", "arrival_frame",
+    "source_state_version", "valid_until_frame", "payload",
+})
+_C7_ARRAY_RANKS = {
+    "id_state": {"track_rows_view1": (2,), "track_rows_view2": (2,)},
+    "supplement": {
+        "track_rows_view1": (2,), "track_rows_view2": (2,),
+        "supplement_view1": (1, 2), "supplement_view2": (1, 2),
+    },
+}
+_C7_PAYLOAD_KEYS = {
+    "id_state": frozenset({
+        "stage", "track_rows_view1", "track_rows_view2", "matched_ids",
+        "confirmed_ids", "max_id_view1", "max_id_view2", "remap_events",
+        "post_state_digest",
+    }),
+    "supplement": frozenset({
+        "stage", "track_rows_view1", "track_rows_view2", "matched_ids",
+        "confirmed_ids", "supplement_view1", "supplement_view2",
+        "low_score", "post_state_digest",
+    }),
+}
+
+
+def _forbidden_text(value: str) -> bool:
+    normalized = value.casefold().replace("\\", "/")
+    return any(token in normalized for token in FORBIDDEN_OUTCOME_FAMILIES)
+
+
+def _validated_numeric_array(value: Any, allowed_ranks: tuple[int, ...]) -> None:
+    """Validate frozen PacketRuntime._encode_array without interpreting numeric bytes."""
+    if not isinstance(value, Mapping) or set(value) != {"dtype", "shape", "data"}:
+        raise C7BatchBValidationError("C7 opaque wire array container mismatch")
+    if value["dtype"] != "float64":
+        raise C7BatchBValidationError("C7 opaque wire array dtype mismatch")
+    shape = value["shape"]
+    if (not isinstance(shape, list) or len(shape) not in allowed_ranks
+            or any(isinstance(dim, bool) or not isinstance(dim, int) or dim < 0
+                   for dim in shape)):
+        raise C7BatchBValidationError("C7 opaque wire array shape mismatch")
+    data = value["data"]
+    if not isinstance(data, str):
+        raise C7BatchBValidationError("C7 opaque wire array data must be Base64")
+    try:
+        decoded = base64.b64decode(data, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise C7BatchBValidationError("C7 opaque wire array malformed Base64") from exc
+    if base64.b64encode(decoded).decode("ascii") != data:
+        raise C7BatchBValidationError("C7 opaque wire array non-canonical Base64")
+    if len(decoded) != 8 * math.prod(shape):
+        raise C7BatchBValidationError("C7 opaque wire array byte count mismatch")
+
+
+def _real_observer_opaque_data_paths(value: Mapping[str, Any]) -> set[tuple[Any, ...]]:
+    """Approve only digest-bound numeric arrays at frozen real-observer wire sites."""
+    evidence = value.get("evidence")
+    if (not isinstance(evidence, Mapping)
+            or set(evidence) != {
+                "schema_version", "raw_observation", "service_config", "state_before",
+            }
+            or evidence.get("schema_version") != "C7_REAL_OBSERVER_WINDOW_V1"):
+        return set()
+    config = evidence.get("service_config")
+    if (not isinstance(config, Mapping)
+            or config.get("schema_version") != "C7_REGISTERED_FIFO_SERVICE_V1"
+            or config.get("mode") != "fifo"):
+        return set()
+    approved: set[tuple[Any, ...]] = set()
+
+    def bind(wire: Any, channel: Any, digest: Any, path: tuple[Any, ...]) -> None:
+        if not isinstance(wire, Mapping) or not isinstance(wire.get("payload"), Mapping):
+            return
+        payload = wire["payload"]
+        ranks = _C7_ARRAY_RANKS.get(channel)
+        if ranks is None:
+            return
+        colliding = [
+            field for field in ranks
+            if isinstance(payload.get(field), Mapping)
+            and isinstance(payload[field].get("data"), str)
+            and _forbidden_text(payload[field]["data"])
+        ]
+        if not colliding:
+            return
+        if (set(wire) != _C7_WIRE_KEYS or wire.get("kind") != channel
+                or set(payload) != _C7_PAYLOAD_KEYS[channel]
+                or not isinstance(digest, str) or not _HEX64.fullmatch(digest)):
+            raise C7BatchBValidationError("C7 opaque wire provenance or structure mismatch")
+        try:
+            actual = hashlib.sha256(json.dumps(
+                wire, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+        except (TypeError, ValueError) as exc:
+            raise C7BatchBValidationError("C7 opaque wire is not canonical JSON") from exc
+        if actual != digest:
+            raise C7BatchBValidationError("C7 opaque wire digest mismatch")
+        for field, allowed_ranks in ranks.items():
+            _validated_numeric_array(payload[field], allowed_ranks)
+        for field in colliding:
+            approved.add(path + ("payload", field, "data"))
+
+    raw = evidence.get("raw_observation")
+    if isinstance(raw, Mapping) and isinstance(raw.get("observations"), list):
+        for index, row in enumerate(raw["observations"]):
+            if not isinstance(row, Mapping):
                 continue
-            reject_forbidden_outcome_content(str(key), policy_context=policy_context)
-            reject_forbidden_outcome_content(item, policy_context=policy_context)
-        return
-    if isinstance(value, (list, tuple)):
-        for item in value:
-            reject_forbidden_outcome_content(item, policy_context=policy_context)
-        return
-    if isinstance(value, str) and not policy_context:
-        normalized = value.casefold().replace("\\", "/")
-        if any(token in normalized for token in FORBIDDEN_OUTCOME_FAMILIES):
-            raise C7BatchBValidationError("forbidden outcome content")
+            item = row.get("item")
+            if isinstance(item, Mapping):
+                bind(item.get("wire"), item.get("channel"), item.get("wire_digest"),
+                     ("evidence", "raw_observation", "observations", index, "item", "wire"))
+            classification = row.get("stale_classification")
+            if isinstance(classification, Mapping):
+                source = classification.get("source")
+                if isinstance(source, Mapping):
+                    bind(classification.get("source_wire"), source.get("channel"),
+                         source.get("wire_digest"),
+                         ("evidence", "raw_observation", "observations", index,
+                          "stale_classification", "source_wire"))
+    before = evidence.get("state_before")
+    if isinstance(before, Mapping):
+        wires = before.get("packet_wires")
+        if isinstance(wires, Mapping):
+            for identity, wire in wires.items():
+                try:
+                    source = json.loads(identity)
+                except (TypeError, ValueError):
+                    continue
+                if isinstance(source, Mapping) and set(source) == {
+                        "packet_id", "wire_digest", "channel"}:
+                    bind(wire, source["channel"], source["wire_digest"],
+                         ("evidence", "state_before", "packet_wires", identity))
+        classifications = before.get("first_service_classifications")
+        if isinstance(classifications, Mapping):
+            for identity, classification in classifications.items():
+                if not isinstance(classification, Mapping):
+                    continue
+                try:
+                    source = json.loads(identity)
+                except (TypeError, ValueError):
+                    continue
+                if (isinstance(source, Mapping) and set(source) == {
+                        "packet_id", "wire_digest", "channel"}
+                        and classification.get("source") == source):
+                    bind(classification.get("source_wire"), source["channel"],
+                         source["wire_digest"],
+                         ("evidence", "state_before", "first_service_classifications",
+                          identity, "source_wire"))
+    return approved
+
+
+def reject_forbidden_outcome_content(
+    value: Any, *, policy_context: bool = False, real_observer_context: bool = False,
+) -> None:
+    """Reject outcome content; exempt only validated opaque real-observer wire bytes."""
+    approved = (
+        _real_observer_opaque_data_paths(value)
+        if real_observer_context and isinstance(value, Mapping) else set()
+    )
+
+    def walk(item: Any, path: tuple[Any, ...]) -> None:
+        if isinstance(item, Mapping):
+            for key, child in item.items():
+                if key == "outcome_firewall_forbidden_families":
+                    continue
+                walk(str(key), path + ("<key>",))
+                walk(child, path + (key,))
+        elif isinstance(item, (list, tuple)):
+            for index, child in enumerate(item):
+                walk(child, path + (index,))
+        elif isinstance(item, str) and not policy_context:
+            if path not in approved and _forbidden_text(item):
+                raise C7BatchBValidationError("forbidden outcome content")
+
+    walk(value, ())
 
 
 def _raw_packet_identity(value: Mapping[str, Any]) -> tuple[str, str, str]:
@@ -596,7 +756,9 @@ def _window_facts(
         raise C7BatchBValidationError("window evidence digest mismatch")
     if _digest(record.get("validation_sha256"), "validation digest") != canonical_sha256(validation):
         raise C7BatchBValidationError("window validation digest mismatch")
-    reject_forbidden_outcome_content(record)
+    reject_forbidden_outcome_content(
+        record,
+        real_observer_context=record.get("evidence_kind") == "REAL_C7_OBSERVER")
 
     if record.get("evidence_kind") == "REAL_C7_OBSERVER":
         from .mdmt_mia_c7_real_evidence import analyze_real_window

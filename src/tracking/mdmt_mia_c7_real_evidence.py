@@ -344,7 +344,9 @@ def analyze_real_window(
         "recipient_proofs": recipients,
         "state_after_sha256": canonical_sha256(after),
     }
-    reject_forbidden_outcome_content({"evidence": evidence, "validation": validation})
+    reject_forbidden_outcome_content(
+        {"evidence": evidence, "validation": validation},
+        real_observer_context=True)
     return validation, after
 
 
