@@ -152,7 +152,37 @@ def patch_confirmed_match_points(root: Path) -> None:
     target.write_text(replace_once(text, old, new, "paired current H correspondences"), encoding="utf-8")
 
 
-def patch_variant(root: Path, runtime_source: Path) -> dict[str, object]:
+def attach_c7_observer(text: str) -> str:
+    """Instrument only the generated author entry for passive C7 evidence."""
+    text = replace_once(
+        text,
+        "from utils.async_deadline_runtime import PacketRuntime\n",
+        "from utils.async_deadline_runtime import PacketRuntime\n"
+        "from tracking.mdmt_mia_c7_census import C7CoreObserver\n"
+        "from tracking.mdmt_mia_c7_real_evidence import write_raw_observer_run\n",
+        "C7 passive observer imports",
+    )
+    text = replace_once(
+        text,
+        "        packet_runtime = PacketRuntime(\n"
+        "            args.result_dir, args.method, dirrr, os.environ.get('MIA_ACTIVE_PACKET_STAGES', ''))\n",
+        "        c7_observer = C7CoreObserver()\n"
+        "        packet_runtime = PacketRuntime(\n"
+        "            args.result_dir, args.method, dirrr, os.environ.get('MIA_ACTIVE_PACKET_STAGES', ''),\n"
+        "            c7_observer=c7_observer)\n",
+        "C7 passive observer attachment",
+    )
+    return replace_once(
+        text,
+        "        packet_runtime.finalize()\n",
+        "        packet_runtime.finalize()\n"
+        "        write_raw_observer_run(\n"
+        "            c7_observer, packet_runtime, os.environ['MIA_C7_EVIDENCE_ROOT'])\n",
+        "C7 raw observer persistence",
+    )
+
+
+def patch_variant(root: Path, runtime_source: Path, *, c7_evidence: bool = False) -> dict[str, object]:
     mia = root / "demo/supplement_MIA.py"
     runtime_target = root / "demo/utils/async_deadline_runtime.py"
     if not mia.is_file() or not runtime_source.is_file():
@@ -242,6 +272,8 @@ def patch_variant(root: Path, runtime_source: Path) -> dict[str, object]:
         "        packet_runtime.finalize()\n",
         "async trace finalization",
     )
+    if c7_evidence:
+        text = attach_c7_observer(text)
     mia.write_text(text, encoding="utf-8")
     manifest = {
         "variant_root": str(root),
@@ -270,6 +302,7 @@ def patch_variant(root: Path, runtime_source: Path) -> dict[str, object]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--c7-evidence", action="store_true")
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--variant-root", type=Path, required=True)
     parser.add_argument("--runtime-source", type=Path,
@@ -296,7 +329,7 @@ def main() -> None:
                 raise FileNotFoundError("source or async variant file is missing: {}".format(relative))
             shutil.copy2(source, target)
     print("[2/2][patch] creating deadline-driven async packet runtime", flush=True)
-    manifest = patch_variant(args.variant_root, args.runtime_source)
+    manifest = patch_variant(args.variant_root, args.runtime_source, c7_evidence=args.c7_evidence)
     print(f"[finalize] manifest={args.variant_root / 'async_deadline_manifest.json'} changed={len(manifest['changed_files'])}", flush=True)
 
 

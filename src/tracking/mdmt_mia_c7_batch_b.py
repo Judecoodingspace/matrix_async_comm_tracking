@@ -372,6 +372,16 @@ def _validated_window_facts(
     if _digest(record.get("validation_sha256"), "validation digest") != canonical_sha256(validation):
         raise C7BatchBError("window validation digest mismatch")
 
+    if record.get("evidence_kind") == "REAL_C7_OBSERVER":
+        from .mdmt_mia_c7_real_evidence import analyze_real_window
+        try:
+            reconstructed, _ = analyze_real_window(evidence, cell=cell, run_id=run_id)
+        except (ValueError, KeyError, TypeError) as exc:
+            raise C7BatchBError("real C7 window evidence is invalid") from exc
+        if reconstructed != validation or reconstructed["frame_index"] != frame:
+            raise C7BatchBError("real C7 window validation reconstruction mismatch")
+        return frame, bool(reconstructed["stale_present"]), bool(reconstructed["window_eligible"])
+
     if record.get("evidence_kind") == "BATCH_A_CORE":
         try:
             reconstructed = validate_core_evidence(evidence)
@@ -407,8 +417,9 @@ def aggregate_cell(
     if tuple(sorted(expected)) != expected:
         raise C7BatchBError("expected frame domain must be sorted")
 
+    records = list(validated_windows)
     parsed = []
-    for record in validated_windows:
+    for record in records:
         frame, stale, eligible = _validated_window_facts(record, run_id=run_id, cell=cell)
         parsed.append((frame, stale, eligible, canonical_sha256(record)))
     frames = [row[0] for row in parsed]
@@ -418,6 +429,17 @@ def aggregate_cell(
         missing = sorted(set(expected) - set(frames))
         extra = sorted(set(frames) - set(expected))
         raise C7BatchBError("window domain mismatch: missing={} extra={}".format(missing, extra))
+    real_rows = [row for row in records if row.get("evidence_kind") == "REAL_C7_OBSERVER"]
+    if real_rows:
+        if len(real_rows) != len(records):
+            raise C7BatchBError("real and fixture windows cannot be mixed")
+        from .mdmt_mia_c7_real_evidence import analyze_real_window
+        state = {"packet_wires": {}, "first_service_classifications": {}, "queue_snapshot": []}
+        for row in sorted(real_rows, key=lambda value: value["frame_index"]):
+            if row["evidence"]["state_before"] != state:
+                raise C7BatchBError("sticky stale or packet-wire history is discontinuous")
+            _, state = analyze_real_window(
+                row["evidence"], cell=cell, run_id=run_id)
     parsed.sort(key=lambda row: row[0])
     n_all = len(parsed)
     n_stale = sum(1 for _, stale, _, _ in parsed if stale)

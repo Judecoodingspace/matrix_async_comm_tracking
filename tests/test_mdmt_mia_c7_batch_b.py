@@ -1790,9 +1790,28 @@ def test_mve_unknown_parent_env_sentinel_not_forwarded(tmp_path, monkeypatch):
     assert captured[0]["PYTHONDONTWRITEBYTECODE"] == "1"
     assert "C7_MVE_FORBIDDEN_PARENT_SENTINEL" not in captured[0]
     status_path = Path(spec["output_root"]) / "CHILD_STATUS.json"
+
     status = json.loads(status_path.read_text(encoding="utf-8"))
     assert "C7_MVE_FORBIDDEN_PARENT_SENTINEL" not in status["allowed_parent_environment"]
     assert "C7_MVE_FORBIDDEN_PARENT_SENTINEL" not in status["bound_environment"]
+
+def test_real_c7_evidence_mode_rejects_successful_wrapper_without_observer_run(
+    tmp_path, monkeypatch,
+):
+    observed = {}
+    _mock_subprocess_for_mve(monkeypatch, tmp_path, observed=observed)
+    auth_path, _ = _mve_authorization(tmp_path, harness_head="MOCK_HARNESS_HEAD")
+    spec = _mve_spec(
+        tmp_path, auth_path, "MOCK_HARNESS_HEAD", mode="REAL_C7_EVIDENCE_CELL")
+    with pytest.raises(CHILD.C7ChildError, match="observer evidence is absent or invalid"):
+        CHILD.execute_child(spec)
+    assert "--c7-evidence" in observed["preparer_command"]
+    service = json.loads(observed["wrapper_environment"]["MIA_C7_SERVICE_CONFIG"])
+    assert service["capacity_id"] == "P20"
+    assert service["rate_logical_bytes_per_frame"] == 16649
+    assert service["mode"] == "fifo"
+    assert not (Path(spec["output_root"]) / "windows.jsonl").exists()
+    assert not (Path(spec["output_root"]) / "CHILD_STATUS.json").exists()
 
 
 def test_mve_valid_authorization_gate_opens_to_wrapper_boundary(tmp_path, monkeypatch):

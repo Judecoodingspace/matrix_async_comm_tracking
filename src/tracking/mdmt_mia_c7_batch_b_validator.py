@@ -598,6 +598,16 @@ def _window_facts(
         raise C7BatchBValidationError("window validation digest mismatch")
     reject_forbidden_outcome_content(record)
 
+    if record.get("evidence_kind") == "REAL_C7_OBSERVER":
+        from .mdmt_mia_c7_real_evidence import analyze_real_window
+        try:
+            reconstructed, _ = analyze_real_window(evidence, cell=cell, run_id=run_id)
+        except (ValueError, KeyError, TypeError) as exc:
+            raise C7BatchBValidationError("real C7 window evidence is invalid") from exc
+        if reconstructed != validation or reconstructed["frame_index"] != frame:
+            raise C7BatchBValidationError("real C7 window validation mismatch")
+        return frame, bool(reconstructed["stale_present"]), bool(reconstructed["window_eligible"]), canonical_sha256(record)
+
     if record.get("evidence_kind") == "BATCH_A_CORE":
         try:
             reconstructed = validate_core_evidence(evidence)
@@ -625,13 +635,24 @@ def reconstruct_aggregate(
     expected = tuple(_integer(frame, "expected frame") for frame in expected_frame_domain)
     if not expected or tuple(sorted(expected)) != expected or len(set(expected)) != len(expected):
         raise C7BatchBValidationError("invalid expected frame domain")
-    parsed = [_window_facts(record, run_id=run_id, cell=cell) for record in windows]
+    records = list(windows)
+    parsed = [_window_facts(record, run_id=run_id, cell=cell) for record in records]
     frames = [row[0] for row in parsed]
     if len(frames) != len(set(frames)):
         raise C7BatchBValidationError("duplicate window")
     if set(frames) != set(expected):
         raise C7BatchBValidationError("window-domain bijection failed")
     parsed.sort(key=lambda row: row[0])
+    real_rows = [row for row in records if row.get("evidence_kind") == "REAL_C7_OBSERVER"]
+    if real_rows:
+        if len(real_rows) != len(records):
+            raise C7BatchBValidationError("real and fixture windows cannot be mixed")
+        from .mdmt_mia_c7_real_evidence import analyze_real_window
+        state = {"packet_wires": {}, "first_service_classifications": {}, "queue_snapshot": []}
+        for row in sorted(real_rows, key=lambda value: value["frame_index"]):
+            if row["evidence"]["state_before"] != state:
+                raise C7BatchBValidationError("real sticky observer history is discontinuous")
+            _, state = analyze_real_window(row["evidence"], cell=cell, run_id=run_id)
     n_all = len(parsed)
     n_stale = sum(1 for _, stale, _, _ in parsed if stale)
     n_eligible = sum(1 for _, _, eligible, _ in parsed if eligible)

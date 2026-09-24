@@ -156,6 +156,45 @@ def _parse_c4_service_config(raw):
     }
 
 
+
+def _parse_c7_service_config(raw):
+    """Bind registered C7 capacities to the existing C4 FIFO server."""
+    try:
+        parsed = json.loads(str(raw))
+    except ValueError as exc:
+        raise ValueError("MIA_C7_SERVICE_CONFIG must be JSON") from exc
+    required = {
+        "schema_version", "mode", "capacity_id", "rate_logical_bytes_per_frame",
+        "ledger_enabled", "run_id", "pair_id",
+    }
+    if not isinstance(parsed, dict) or set(parsed) != required:
+        raise ValueError("MIA_C7_SERVICE_CONFIG keys mismatch")
+    if parsed["schema_version"] != "C7_REGISTERED_FIFO_SERVICE_V1":
+        raise ValueError("unknown C7 service config version")
+    if parsed["mode"] != "fifo" or parsed["ledger_enabled"] is not True:
+        raise ValueError("C7 requires finite FIFO service with ledger")
+    from tracking.mdmt_mia_c7_batch_b_schema import CAPACITY_DOMAIN
+    rates = dict(CAPACITY_DOMAIN)
+    capacity_id = parsed["capacity_id"]
+    rate = parsed["rate_logical_bytes_per_frame"]
+    if (capacity_id not in rates or isinstance(rate, bool)
+            or not isinstance(rate, int) or rate != rates[capacity_id]):
+        raise ValueError("C7 service capacity is not the registered value")
+    if not isinstance(parsed["run_id"], str) or not parsed["run_id"]:
+        raise ValueError("C7 service run_id is required")
+    if parsed["pair_id"] not in {"P23", "P44", "P66"}:
+        raise ValueError("C7 service pair_id is not registered")
+    legacy_condition = {"P20": "FIFO_strong", "P50": "FIFO_moderate", "P80": "FIFO_mild"}
+    return {
+        "mode": "fifo",
+        "condition": legacy_condition.get(capacity_id, "C7_" + capacity_id),
+        "rate_logical_bytes_per_frame": rate,
+        "ledger_enabled": True,
+        "run_id": parsed["run_id"],
+        "pair_id": parsed["pair_id"],
+        "capacity_id": capacity_id,
+        "schema_version": parsed["schema_version"],
+    }
 def _parse_c5_shadow_config(raw):
     """Parse an explicit, observational-only C5 Shadow configuration."""
     if not raw:
@@ -1353,7 +1392,13 @@ class PacketRuntime(object):
         self.output_dir = Path(result_dir) / str(method)
         self.sequence_name = str(sequence_name)
         self.delays = _parse_delays(os.environ.get("MIA_ASYNC_CHANNEL_DELAYS", ""))
-        self.c4_service_config = _parse_c4_service_config(os.environ.get("MIA_C4_SERVICE_CONFIG", ""))
+        c7_service = os.environ.get("MIA_C7_SERVICE_CONFIG", "")
+        c4_service = os.environ.get("MIA_C4_SERVICE_CONFIG", "")
+        if c7_service and c4_service:
+            raise ValueError("C4 and C7 service configurations are mutually exclusive")
+        self.c4_service_config = (
+            _parse_c7_service_config(c7_service) if c7_service
+            else _parse_c4_service_config(c4_service))
         self.c5_shadow_config = _parse_c5_shadow_config(os.environ.get("MIA_C5_SHADOW_CONFIG", ""))
         self.c6_suppression_config = _parse_c6_suppression_config(os.environ.get("MIA_C6_SUPPRESSION_CONFIG", ""))
         self._c7_observer = c7_observer

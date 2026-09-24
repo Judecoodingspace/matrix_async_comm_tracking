@@ -28,6 +28,8 @@ from tracking.mdmt_mia_c7_batch_b_schema import (
 from tracking.mdmt_mia_c7_batch_b_validator import read_jsonl
 
 
+from tracking.mdmt_mia_c7_real_evidence import build_real_window_records
+
 class C7ChildError(RuntimeError):
     pass
 
@@ -147,7 +149,7 @@ def _validate_authorization_scope(spec: dict, authorization: dict) -> None:
                     label, auth_value, spec_value))
 
 
-def _materialize_generated_source(authorization: dict) -> dict:
+def _materialize_generated_source(authorization: dict, *, c7_evidence: bool = False) -> dict:
     """Run the authorized generated-source preparer and inventory result."""
     preparer_path = Path(authorization["generated_source_preparer_identity"]["canonical_path"])
     resources = authorization["execution_resources"]
@@ -167,15 +169,18 @@ def _materialize_generated_source(authorization: dict) -> dict:
     if variant_root.exists():
         raise C7ChildError("generated source root already exists: {}".format(variant_root))
 
-    completed = subprocess.run(
-        [
+    command = [
             sys.executable,
             str(preparer_path),
             "--source-root", str(source_root),
             "--variant-root", str(variant_root),
             "--runtime-source", str(runtime_source),
             "--copy-source",
-        ],
+    ]
+    if c7_evidence:
+        command.append("--c7-evidence")
+    completed = subprocess.run(
+        command,
         cwd=ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -217,6 +222,20 @@ def _build_wrapper_environment(spec: dict, authorization: dict) -> dict[str, str
         "MIA_OUTPUT_ROOT": str(Path(resources["mia_output_root"]).resolve()),
         "DEVICE": str(resources["device"]),
     })
+    if spec.get("mode") == "REAL_C7_EVIDENCE_CELL":
+        environment.update({
+            "MIA_C7_SERVICE_CONFIG": json.dumps({
+                "schema_version": "C7_REGISTERED_FIFO_SERVICE_V1",
+                "mode": "fifo",
+                "capacity_id": cell["capacity_id"],
+                "rate_logical_bytes_per_frame": cell["capacity_bytes"],
+                "ledger_enabled": True,
+                "run_id": spec["run_id"],
+                "pair_id": cell["pair_id"],
+            }, sort_keys=True, separators=(",", ":")),
+            "MIA_C7_EVIDENCE_ROOT": str(
+                Path(spec["output_root"]).resolve() / "raw_c7"),
+        })
     return environment
 
 
@@ -267,7 +286,7 @@ def _execute_wrapper(spec: dict, authorization: dict, *, observed_head: str) -> 
 def build_real_wrapper_command(spec: dict) -> tuple[list[str], dict[str, str]]:
     """Build the real author-wrapper path without reading any result artifact."""
     _verify_authorities(spec)
-    if spec.get("mode") != "REAL_C7_CELL":
+    if spec.get("mode") not in {"REAL_C7_CELL", "REAL_C7_EVIDENCE_CELL"}:
         raise C7ChildError("real wrapper command requires REAL_C7_CELL mode")
     cell = spec.get("cell", {})
     pair_id = str(cell.get("pair_id", ""))
@@ -313,8 +332,9 @@ def execute_child(spec: dict) -> dict:
         }
         atomic_write_json(output_root / "CHILD_STATUS.json", status)
         return status
-    if mode != "REAL_C7_CELL":
+    if mode not in {"REAL_C7_CELL", "REAL_C7_EVIDENCE_CELL"}:
         raise C7ChildError("unsupported child mode")
+    real_evidence = mode == "REAL_C7_EVIDENCE_CELL"
     if spec.get("dry_run") is True:
         command, controlled = build_real_wrapper_command(spec)
         status = {
@@ -341,7 +361,8 @@ def execute_child(spec: dict) -> dict:
     authorization = _load_authorization(spec, observed_head=str(observed_git["head"]))
     _validate_authorization_scope(spec, authorization)
 
-    pre_inventory = _materialize_generated_source(authorization)
+    pre_inventory = _materialize_generated_source(
+        authorization, c7_evidence=real_evidence)
 
     wrapper_result = _execute_wrapper(
         spec, authorization, observed_head=str(observed_git["head"]))
@@ -351,6 +372,17 @@ def execute_child(spec: dict) -> dict:
         authorization["execution_resources"]["mia_source_root"])
     if post_inventory["inventory_sha256"] != pre_inventory["inventory_sha256"]:
         raise C7ChildError("generated source inventory changed during wrapper execution")
+    real_windows = None
+    if wrapper_result["returncode"] == 0 and real_evidence:
+        raw_path = Path(spec["output_root"]).resolve() / "raw_c7" / "raw_observer.json"
+        try:
+            raw_run = json.loads(raw_path.read_text(encoding="utf-8"))
+            real_windows = build_real_window_records(
+                raw_run, run_id=spec["run_id"], cell=spec["cell"])
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError,
+                ValueError, KeyError, TypeError) as exc:
+            raise C7ChildError("real C7 observer evidence is absent or invalid") from exc
+        atomic_write_jsonl(Path(spec["output_root"]) / "windows.jsonl", real_windows)
 
     resources = authorization["execution_resources"]
     mia_output_root = Path(resources["mia_output_root"]).resolve()
@@ -380,6 +412,10 @@ def execute_child(spec: dict) -> dict:
         "generated_source_inventory": pre_inventory,
         "outcome_quarantine_paths": outcome_quarantine,
         "environment_boundary_passed": True,
+        "real_c7_windows_validated": real_windows is not None,
+        "real_c7_window_count": 0 if real_windows is None else len(real_windows),
+        "real_c7_windows_sha256": (
+            None if real_windows is None else sha256_file(Path(spec["output_root"]) / "windows.jsonl")),
         **_environment_attestation(include_mve_bound_keys=True),
     }
     atomic_write_json(output_root / "CHILD_STATUS.json", status)
