@@ -1,0 +1,90 @@
+{
+  "ATTEMPT_SURVIVED_OPERATOR_SESSION_LOSS_AND_REACHED_VALID_TERMINAL": "YES",
+  "H_R_FORMAL_AUTHORIZED": "NO",
+  "INDEPENDENT_TEAM_B_REVIEW": "PENDING",
+  "POST_DISCONNECT_INTERMEDIATE_RUNNING_SNAPSHOT_CAPTURED": "NO",
+  "Q3_REAL_SSH_DISCONNECT": "PASS",
+  "V2_2_CLOSED_PASS": "NO",
+  "V2_2_QUALIFIED": "NO",
+  "accepted_v2_1_base_sha": "3430054ec32489116523644fc958ccb7ac29f4d3",
+  "attempt_id": "q3-real-20260928-001",
+  "attempt_root": "/tmp/v2_2_q3_real_session/q3-real-20260928-001",
+  "consistency_checks": {
+    "attempt_id_and_root_match": true,
+    "current_inspection_matches_operator_post_reconnect_state": true,
+    "operator_process_instance_matches_launch_metadata": true,
+    "raw_runtime_logs_read": false,
+    "terminal_identity_matches_launch": true,
+    "terminal_precedes_reported_reconnect_inspection": true
+  },
+  "implementation_candidate_sha": "50c7fa833b2b2cca5c0bef563f82e9afa3673ec9",
+  "limitation": "No intermediate post-disconnect RUNNING snapshot was captured; the abrupt disconnect and earlier RUNNING snapshot are operator-supplied observations, while the identity-consistent final terminal is independently rechecked from attempt files.",
+  "operator_supplied_observations": {
+    "disconnect_mode": "REAL_ABRUPT_OPERATOR_SESSION_DISCONNECT",
+    "post_disconnect_intermediate_running_snapshot_captured": false,
+    "post_reconnect": {
+      "observed_at": "2026-09-28T22:15:24+08:00",
+      "session_live_pids": [],
+      "state": "COMPLETED",
+      "wrapper_identity_status": "TERMINAL_VALID"
+    },
+    "pre_disconnect": {
+      "process_instance": {
+        "boot_id": "06ced256-1944-4449-87d3-784b50605caf",
+        "wrapper_pid": 1213009,
+        "wrapper_start_time_ticks": 146558596
+      },
+      "session_live_pids": [
+        1213009,
+        1213010
+      ],
+      "state": "RUNNING",
+      "wrapper_identity_status": "MATCH"
+    },
+    "reconnection": "FRESH_OPERATOR_SESSION",
+    "source": "OPERATOR_REAL_SESSION_REPORT_IN_REQUEST"
+  },
+  "repository": "Judecoodingspace/matrix_async_comm_tracking",
+  "repository_attempt_verification": {
+    "child_returncode": 0,
+    "current_inspection_session_live_pids": [],
+    "current_inspection_state": "COMPLETED",
+    "current_inspection_wrapper_identity_status": "TERMINAL_VALID",
+    "launch_file_mtime": "2026-09-28T22:04:03.373107+08:00",
+    "launch_identity": {
+      "attempt_id": "q3-real-20260928-001",
+      "process_instance": {
+        "boot_id": "06ced256-1944-4449-87d3-784b50605caf",
+        "wrapper_pid": 1213009,
+        "wrapper_start_time_ticks": 146558596
+      },
+      "wrapper_argv": [
+        "/mnt/data/deeplearning_env/anaconda3/bin/python3",
+        "/mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/.worktrees/governance_v2_2_execution_reliability/scripts/governance_v2_execution.py",
+        "_wrapper",
+        "--attempt-root",
+        "/tmp/v2_2_q3_real_session/q3-real-20260928-001",
+        "--attempt-id",
+        "q3-real-20260928-001",
+        "--",
+        "/mnt/data/deeplearning_env/anaconda3/bin/python3",
+        "/mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/.worktrees/governance_v2_2_execution_reliability/scripts/qualify_governance_v2_2.py",
+        "_child",
+        "--mode",
+        "sleep",
+        "--duration",
+        "300"
+      ],
+      "wrapper_cwd": "/tmp/v2_2_q3_real_session/q3-real-20260928-001"
+    },
+    "launch_path": "/tmp/v2_2_q3_real_session/q3-real-20260928-001/launch.json",
+    "launch_sha256": "f11530c7b0258bf47e56a287926e88e910125812be14e0e60c04f94d22c2ef5a",
+    "terminal_file_mtime": "2026-09-28T22:09:03.605108+08:00",
+    "terminal_launch_identity_matches": true,
+    "terminal_path": "/tmp/v2_2_q3_real_session/q3-real-20260928-001/terminal.json",
+    "terminal_sha256": "e38000ae50c1afadb30ff0245218f05f2e08856e66bb3b964e841eca83229f1a",
+    "terminal_state": "COMPLETED"
+  },
+  "role": "TEAM_A_EVIDENCE_FINALIZATION_NOT_INDEPENDENT_APPROVAL",
+  "schema_version": "GOVERNANCE_V2_2_Q3_REAL_SESSION_EVIDENCE_V1"
+}

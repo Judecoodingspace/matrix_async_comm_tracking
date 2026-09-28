@@ -4,12 +4,15 @@
   "focused_test_result": "7 passed in 5.30s",
   "git_diff_check": "PASS",
   "local_qualification_output": "/tmp/v2_2_team_a_qual_20260928_a",
-  "local_qualification_result": "AVAILABLE_LOCAL_CASES_PASS_Q3_PENDING",
+  "local_qualification_result": "AVAILABLE_LOCAL_CASES_PASS_Q3_TEAM_A_EVIDENCE_RECORDED_PENDING_INDEPENDENT_REVIEW",
+  "post_disconnect_intermediate_running_snapshot_captured": false,
   "python_compile": "PASS",
-  "q3_real_ssh_disconnect": "OPERATOR_ACTION_REQUIRED",
+  "q3_evidence_path": "Q3_REAL_SESSION_EVIDENCE.json",
+  "q3_real_ssh_disconnect": "PASS_TEAM_A_EVIDENCE",
   "regression_test_command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src /mnt/data/deeplearning_env/anaconda3/bin/python -m pytest -q tests/test_governance_v2_execution.py tests/test_governance_v2.py tests/test_harness_v2.py tests/test_mdmt_mia_c7_batch_a_core.py tests/test_mdmt_mia_c7_batch_b.py tests/test_mdmt_mia_c7_real_evidence.py",
   "regression_test_result": "242 passed in 28.32s",
   "role": "TEAM_A_CANDIDATE_EVIDENCE_NOT_AUTHORIZATION",
   "schema_version": "GOVERNANCE_V2_2_TEAM_A_TEST_SUMMARY_V1",
-  "scientific_formal_execution": false
+  "scientific_formal_execution": false,
+  "test_results_unchanged_no_rerun_for_evidence_only_delta": true
 }
