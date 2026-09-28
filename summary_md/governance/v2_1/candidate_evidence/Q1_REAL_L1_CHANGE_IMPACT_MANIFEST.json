@@ -1,4 +1,8 @@
 {
+  "affected_behavior_units": [
+    "child.prevent_bytecode_source_dirt",
+    "tests.c7_child_qualification"
+  ],
   "affected_invariants": [
     "source_cleanliness"
   ],
@@ -28,42 +32,76 @@
       "path": "tests/test_mdmt_mia_c7_batch_b.py"
     }
   ],
-  "dependency_mapping_identity": "ae802ff343f82acdc4966bf497c6c96e5b2e1590c547c6cd174544637172d2d5",
+  "dependency_mapping_identity": "5ad83a7d5b1fe20caae10dabe152d6d61160afa4e0d7be4f45dfac6c5b8b385d",
   "diff_sha256": "b458dade21912ade1eb02aff4e7eb90150e09368c31e163ca4aa9d689f761b8e",
   "evidence_inheritance": [
     {
+      "blocking_unknown_hunks": [],
       "classification": "INHERITABLE",
       "condition": "protected dependency closure unchanged in this diff",
       "direct_changed_units": [],
       "evidence_id": "C7_FIFO_MECHANISM",
+      "protected_dependency_closure": [
+        "child.propagate_registered_capacity",
+        "runtime.fifo_frame_service",
+        "runtime.parse_registered_capacity"
+      ],
+      "unresolved_dynamic_units": [],
       "upstream_changed_units": []
     },
     {
+      "blocking_unknown_hunks": [],
       "classification": "INHERITABLE",
       "condition": "protected dependency closure unchanged in this diff",
       "direct_changed_units": [],
       "evidence_id": "C7_CAPACITY_PROPAGATION",
+      "protected_dependency_closure": [
+        "child.propagate_registered_capacity",
+        "runtime.parse_registered_capacity"
+      ],
+      "unresolved_dynamic_units": [],
       "upstream_changed_units": []
     },
     {
+      "blocking_unknown_hunks": [],
       "classification": "INHERITABLE",
       "condition": "protected dependency closure unchanged in this diff",
       "direct_changed_units": [],
       "evidence_id": "C7_ELIGIBILITY_RECONSTRUCTION",
+      "protected_dependency_closure": [
+        "c7.bound_released_credit",
+        "c7.reconstruct_credit_validation",
+        "child.propagate_registered_capacity",
+        "runtime.fifo_frame_service",
+        "runtime.parse_registered_capacity"
+      ],
+      "unresolved_dynamic_units": [],
       "upstream_changed_units": []
     },
     {
+      "blocking_unknown_hunks": [],
       "classification": "INHERITABLE",
       "condition": "protected dependency closure unchanged in this diff",
       "direct_changed_units": [],
       "evidence_id": "C7_FULL_DOMAIN_PATH",
+      "protected_dependency_closure": [
+        "c7.launch_exact_domain"
+      ],
+      "unresolved_dynamic_units": [],
       "upstream_changed_units": []
     },
     {
-      "classification": "INHERITABLE",
-      "condition": "protected dependency closure unchanged in this diff",
+      "blocking_unknown_hunks": [],
+      "classification": "UNMAPPED",
+      "condition": "BLOCK until unknown dependency or applicability is independently closed",
       "direct_changed_units": [],
       "evidence_id": "C6_HARNESS_DYNAMIC_BOUNDARY",
+      "protected_dependency_closure": [
+        "harness.resolve_dynamic_modules"
+      ],
+      "unresolved_dynamic_units": [
+        "harness.resolve_dynamic_modules"
+      ],
       "upstream_changed_units": []
     }
   ],
@@ -71,7 +109,7 @@
     "anchor_implementation_sha": "89256787c93036fa1350a97a9832ae9a56c03cac",
     "status": "RETROSPECTIVE"
   },
-  "mapping_digest": "193f15657a853027658ee60d75bac4e6545a727c9fc89af931c7de18b123d307",
+  "mapping_digest": "76609323eb03373eb96d643c003cd147f1b76a1c6ddb3a97aab2653520705316",
   "minimum_requalification": [
     "C7_CHILD_TEST_REVIEW",
     "CHILD_ENV_SOURCE_CLEANLINESS_TEST"

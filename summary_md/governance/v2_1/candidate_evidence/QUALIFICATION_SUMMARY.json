@@ -1,23 +1,50 @@
 {
   "cases": {
     "Q1_REAL_L1": {
+      "evidence_classifications": {
+        "C6_HARNESS_DYNAMIC_BOUNDARY": "UNMAPPED",
+        "C7_CAPACITY_PROPAGATION": "INHERITABLE",
+        "C7_ELIGIBILITY_RECONSTRUCTION": "INHERITABLE",
+        "C7_FIFO_MECHANISM": "INHERITABLE",
+        "C7_FULL_DOMAIN_PATH": "INHERITABLE"
+      },
       "target_sha": "ec8be0bc7098da015956b7e9fe56dbe21bb6a9f6",
+      "unknown_scope_kinds": [],
       "unmapped_count": 0,
       "verdict": "CANDIDATE_REVIEWABLE_TEAM_B_PENDING"
     },
     "Q2_REAL_L2": {
+      "evidence_classifications": {
+        "C6_HARNESS_DYNAMIC_BOUNDARY": "UNMAPPED",
+        "C7_CAPACITY_PROPAGATION": "INHERITABLE",
+        "C7_ELIGIBILITY_RECONSTRUCTION": "NON_INHERITABLE",
+        "C7_FIFO_MECHANISM": "INHERITABLE",
+        "C7_FULL_DOMAIN_PATH": "INHERITABLE"
+      },
       "target_sha": "f484ac5b886e68393c581936f1e764d4d08366d8",
+      "unknown_scope_kinds": [],
       "unmapped_count": 0,
       "verdict": "CANDIDATE_REVIEWABLE_TEAM_B_PENDING"
     },
     "Q3_REAL_DYNAMIC_UNMAPPED": {
+      "evidence_classifications": {
+        "C6_HARNESS_DYNAMIC_BOUNDARY": "UNMAPPED",
+        "C7_CAPACITY_PROPAGATION": "INHERITABLE",
+        "C7_ELIGIBILITY_RECONSTRUCTION": "INHERITABLE",
+        "C7_FIFO_MECHANISM": "INHERITABLE",
+        "C7_FULL_DOMAIN_PATH": "UNMAPPED"
+      },
       "target_sha": "0aa88ea1d02d9cfe1d81f923cf4a73c2dd6062dc",
+      "unknown_scope_kinds": [
+        "SCOPED_UNKNOWN"
+      ],
       "unmapped_count": 6,
       "verdict": "BLOCK"
     }
   },
-  "dependency_mapping_identity": "ae802ff343f82acdc4966bf497c6c96e5b2e1590c547c6cd174544637172d2d5",
-  "mapping_digest": "193f15657a853027658ee60d75bac4e6545a727c9fc89af931c7de18b123d307",
+  "corrective_revision": "V2-1_CR1",
+  "dependency_mapping_identity": "5ad83a7d5b1fe20caae10dabe152d6d61160afa4e0d7be4f45dfac6c5b8b385d",
+  "mapping_digest": "76609323eb03373eb96d643c003cd147f1b76a1c6ddb3a97aab2653520705316",
   "result": "TEAM_A_SELF_CHECK_PASS",
   "role": "TEAM_A_SELF_CHECK_NOT_INDEPENDENT_APPROVAL",
   "schema_version": "GOVERNANCE_V2_1_TEAM_A_QUALIFICATION_V1"

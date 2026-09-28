@@ -16,7 +16,7 @@ Status: `TEAM_A_SELF_CHECK`; independent Team B verdict pending. No Formal autho
 - `scripts/qualify_governance_v2_1.py`: rerunnable Team A qualification against three real repository commits, with output to a **fresh** caller-specified directory. Committed results are under `candidate_evidence/`.
 - `DEPENDENCY_MAP.json`: selected semantic C7/C6 behaviors; it is deliberately not a whole-repository call graph. `dependency_mapping_identity` hashes behavior IDs, protected invariants, edges, levels, dynamic status, and evidence-family dependency semantics. `mapping_digest` also hashes source locators/selectors. A symbol rename may preserve semantic identity only with a new auditable applicability claim.
 - `MAP_APPLICABILITY.json`: one reviewed anchor implementation SHA and exact mapped **production source** hashes. A new Git SHA that changes only unrelated files need not clone the map. Historical Q cases are explicitly `RETROSPECTIVE`; future targets are applicable only to the audited base source bytes and require delta review of target changes. A target-source semantic alteration requires review, and a changed edge requires a new map identity.
-- `tests/test_governance_v2.py`: schema/identity, applicability drift, three real Git diffs, and conditional inheritance checks. The machine-readable observed test result is `candidate_evidence/TEST_SUMMARY.json` (220 passed).
+- `tests/test_governance_v2.py`: schema/identity, applicability drift, three real Git diffs, and conditional inheritance checks. The current machine-readable observed test result is `candidate_evidence/TEST_SUMMARY.json` (224 passed after CR1); see `CORRECTIVE_REVISION_1_IMPLEMENTATION_SUMMARY.md`.
 
 ## Exact qualification cases
 
@@ -24,7 +24,7 @@ Status: `TEAM_A_SELF_CHECK`; independent Team B verdict pending. No Formal autho
 | --- | --- | --- | --- |
 | Q1 L1 | `ec8be0bc7098da015956b7e9fe56dbe21bb6a9f6` | `run_mdmt_mia_c7_real_child._build_wrapper_environment` adds `PYTHONDONTWRITEBYTECODE`; separate test hunk. | Source-cleanliness gate required; FIFO, capacity propagation, and eligibility evidence families remain `INHERITABLE`. |
 | Q2 L2 | `f484ac5b886e68393c581936f1e764d4d08366d8` | `derive_source_removable_work`, `_evaluate_fifo_conditional_accounting`, and `validate_core_evidence` bind credit to displaced current-frame service. | C7 eligibility evidence family `NON_INHERITABLE`; FIFO and registered-capacity families remain `INHERITABLE`. |
-| Q3 dynamic | `0aa88ea1d02d9cfe1d81f923cf4a73c2dd6062dc` | Real `run_harness_v2.py` platform component binding changes; same production module uses `importlib.util.spec_from_file_location` to load execution modules. Other affected hunks also lack reviewed mapping. | `UNMAPPED` and `BLOCK`; no false GREEN. |
+| Q3 dynamic | `0aa88ea1d02d9cfe1d81f923cf4a73c2dd6062dc` | Real `run_harness_v2.py` platform component binding changes; same production module uses `importlib.util.spec_from_file_location` to load execution modules. Other affected hunks have exact reviewed conservative scopes in CR1. | Harness and C7 launch families `UNMAPPED`; candidate `BLOCK`; unrelated closed C7 mechanism families are not globally poisoned. |
 
 These are retrospective classification proofs using real source commits, not authorization to reuse a historical qualification receipt. The `evidence_id` entries are *families*. Concrete old evidence requires an additional receipt digest, applicability closure, and independent review before inheritance is accepted.
 

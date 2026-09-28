@@ -40,25 +40,37 @@ def main(argv=None):
     assert kinds(q1)["C7_FIFO_MECHANISM"] == "INHERITABLE"
     assert kinds(q1)["C7_CAPACITY_PROPAGATION"] == "INHERITABLE"
     assert kinds(q1)["C7_ELIGIBILITY_RECONSTRUCTION"] == "INHERITABLE"
+    assert kinds(q1)["C6_HARNESS_DYNAMIC_BOUNDARY"] == "UNMAPPED"
     assert q2["candidate_verdict"] == "CANDIDATE_REVIEWABLE_TEAM_B_PENDING"
     assert q2["unmapped_unknown_paths"] == []
     assert kinds(q2)["C7_ELIGIBILITY_RECONSTRUCTION"] == "NON_INHERITABLE"
     assert kinds(q2)["C7_FIFO_MECHANISM"] == "INHERITABLE"
     assert kinds(q2)["C7_CAPACITY_PROPAGATION"] == "INHERITABLE"
+    assert kinds(q2)["C6_HARNESS_DYNAMIC_BOUNDARY"] == "UNMAPPED"
     assert q3["candidate_verdict"] == "BLOCK"
     assert any(item["reason"] == "DYNAMIC_DEPENDENCY_UNMAPPED"
                for item in q3["unmapped_unknown_paths"])
+    assert all(item["unknown_scope_kind"] == "SCOPED_UNKNOWN"
+               for item in q3["unmapped_unknown_paths"])
+    assert kinds(q3)["C6_HARNESS_DYNAMIC_BOUNDARY"] == "UNMAPPED"
+    assert kinds(q3)["C7_FULL_DOMAIN_PATH"] == "UNMAPPED"
+    assert all(kinds(q3)[name] == "INHERITABLE" for name in
+               ("C7_FIFO_MECHANISM", "C7_CAPACITY_PROPAGATION", "C7_ELIGIBILITY_RECONSTRUCTION"))
     output.mkdir(parents=True)
     for label, result in results.items():
         (output / (label + "_CHANGE_IMPACT_MANIFEST.json")).write_text(
             json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     summary = {"schema_version": "GOVERNANCE_V2_1_TEAM_A_QUALIFICATION_V1",
                "role": "TEAM_A_SELF_CHECK_NOT_INDEPENDENT_APPROVAL",
+               "corrective_revision": "V2-1_CR1",
                "dependency_mapping_identity": mapping["dependency_mapping_identity"],
                "mapping_digest": mapping["mapping_digest"],
                "cases": {name: {"target_sha": case["target_implementation_sha"],
                                 "verdict": case["candidate_verdict"],
-                                "unmapped_count": len(case["unmapped_unknown_paths"])}
+                                "unmapped_count": len(case["unmapped_unknown_paths"]),
+                                "unknown_scope_kinds": sorted({item["unknown_scope_kind"]
+                                                               for item in case["unmapped_unknown_paths"]}),
+                                "evidence_classifications": kinds(case)}
                          for name, case in results.items()},
                "result": "TEAM_A_SELF_CHECK_PASS"}
     (output / "QUALIFICATION_SUMMARY.json").write_text(

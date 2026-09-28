@@ -8,7 +8,7 @@
     "src/tracking/mdmt_mia_c7_census.py": "9a1887f39d8206a826a15717b84b97773f50a088eb8f507e9ce1921838360652",
     "src/tracking/mdmt_mia_c7_validator.py": "7922a1d82132e28586dfb3bdfa2b65bc12d8d7a961ddc14d5be747dc8a29552f"
   },
-  "dependency_mapping_identity": "ae802ff343f82acdc4966bf497c6c96e5b2e1590c547c6cd174544637172d2d5",
-  "mapping_digest": "193f15657a853027658ee60d75bac4e6545a727c9fc89af931c7de18b123d307",
+  "dependency_mapping_identity": "5ad83a7d5b1fe20caae10dabe152d6d61160afa4e0d7be4f45dfac6c5b8b385d",
+  "mapping_digest": "76609323eb03373eb96d643c003cd147f1b76a1c6ddb3a97aab2653520705316",
   "schema_version": "GOVERNANCE_V2_MAP_APPLICABILITY_V1"
 }

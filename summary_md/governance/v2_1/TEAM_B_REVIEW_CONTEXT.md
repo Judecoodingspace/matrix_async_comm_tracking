@@ -5,3 +5,5 @@ Review the exact candidate SHA reported in the handoff, not a moving branch HEAD
 Focus on: whether any Q1 child hunk can affect capacity propagation; whether Q2 credit/validator changes invalidate direct eligibility proof while leaving FIFO/capacity evidence untouched; whether Q3 importlib path and all unmatched hunks correctly block inheritance; whether source locators, selector tokens, dependency edges, and dynamic statuses cover the *claimed* map scope; and whether a new candidate Git SHA is incorrectly conflated with scientific semantic change. Check that no historical C7 artifacts or science files changed.
 
 If a map edge, applicability claim, or CIM is wrong, return `CORRECTION_REQUIRED` or `BLOCK` with exact file/hunk evidence. Team A will make a new commit and report a new candidate SHA. Do not authorize H_R or issue Formal readiness as part of this review.
+
+For Corrective Revision #1, use `TEAM_B_DELTA_REVIEW_CONTEXT.md` and audit the exact reviewed Q3 unknown scopes; the original global-unknown behavior is superseded.

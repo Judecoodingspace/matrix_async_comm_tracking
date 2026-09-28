@@ -50,7 +50,8 @@ def semantic_identity(mapping: Mapping[str, Any]) -> str:
     return digest({"mapping_scope": mapping["mapping_scope"],
                    "protected_invariants": mapping["protected_invariants"],
                    "behavior_units": sorted(units, key=lambda row: row["behavior_unit_id"]),
-                   "evidence": mapping["evidence"]})
+                   "evidence": mapping["evidence"],
+                   "reviewed_unknown_scopes": mapping.get("reviewed_unknown_scopes", [])})
 
 
 def mapping_digest(mapping: Mapping[str, Any]) -> str:
@@ -83,6 +84,15 @@ def validate_mapping(mapping: Mapping[str, Any]) -> dict:
     for row in mapping["evidence"]:
         if not set(row["proven_behavior_units"]).issubset(known):
             raise ImpactError("MAP_EVIDENCE_INVALID")
+    scope_keys = set()
+    for row in mapping.get("reviewed_unknown_scopes", []):
+        key = (row.get("diff_sha256"), row.get("hunk_sha256"))
+        if (key in scope_keys or not all(re.fullmatch(r"[0-9a-f]{64}", item or "") for item in key)
+                or not set(row.get("potential_behavior_units", [])).issubset(known)
+                or not row.get("potential_behavior_units") or not row.get("scope_basis")
+                or not row.get("path") or not row.get("hunk")):
+            raise ImpactError("MAP_REVIEWED_UNKNOWN_SCOPE_INVALID")
+        scope_keys.add(key)
     return dict(mapping)
 
 
@@ -196,6 +206,7 @@ def _symbol_at(source: bytes, line: int) -> str:
 
 
 def _closure(unit_id: str, by_id: Mapping[str, dict]) -> set:
+    """dependency_edges point from a consumer to the behavior it depends on."""
     visited = set()
     pending = [unit_id]
     while pending:
@@ -207,6 +218,50 @@ def _closure(unit_id: str, by_id: Mapping[str, dict]) -> set:
     return visited
 
 
+def _downstream_closure(start: set, by_id: Mapping[str, dict]) -> set:
+    """Reverse dependency_edges: a changed dependency may affect its consumers."""
+    reverse = {unit_id: set() for unit_id in by_id}
+    for consumer, row in by_id.items():
+        for dependency in row["dependency_edges"]:
+            reverse[dependency].add(consumer)
+    affected = set(start)
+    pending = list(start)
+    while pending:
+        for consumer in reverse[pending.pop()]:
+            if consumer not in affected:
+                affected.add(consumer)
+                pending.append(consumer)
+    return affected
+
+
+def _hunk_digest(hunk: Mapping[str, Any]) -> str:
+    return digest({key: hunk[key] for key in ("path", "header", "changed_lines")})
+
+
+def _scope_unknown(item: dict, potential: set, by_id: Mapping[str, dict],
+                   evidence_rows: list, basis: str) -> dict:
+    affected = _downstream_closure(potential, by_id)
+    item.update({"unknown_scope_kind": "SCOPED_UNKNOWN",
+                 "potential_behavior_units": sorted(affected),
+                 "potential_invariants": sorted({inv for unit in affected
+                                                 for inv in by_id[unit]["protected_invariants"]}),
+                 "potential_evidence_families": sorted(row["evidence_id"] for row in evidence_rows
+                     if set().union(*(_closure(unit, by_id) for unit in row["proven_behavior_units"]))
+                     & affected),
+                 "scope_basis": basis})
+    return item
+
+
+def _unbounded_unknown(item: dict, by_id: Mapping[str, dict], evidence_rows: list) -> dict:
+    item.update({"unknown_scope_kind": "UNBOUNDED_UNKNOWN",
+                 "potential_behavior_units": sorted(by_id),
+                 "potential_invariants": sorted({inv for row in by_id.values()
+                                                 for inv in row["protected_invariants"]}),
+                 "potential_evidence_families": sorted(row["evidence_id"] for row in evidence_rows),
+                 "scope_basis": "No exact reviewed hunk scope; all mapped closures remain potentially affected"})
+    return item
+
+
 def classify_evidence(evidence: Mapping[str, Any], by_id: Mapping[str, dict],
                       changed: set, *, unknown_paths: list = None,
                       applicability_blocked: bool = False) -> dict:
@@ -215,9 +270,12 @@ def classify_evidence(evidence: Mapping[str, Any], by_id: Mapping[str, dict],
     dependency_closure = set().union(*(_closure(unit, by_id) for unit in proven))
     direct = sorted(proven & changed)
     upstream = sorted((dependency_closure - proven) & changed)
-    dynamic = [unit for unit in direct + upstream
-               if by_id[unit]["dynamic_dependency_status"] == "UNMAPPED"]
-    if unknown_paths or applicability_blocked or dynamic:
+    dynamic = sorted(unit for unit in dependency_closure
+                     if by_id[unit]["dynamic_dependency_status"] == "UNMAPPED")
+    relevant_unknown = [item for item in (unknown_paths or [])
+                        if item.get("unknown_scope_kind") != "SCOPED_UNKNOWN"
+                        or evidence["evidence_id"] in item.get("potential_evidence_families", [])]
+    if relevant_unknown or applicability_blocked or dynamic:
         classification = "UNMAPPED"
         condition = "BLOCK until unknown dependency or applicability is independently closed"
     elif direct:
@@ -231,6 +289,10 @@ def classify_evidence(evidence: Mapping[str, Any], by_id: Mapping[str, dict],
         condition = "protected dependency closure unchanged in this diff"
     return {"evidence_id": evidence["evidence_id"],
             "classification": classification, "condition": condition,
+            "protected_dependency_closure": sorted(dependency_closure),
+            "unresolved_dynamic_units": dynamic,
+            "blocking_unknown_hunks": [item.get("hunk_sha256", item.get("reason"))
+                                       for item in relevant_unknown],
             "direct_changed_units": direct, "upstream_changed_units": upstream}
 
 
@@ -243,6 +305,9 @@ def audit_diff(root: Path, base: str, target: str, mapping: Mapping[str, Any],
     raw_names = _git(root, "diff", "--name-only", "--no-renames", base, target, "--")
     paths = [line for line in raw_names.decode().splitlines() if line]
     hunks = _hunks(raw_diff.decode("utf-8", errors="replace"))
+    diff_sha = hashlib.sha256(raw_diff).hexdigest()
+    reviewed_scopes = {(row["diff_sha256"], row["hunk_sha256"]): row
+                       for row in mapping.get("reviewed_unknown_scopes", [])}
     by_id = {row["behavior_unit_id"]: row for row in mapping["behavior_units"]}
     changed = set()
     unknown = []
@@ -274,23 +339,39 @@ def audit_diff(root: Path, base: str, target: str, mapping: Mapping[str, Any],
                     if symbol in allowed_symbols:
                         matched.add(unit["behavior_unit_id"])
         if not matched:
-            unknown.append({"path": hunk["path"], "hunk": hunk["header"],
-                            "reason": "NO_REVIEWED_BEHAVIOR_MATCH"})
+            hunk_sha = _hunk_digest(hunk)
+            item = {"path": hunk["path"], "hunk": hunk["header"],
+                    "hunk_sha256": hunk_sha, "reason": "NO_REVIEWED_BEHAVIOR_MATCH"}
+            reviewed = reviewed_scopes.get((diff_sha, hunk_sha))
+            if reviewed and reviewed["path"] == hunk["path"] and reviewed["hunk"] == hunk["header"]:
+                item = _scope_unknown(item, set(reviewed["potential_behavior_units"]),
+                                      by_id, mapping["evidence"], reviewed["scope_basis"])
+                item["reviewed_scope_diff_sha256"] = diff_sha
+            else:
+                item = _unbounded_unknown(item, by_id, mapping["evidence"])
+            unknown.append(item)
         changed.update(matched)
         covered_paths.add(hunk["path"])
         details.append({"path": hunk["path"], "hunk": hunk["header"],
                         "behavior_unit_ids": sorted(matched)})
     for path in paths:
         if path not in covered_paths:
-            unknown.append({"path": path, "reason": "NON_TEXT_OR_NO_HUNK"})
-    affected = set()
-    for unit_id in changed:
-        affected.update(by_id[unit_id]["protected_invariants"])
+            unknown.append(_unbounded_unknown({"path": path, "reason": "NON_TEXT_OR_NO_HUNK"},
+                                               by_id, mapping["evidence"]))
+    affected_behavior = _downstream_closure(changed, by_id)
+    affected = {inv for unit_id in affected_behavior
+                for inv in by_id[unit_id]["protected_invariants"]}
     applicable = check_applicability(mapping, claim, root, base, target)
     dynamic_unknown = sorted(unit_id for unit_id in changed
                              if by_id[unit_id]["dynamic_dependency_status"] == "UNMAPPED")
     if dynamic_unknown:
-        unknown.extend({"behavior_unit_id": unit_id, "reason": "DYNAMIC_DEPENDENCY_UNMAPPED"}
+        unknown.extend(_scope_unknown({"behavior_unit_id": unit_id,
+                                      "path": by_id[unit_id]["source_locator"][0]["path"],
+                                      "changed_hunks": [row["hunk"] for row in details
+                                                        if unit_id in row["behavior_unit_ids"]],
+                                      "reason": "DYNAMIC_DEPENDENCY_UNMAPPED"},
+                                     {unit_id}, by_id, mapping["evidence"],
+                                     "Declared UNMAPPED dynamic node and its downstream dependency closure")
                        for unit_id in dynamic_unknown)
     inherited = []
     required = set()
@@ -309,11 +390,12 @@ def audit_diff(root: Path, base: str, target: str, mapping: Mapping[str, Any],
     return {"schema_version": "CHANGE_IMPACT_MANIFEST_V1",
             "role": "TEAM_A_CANDIDATE_EVIDENCE_NOT_AUTHORIZATION",
             "base_implementation_sha": base, "target_implementation_sha": target,
-            "diff_sha256": hashlib.sha256(raw_diff).hexdigest(), "changed_files": paths,
+            "diff_sha256": diff_sha, "changed_files": paths,
             "dependency_mapping_identity": mapping["dependency_mapping_identity"],
             "mapping_digest": mapping["mapping_digest"],
             "mapping_applicability": applicable,
             "changed_behavior_units": sorted(changed), "changed_hunks": details,
+            "affected_behavior_units": sorted(affected_behavior),
             "affected_invariants": sorted(affected), "unmapped_unknown_paths": unknown,
             "evidence_inheritance": inherited, "required_requalification_layers": levels,
             "minimum_requalification": sorted(required),
