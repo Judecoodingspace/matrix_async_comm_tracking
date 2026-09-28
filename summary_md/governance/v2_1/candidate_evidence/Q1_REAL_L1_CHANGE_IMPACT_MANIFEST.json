@@ -1,0 +1,87 @@
+{
+  "affected_invariants": [
+    "source_cleanliness"
+  ],
+  "base_implementation_sha": "c9c5c21888056ab32d9f84ff417beff8eca00aab",
+  "candidate_verdict": "CANDIDATE_REVIEWABLE_TEAM_B_PENDING",
+  "changed_behavior_units": [
+    "child.prevent_bytecode_source_dirt",
+    "tests.c7_child_qualification"
+  ],
+  "changed_files": [
+    "scripts/run_mdmt_mia_c7_real_child.py",
+    "tests/test_mdmt_mia_c7_batch_b.py"
+  ],
+  "changed_hunks": [
+    {
+      "behavior_unit_ids": [
+        "child.prevent_bytecode_source_dirt"
+      ],
+      "hunk": "@@ -202,6 +202,7 @@ def _build_wrapper_environment(spec: dict, authorization: dict) -> dict[str, str",
+      "path": "scripts/run_mdmt_mia_c7_real_child.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "tests.c7_child_qualification"
+      ],
+      "hunk": "@@ -1787,6 +1787,7 @@ def test_mve_unknown_parent_env_sentinel_not_forwarded(tmp_path, monkeypatch):",
+      "path": "tests/test_mdmt_mia_c7_batch_b.py"
+    }
+  ],
+  "dependency_mapping_identity": "ae802ff343f82acdc4966bf497c6c96e5b2e1590c547c6cd174544637172d2d5",
+  "diff_sha256": "b458dade21912ade1eb02aff4e7eb90150e09368c31e163ca4aa9d689f761b8e",
+  "evidence_inheritance": [
+    {
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_FIFO_MECHANISM",
+      "upstream_changed_units": []
+    },
+    {
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_CAPACITY_PROPAGATION",
+      "upstream_changed_units": []
+    },
+    {
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_ELIGIBILITY_RECONSTRUCTION",
+      "upstream_changed_units": []
+    },
+    {
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_FULL_DOMAIN_PATH",
+      "upstream_changed_units": []
+    },
+    {
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C6_HARNESS_DYNAMIC_BOUNDARY",
+      "upstream_changed_units": []
+    }
+  ],
+  "mapping_applicability": {
+    "anchor_implementation_sha": "89256787c93036fa1350a97a9832ae9a56c03cac",
+    "status": "RETROSPECTIVE"
+  },
+  "mapping_digest": "193f15657a853027658ee60d75bac4e6545a727c9fc89af931c7de18b123d307",
+  "minimum_requalification": [
+    "C7_CHILD_TEST_REVIEW",
+    "CHILD_ENV_SOURCE_CLEANLINESS_TEST"
+  ],
+  "required_requalification_layers": [
+    "L0",
+    "L1"
+  ],
+  "role": "TEAM_A_CANDIDATE_EVIDENCE_NOT_AUTHORIZATION",
+  "schema_version": "CHANGE_IMPACT_MANIFEST_V1",
+  "target_implementation_sha": "ec8be0bc7098da015956b7e9fe56dbe21bb6a9f6",
+  "unmapped_unknown_paths": []
+}

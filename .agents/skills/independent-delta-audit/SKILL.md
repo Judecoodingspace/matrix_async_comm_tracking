@@ -1,39 +1,30 @@
 ---
 name: independent-delta-audit
-description: Independently audit a Git BASE_SHA-to-HEAD_SHA delta and determine the smallest justified Harness v2 requalification scope. Use for review independent of the implementing agent; do not modify the audited repository.
+description: Independently audit an exact Git base-to-target delta against the versioned Governance v2 dependency map, evidence inheritance, and minimal requalification scope. Never modify the audited repository or issue Formal authorization.
 ---
 
-# Independent Delta Audit
+# Independent Delta Audit — V2-1
 
-Audit Git and byte-level evidence directly. Do not accept an implementer’s summary in place of `git diff`, artifact hashes, or the current Platform Authority. This is a review aid, not an authority layer and not a repair workflow.
+This skill is a review procedure, not an authority layer. Team A may prepare a candidate CIM; an independent Team B reviewer must derive its own findings from the exact candidate SHA.
 
-## Audit
+## Inputs
 
-1. Verify `BASE_SHA`, `HEAD_SHA`, branch, and exact changed paths with Git. Inspect the relevant hunks and bytes, including uncommitted changes when they are in scope.
-2. Classify every changed file: `RED` for science semantics (treatment, baseline, metric, predicate, scheduler/service/runtime behavior); `YELLOW` for platform mechanics (Operator, Launcher, Real Child, Wrapper, path/attempt/evidence/validator/failure propagation); `GREEN` for non-semantic docs/comments/presentation. Escalate uncertainty by one level.
-3. Map affected frozen invariants and identify unrelated changes. Compare changed production component bytes to the Platform Authority and verify that tests or rehearsal evidence do not enter `PLATFORM_V2_SHA`.
-4. Return the smallest justified scope. A science-only delta can reuse the platform but needs a fresh exact rehearsal before Formal. A wrapper/runtime byte delta requires a new platform SHA and affected platform-delta qualification. A test-only change or new rehearsal evidence alone must not change the platform SHA. Docs-only needs static review only.
+- Exact 40-character `BASE_SHA` and `TARGET_SHA`; inspect `git diff --binary --no-renames`, file modes, new/deleted files, and relevant working-tree state.
+- Versioned `DEPENDENCY_MAP.json`, its recomputed semantic identity and full mapping digest, and `MAP_APPLICABILITY.json`.
+- Actual source bytes at the map anchor and the candidate endpoint, plus prior evidence receipts when inheritance of a concrete artifact is proposed.
+- Frozen scientific spec and current Platform Authority, only where affected.
 
-Use this output schema:
+Run `scripts/audit_governance_v2_delta.py --base <BASE_SHA> --target <TARGET_SHA>` as a candidate cross-check. Its output is not the independent verdict. Recompute source-symbol and dynamic-dispatch coverage yourself; selectors and AST containment are conservative aids, not a complete Python call graph.
 
-```text
-BASE_SHA =
-HEAD_SHA =
-CHANGED_FILES =
-RISK_CLASS_BY_FILE =
-AFFECTED_INVARIANTS =
-P0 =
-P1 =
-P2 =
-P3 =
-SCIENCE_AUTHORITY_IMPACT =
-PLATFORM_V2_SHA_IMPACT =
-QUALIFICATION_EVIDENCE_IMPACT =
-REQUALIFICATION_SCOPE =
-DELTA_REVIEW =
-VERDICT =
-```
+## Derive impact
 
-## Boundaries
+1. Verify the real diff and the exact source bytes. A changed HEAD proves a change occurred, not that every invariant changed.
+2. Verify mapping identity, digest, and applicability. Equivalent source rename may retain the semantic map identity only with an auditable new applicability claim. Changed behavior-to-invariant edges, protected coverage, or dynamic status require a new map identity.
+3. For each changed hunk, identify the semantic behavior unit and protected invariant. A single file may contain L0/L1/L2 behaviors. A path or hunk that cannot be mapped is `UNMAPPED`, never GREEN.
+4. Traverse declared dependency edges. Check importlib, reflection, monkeypatching, dynamic dispatch, C extensions, generated source, config, and runtime environment. If a relevant dynamic path cannot be closed, mark it `UNMAPPED` and block unsafe inheritance.
+5. Classify each **actual prior evidence receipt**: `INHERITABLE` if its protected closure is unchanged; `CONDITIONALLY_INHERITABLE` if only an upstream prerequisite changed and a named qualification must PASS; `NON_INHERITABLE` if the proved behavior changed; `UNMAPPED` if closure/applicability cannot be established. A family-level CIM classification without a receipt hash is not authorization to reuse an artifact.
+6. Specify only affected static, mechanism, real-slice, or orchestration checks. A new Formal attempt still needs an exact rehearsal and a new authorization. Do not treat historical Formal results as qualification of a new candidate.
 
-Do not modify files, normalize historical artifacts, silently waive unrelated changes, issue authorization, or replace real diff evidence with claims. Preserve attempt/evidence immutability and the three primary authority layers. If a proposed new governance Gate has no cited regression/failure mode or documented execution/evidence threat, report it as rejected rather than adding it.
+Return `BASE_SHA`, `TARGET_SHA`, `DIFF_SHA256`, `MAP_IDENTITY`, `MAP_DIGEST`, `MAPPING_APPLICABILITY`, changed behavior units, affected invariant closure, unknown paths, evidence decisions with conditions, required requalification, and an independent `PASS` or `BLOCK`. If the Team A CIM disagrees, return `CORRECTION_REQUIRED` or `BLOCK` with exact contrary evidence.
+
+Never repair, retry, authorize, modify historical artifacts, or read tracking outcomes to complete this audit. Preserve the three primary authority layers: Science, Platform, and Formal Run Authorization.

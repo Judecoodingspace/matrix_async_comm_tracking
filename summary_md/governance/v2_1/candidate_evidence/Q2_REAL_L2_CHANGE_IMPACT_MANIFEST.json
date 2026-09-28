@@ -1,0 +1,221 @@
+{
+  "affected_invariants": [
+    "eligibility_reconstruction",
+    "same_frame_released_credit"
+  ],
+  "base_implementation_sha": "a205d160fdb3b0dd54d532bec5e5d7f41374c77a",
+  "candidate_verdict": "CANDIDATE_REVIEWABLE_TEAM_B_PENDING",
+  "changed_behavior_units": [
+    "c7.bound_released_credit",
+    "c7.reconstruct_credit_validation",
+    "tests.c7_credit_qualification"
+  ],
+  "changed_files": [
+    "src/tracking/mdmt_mia_c7_census.py",
+    "src/tracking/mdmt_mia_c7_validator.py",
+    "tests/test_mdmt_mia_c7_batch_a_core.py"
+  ],
+  "changed_hunks": [
+    {
+      "behavior_unit_ids": [
+        "c7.bound_released_credit"
+      ],
+      "hunk": "@@ -16,7 +16,7 @@ from types import MappingProxyType",
+      "path": "src/tracking/mdmt_mia_c7_census.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "c7.bound_released_credit"
+      ],
+      "hunk": "@@ -678,6 +678,7 @@ class SourceRemovableWork:",
+      "path": "src/tracking/mdmt_mia_c7_census.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "c7.bound_released_credit"
+      ],
+      "hunk": "@@ -697,6 +698,7 @@ class SourceRemovableWork:",
+      "path": "src/tracking/mdmt_mia_c7_census.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "c7.bound_released_credit"
+      ],
+      "hunk": "@@ -752,10 +754,13 @@ def derive_source_removable_work(",
+      "path": "src/tracking/mdmt_mia_c7_census.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "c7.bound_released_credit"
+      ],
+      "hunk": "@@ -880,10 +885,10 @@ def _evaluate_fifo_conditional_accounting(",
+      "path": "src/tracking/mdmt_mia_c7_census.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "c7.bound_released_credit"
+      ],
+      "hunk": "@@ -926,18 +931,22 @@ def _evaluate_fifo_conditional_accounting(",
+      "path": "src/tracking/mdmt_mia_c7_census.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "c7.bound_released_credit"
+      ],
+      "hunk": "@@ -1079,7 +1088,7 @@ def evaluate_window_from_raw_baseline(",
+      "path": "src/tracking/mdmt_mia_c7_census.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "c7.reconstruct_credit_validation"
+      ],
+      "hunk": "@@ -490,10 +490,14 @@ def validate_core_evidence(evidence: Mapping[str, Any]) -> dict[str, Any]:",
+      "path": "src/tracking/mdmt_mia_c7_validator.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "c7.reconstruct_credit_validation"
+      ],
+      "hunk": "@@ -508,8 +512,9 @@ def validate_core_evidence(evidence: Mapping[str, Any]) -> dict[str, Any]:",
+      "path": "src/tracking/mdmt_mia_c7_validator.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "c7.reconstruct_credit_validation"
+      ],
+      "hunk": "@@ -518,10 +523,10 @@ def validate_core_evidence(evidence: Mapping[str, Any]) -> dict[str, Any]:",
+      "path": "src/tracking/mdmt_mia_c7_validator.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "c7.reconstruct_credit_validation"
+      ],
+      "hunk": "@@ -615,28 +620,31 @@ def validate_core_evidence(evidence: Mapping[str, Any]) -> dict[str, Any]:",
+      "path": "src/tracking/mdmt_mia_c7_validator.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "c7.reconstruct_credit_validation"
+      ],
+      "hunk": "@@ -689,7 +697,7 @@ def validate_core_evidence(evidence: Mapping[str, Any]) -> dict[str, Any]:",
+      "path": "src/tracking/mdmt_mia_c7_validator.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "tests.c7_credit_qualification"
+      ],
+      "hunk": "@@ -132,40 +132,57 @@ def _packet_event(event_type, ordinal, packet, sequence, logical, residual, fram",
+      "path": "tests/test_mdmt_mia_c7_batch_a_core.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "tests.c7_credit_qualification"
+      ],
+      "hunk": "@@ -184,7 +201,6 @@ def _raw_case(include_consumer=False, waiting_only=False, source_bytes=60, recip",
+      "path": "tests/test_mdmt_mia_c7_batch_a_core.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "tests.c7_credit_qualification"
+      ],
+      "hunk": "@@ -197,10 +213,13 @@ def _raw_case(include_consumer=False, waiting_only=False, source_bytes=60, recip",
+      "path": "tests/test_mdmt_mia_c7_batch_a_core.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "tests.c7_credit_qualification"
+      ],
+      "hunk": "@@ -213,7 +232,11 @@ def _case_b():",
+      "path": "tests/test_mdmt_mia_c7_batch_a_core.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "tests.c7_credit_qualification"
+      ],
+      "hunk": "@@ -223,30 +246,45 @@ def _persisted_case():",
+      "path": "tests/test_mdmt_mia_c7_batch_a_core.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "tests.c7_credit_qualification"
+      ],
+      "hunk": "@@ -453,6 +491,10 @@ def test_m4_source_removable_work_current_and_persisted_frames():",
+      "path": "tests/test_mdmt_mia_c7_batch_a_core.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "tests.c7_credit_qualification"
+      ],
+      "hunk": "@@ -492,6 +534,46 @@ def test_m4_one_byte_short_is_not_logical_completion():",
+      "path": "tests/test_mdmt_mia_c7_batch_a_core.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "tests.c7_credit_qualification"
+      ],
+      "hunk": "@@ -550,6 +632,20 @@ def test_validator_rejects_inflated_persisted_source_residual():",
+      "path": "tests/test_mdmt_mia_c7_batch_a_core.py"
+    }
+  ],
+  "dependency_mapping_identity": "ae802ff343f82acdc4966bf497c6c96e5b2e1590c547c6cd174544637172d2d5",
+  "diff_sha256": "77633b67c6f872017c3146b4895fe87d1d4200321a16900d02bc28017a6a8463",
+  "evidence_inheritance": [
+    {
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_FIFO_MECHANISM",
+      "upstream_changed_units": []
+    },
+    {
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_CAPACITY_PROPAGATION",
+      "upstream_changed_units": []
+    },
+    {
+      "classification": "NON_INHERITABLE",
+      "condition": "rerun proof for changed behavior units: c7.bound_released_credit, c7.reconstruct_credit_validation",
+      "direct_changed_units": [
+        "c7.bound_released_credit",
+        "c7.reconstruct_credit_validation"
+      ],
+      "evidence_id": "C7_ELIGIBILITY_RECONSTRUCTION",
+      "upstream_changed_units": []
+    },
+    {
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_FULL_DOMAIN_PATH",
+      "upstream_changed_units": []
+    },
+    {
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C6_HARNESS_DYNAMIC_BOUNDARY",
+      "upstream_changed_units": []
+    }
+  ],
+  "mapping_applicability": {
+    "anchor_implementation_sha": "89256787c93036fa1350a97a9832ae9a56c03cac",
+    "status": "RETROSPECTIVE"
+  },
+  "mapping_digest": "193f15657a853027658ee60d75bac4e6545a727c9fc89af931c7de18b123d307",
+  "minimum_requalification": [
+    "C7_CREDIT_ADVERSARIAL_QUALIFICATION",
+    "C7_CREDIT_AND_VALIDATOR_QUALIFICATION",
+    "C7_CREDIT_TEST_REVIEW",
+    "C7_INDEPENDENT_VALIDATOR_QUALIFICATION"
+  ],
+  "required_requalification_layers": [
+    "L0",
+    "L2"
+  ],
+  "role": "TEAM_A_CANDIDATE_EVIDENCE_NOT_AUTHORIZATION",
+  "schema_version": "CHANGE_IMPACT_MANIFEST_V1",
+  "target_implementation_sha": "f484ac5b886e68393c581936f1e764d4d08366d8",
+  "unmapped_unknown_paths": []
+}

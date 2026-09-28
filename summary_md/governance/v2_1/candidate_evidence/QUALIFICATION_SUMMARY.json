@@ -1,0 +1,24 @@
+{
+  "cases": {
+    "Q1_REAL_L1": {
+      "target_sha": "ec8be0bc7098da015956b7e9fe56dbe21bb6a9f6",
+      "unmapped_count": 0,
+      "verdict": "CANDIDATE_REVIEWABLE_TEAM_B_PENDING"
+    },
+    "Q2_REAL_L2": {
+      "target_sha": "f484ac5b886e68393c581936f1e764d4d08366d8",
+      "unmapped_count": 0,
+      "verdict": "CANDIDATE_REVIEWABLE_TEAM_B_PENDING"
+    },
+    "Q3_REAL_DYNAMIC_UNMAPPED": {
+      "target_sha": "0aa88ea1d02d9cfe1d81f923cf4a73c2dd6062dc",
+      "unmapped_count": 6,
+      "verdict": "BLOCK"
+    }
+  },
+  "dependency_mapping_identity": "ae802ff343f82acdc4966bf497c6c96e5b2e1590c547c6cd174544637172d2d5",
+  "mapping_digest": "193f15657a853027658ee60d75bac4e6545a727c9fc89af931c7de18b123d307",
+  "result": "TEAM_A_SELF_CHECK_PASS",
+  "role": "TEAM_A_SELF_CHECK_NOT_INDEPENDENT_APPROVAL",
+  "schema_version": "GOVERNANCE_V2_1_TEAM_A_QUALIFICATION_V1"
+}

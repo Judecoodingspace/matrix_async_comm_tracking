@@ -1,0 +1,137 @@
+{
+  "affected_invariants": [
+    "dynamic_execution_binding"
+  ],
+  "base_implementation_sha": "15a68765996499008b2f1aafed8c374562ad0e2b",
+  "candidate_verdict": "BLOCK",
+  "changed_behavior_units": [
+    "harness.resolve_dynamic_modules"
+  ],
+  "changed_files": [
+    "scripts/run_harness_v2.py",
+    "src/tracking/harness_v2.py",
+    "summary_md/communication/harness_v2/PLATFORM_AUTHORITY_V2.json",
+    "tests/test_harness_v2.py"
+  ],
+  "changed_hunks": [
+    {
+      "behavior_unit_ids": [
+        "harness.resolve_dynamic_modules"
+      ],
+      "hunk": "@@ -62,7 +62,7 @@ def platform_components() -> dict[str, str]:",
+      "path": "scripts/run_harness_v2.py"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -222,7 +222,8 @@ def qualify(args: argparse.Namespace) -> int:",
+      "path": "scripts/run_harness_v2.py"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -252,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:",
+      "path": "scripts/run_harness_v2.py"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -205,11 +205,17 @@ def compute_platform_identity(",
+      "path": "src/tracking/harness_v2.py"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -1 +1 @@",
+      "path": "summary_md/communication/harness_v2/PLATFORM_AUTHORITY_V2.json"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -105,6 +105,26 @@ def test_platform_identity_excludes_test_and_rehearsal_provenance(tmp_path):",
+      "path": "tests/test_harness_v2.py"
+    }
+  ],
+  "dependency_mapping_identity": "ae802ff343f82acdc4966bf497c6c96e5b2e1590c547c6cd174544637172d2d5",
+  "diff_sha256": "98cf9b021c8b90191d1c4a3b0754b9e2ab3658388168fddcb3901ffcff4b713c",
+  "evidence_inheritance": [
+    {
+      "classification": "UNMAPPED",
+      "condition": "BLOCK until unknown dependency or applicability is independently closed",
+      "direct_changed_units": [],
+      "evidence_id": "C7_FIFO_MECHANISM",
+      "upstream_changed_units": []
+    },
+    {
+      "classification": "UNMAPPED",
+      "condition": "BLOCK until unknown dependency or applicability is independently closed",
+      "direct_changed_units": [],
+      "evidence_id": "C7_CAPACITY_PROPAGATION",
+      "upstream_changed_units": []
+    },
+    {
+      "classification": "UNMAPPED",
+      "condition": "BLOCK until unknown dependency or applicability is independently closed",
+      "direct_changed_units": [],
+      "evidence_id": "C7_ELIGIBILITY_RECONSTRUCTION",
+      "upstream_changed_units": []
+    },
+    {
+      "classification": "UNMAPPED",
+      "condition": "BLOCK until unknown dependency or applicability is independently closed",
+      "direct_changed_units": [],
+      "evidence_id": "C7_FULL_DOMAIN_PATH",
+      "upstream_changed_units": []
+    },
+    {
+      "classification": "UNMAPPED",
+      "condition": "BLOCK until unknown dependency or applicability is independently closed",
+      "direct_changed_units": [
+        "harness.resolve_dynamic_modules"
+      ],
+      "evidence_id": "C6_HARNESS_DYNAMIC_BOUNDARY",
+      "upstream_changed_units": []
+    }
+  ],
+  "mapping_applicability": {
+    "anchor_implementation_sha": "89256787c93036fa1350a97a9832ae9a56c03cac",
+    "status": "RETROSPECTIVE"
+  },
+  "mapping_digest": "193f15657a853027658ee60d75bac4e6545a727c9fc89af931c7de18b123d307",
+  "minimum_requalification": [
+    "DYNAMIC_IMPORT_DEPENDENCY_CLOSURE",
+    "INDEPENDENT_DEPENDENCY_CLOSURE_REVIEW"
+  ],
+  "required_requalification_layers": [
+    "L1"
+  ],
+  "role": "TEAM_A_CANDIDATE_EVIDENCE_NOT_AUTHORIZATION",
+  "schema_version": "CHANGE_IMPACT_MANIFEST_V1",
+  "target_implementation_sha": "0aa88ea1d02d9cfe1d81f923cf4a73c2dd6062dc",
+  "unmapped_unknown_paths": [
+    {
+      "hunk": "@@ -222,7 +222,8 @@ def qualify(args: argparse.Namespace) -> int:",
+      "path": "scripts/run_harness_v2.py",
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH"
+    },
+    {
+      "hunk": "@@ -252,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:",
+      "path": "scripts/run_harness_v2.py",
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH"
+    },
+    {
+      "hunk": "@@ -205,11 +205,17 @@ def compute_platform_identity(",
+      "path": "src/tracking/harness_v2.py",
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH"
+    },
+    {
+      "hunk": "@@ -1 +1 @@",
+      "path": "summary_md/communication/harness_v2/PLATFORM_AUTHORITY_V2.json",
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH"
+    },
+    {
+      "hunk": "@@ -105,6 +105,26 @@ def test_platform_identity_excludes_test_and_rehearsal_provenance(tmp_path):",
+      "path": "tests/test_harness_v2.py",
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH"
+    },
+    {
+      "behavior_unit_id": "harness.resolve_dynamic_modules",
+      "reason": "DYNAMIC_DEPENDENCY_UNMAPPED"
+    }
+  ]
+}

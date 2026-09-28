@@ -44,3 +44,7 @@ NEXT_STAGE =
 - Do not decide treatment outcomes, scientific conclusions, or Formal authorization. Do not introduce a fourth primary authority layer.
 
 For a proposed implementation delta, compose this skill with `$independent-delta-audit`; for pre-Formal mechanical readiness, hand off to `$execution-path-qualification`.
+
+## V2-1 change-impact routing
+
+Before using RED/YELLOW/GREEN as a summary, inspect the V2-1 dependency map and per-diff CIM. Map each changed behavior to L0/L1/L2/L3, protected invariant, and required evidence. The map is not the Platform Authority; the CIM is evidence, not authorization. A file-level or whole-HEAD change alone cannot invalidate all mechanism evidence. Conversely, an unmapped path, unmatched hunk, dynamic dependency, or unproven map applicability is a BLOCK for the affected inheritance claim, not GREEN. Ask `$independent-delta-audit` for an exact-SHA review before making a governance recommendation; only an independent reviewer may issue its verdict.

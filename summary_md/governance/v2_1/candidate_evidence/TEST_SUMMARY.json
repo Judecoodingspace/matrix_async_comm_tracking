@@ -1,0 +1,21 @@
+{
+  "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src /mnt/data/deeplearning_env/anaconda3/bin/python -m pytest -q tests/test_governance_v2.py tests/test_harness_v2.py tests/test_mdmt_mia_c7_batch_a_core.py tests/test_mdmt_mia_c7_batch_b.py tests/test_mdmt_mia_c7_real_evidence.py",
+  "elapsed_seconds": 18.18,
+  "exit_code": 0,
+  "failed": 0,
+  "other_checks": {
+    "git_diff_check": "PASS",
+    "python_py_compile": "PASS"
+  },
+  "output_tail": "220 passed in 18.18s",
+  "passed": 220,
+  "role": "TEAM_A_OBSERVED_OUTPUT_NOT_INDEPENDENT_CERTIFICATION",
+  "schema_version": "GOVERNANCE_V2_1_TEAM_A_TEST_SUMMARY_V1",
+  "test_file_sha256": {
+    "tests/test_governance_v2.py": "62d8ed4634ee68a561d23fbe31e502e66476533349621ae18da01672fd302b8b",
+    "tests/test_harness_v2.py": "cae116c31c1f3b058f7e82e34d49750c6ced79c28d7d6a8bd2a247992b4bb6bd",
+    "tests/test_mdmt_mia_c7_batch_a_core.py": "7f53ca65e639fc7c4af44f6bb1525108cf3ffa53f0ed536fad1c8e6aee30ba7f",
+    "tests/test_mdmt_mia_c7_batch_b.py": "d1a0cf561c3b83a46c86c0a0f8eaa4952276ce7792625d8bd811f3cda25263fc",
+    "tests/test_mdmt_mia_c7_real_evidence.py": "aaa9ebbe45ce51da6a9543fb3baa11583ae77e3fe7c0ee5e70cd7c89b5c17aa1"
+  }
+}

@@ -1,0 +1,292 @@
+{
+  "behavior_units": [
+    {
+      "behavior_unit_id": "child.prevent_bytecode_source_dirt",
+      "dependency_edges": [],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "source_cleanliness"
+      ],
+      "requalification_gate": "CHILD_ENV_SOURCE_CLEANLINESS_TEST",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "PYTHONDONTWRITEBYTECODE"
+          ],
+          "path": "scripts/run_mdmt_mia_c7_real_child.py",
+          "symbol": "_build_wrapper_environment"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "child.propagate_registered_capacity",
+      "dependency_edges": [
+        "runtime.parse_registered_capacity"
+      ],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "registered_capacity_propagation"
+      ],
+      "requalification_gate": "REGISTERED_CAPACITY_REAL_SLICE",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "MIA_C7_SERVICE_CONFIG",
+            "rate_logical_bytes_per_frame",
+            "capacity_bytes"
+          ],
+          "path": "scripts/run_mdmt_mia_c7_real_child.py",
+          "symbol": "_build_wrapper_environment"
+        }
+      ],
+      "validation_level": "L2"
+    },
+    {
+      "behavior_unit_id": "runtime.parse_registered_capacity",
+      "dependency_edges": [],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "registered_capacity_propagation"
+      ],
+      "requalification_gate": "CAPACITY_PARSE_ADVERSARIAL_TEST",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "MIA_C7_SERVICE_CONFIG",
+            "_parse_c7_service_config",
+            "CAPACITY_DOMAIN",
+            "c7_service"
+          ],
+          "path": "src/tracking/mdmt_mia_async_deadline_runtime.py",
+          "symbol": "_parse_c7_service_config or PacketRuntime.__init__"
+        }
+      ],
+      "validation_level": "L2"
+    },
+    {
+      "behavior_unit_id": "runtime.fifo_frame_service",
+      "dependency_edges": [
+        "child.propagate_registered_capacity"
+      ],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "fifo_service_semantics"
+      ],
+      "requalification_gate": "FIFO_MECHANISM_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "frame_service_budget",
+            "_serve(",
+            "rate_logical_bytes_per_frame"
+          ],
+          "path": "src/tracking/mdmt_mia_async_deadline_runtime.py",
+          "symbol": "_C4SharedLogicalServer"
+        }
+      ],
+      "validation_level": "L2"
+    },
+    {
+      "behavior_unit_id": "c7.bound_released_credit",
+      "dependency_edges": [
+        "runtime.fifo_frame_service"
+      ],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "same_frame_released_credit",
+        "eligibility_reconstruction"
+      ],
+      "requalification_gate": "C7_CREDIT_ADVERSARIAL_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "SCHEMA_VERSION",
+            "frame_close_residual_bytes",
+            "current_frame_baseline_service_bytes",
+            "source_removable_work_bytes",
+            "source_slice_bytes",
+            "source_service",
+            "removed_stale_bytes",
+            "credit_",
+            "balance",
+            "created",
+            "source_work",
+            "source_removable",
+            "credit",
+            "FIFO",
+            "current_service"
+          ],
+          "path": "src/tracking/mdmt_mia_c7_census.py",
+          "symbol": "SourceRemovableWork / derive_source_removable_work / _evaluate_fifo_conditional_accounting / evaluate_window_from_raw_baseline / <module> / SourceRemovableWork.to_dict"
+        }
+      ],
+      "validation_level": "L2"
+    },
+    {
+      "behavior_unit_id": "c7.reconstruct_credit_validation",
+      "dependency_edges": [
+        "c7.bound_released_credit"
+      ],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "eligibility_reconstruction"
+      ],
+      "requalification_gate": "C7_INDEPENDENT_VALIDATOR_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "raw_source",
+            "removable",
+            "credit",
+            "balance",
+            "expected_steps",
+            "C7_CORE_VALIDATION_V",
+            "frame_close_residual_bytes",
+            "created",
+            "parsed_fifo",
+            "source_start",
+            "source_end",
+            "recipient_consumed",
+            "C7_CORE_VALIDATION",
+            "raw_current_service",
+            "expected_source"
+          ],
+          "path": "src/tracking/mdmt_mia_c7_validator.py",
+          "symbol": "validate_core_evidence"
+        }
+      ],
+      "validation_level": "L2"
+    },
+    {
+      "behavior_unit_id": "c7.launch_exact_domain",
+      "dependency_edges": [],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "exact_formal_domain"
+      ],
+      "requalification_gate": "FULL_DOMAIN_ORCHESTRATION_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "registered_cells",
+            "CENSUS_LAUNCH_STATUS",
+            "plan_full_census_children",
+            "execute_full_census"
+          ],
+          "path": "scripts/run_mdmt_mia_c7_outcome_blind_census.py",
+          "symbol": "execute_full_census"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "harness.resolve_dynamic_modules",
+      "dependency_edges": [],
+      "dynamic_dependency_status": "UNMAPPED",
+      "protected_invariants": [
+        "dynamic_execution_binding"
+      ],
+      "requalification_gate": "DYNAMIC_IMPORT_DEPENDENCY_CLOSURE",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "_load_module",
+            "importlib",
+            "harness_core",
+            "platform_components"
+          ],
+          "path": "scripts/run_harness_v2.py",
+          "symbol": "_load_module / platform_components"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "tests.c7_credit_qualification",
+      "dependency_edges": [],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [],
+      "requalification_gate": "C7_CREDIT_TEST_REVIEW",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "tests/test_mdmt_mia_c7_batch_a_core.py",
+          "symbol": "test-only qualification"
+        }
+      ],
+      "validation_level": "L0"
+    },
+    {
+      "behavior_unit_id": "tests.c7_child_qualification",
+      "dependency_edges": [],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [],
+      "requalification_gate": "C7_CHILD_TEST_REVIEW",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "tests/test_mdmt_mia_c7_batch_b.py",
+          "symbol": "test-only qualification"
+        }
+      ],
+      "validation_level": "L0"
+    }
+  ],
+  "dependency_mapping_identity": "ae802ff343f82acdc4966bf497c6c96e5b2e1590c547c6cd174544637172d2d5",
+  "evidence": [
+    {
+      "evidence_id": "C7_FIFO_MECHANISM",
+      "proven_behavior_units": [
+        "runtime.fifo_frame_service"
+      ],
+      "validation_gate": "FIFO_MECHANISM_QUALIFICATION"
+    },
+    {
+      "evidence_id": "C7_CAPACITY_PROPAGATION",
+      "proven_behavior_units": [
+        "child.propagate_registered_capacity",
+        "runtime.parse_registered_capacity"
+      ],
+      "validation_gate": "REGISTERED_CAPACITY_REAL_SLICE"
+    },
+    {
+      "evidence_id": "C7_ELIGIBILITY_RECONSTRUCTION",
+      "proven_behavior_units": [
+        "c7.bound_released_credit",
+        "c7.reconstruct_credit_validation"
+      ],
+      "validation_gate": "C7_CREDIT_AND_VALIDATOR_QUALIFICATION"
+    },
+    {
+      "evidence_id": "C7_FULL_DOMAIN_PATH",
+      "proven_behavior_units": [
+        "c7.launch_exact_domain"
+      ],
+      "validation_gate": "FULL_DOMAIN_ORCHESTRATION_QUALIFICATION"
+    },
+    {
+      "evidence_id": "C6_HARNESS_DYNAMIC_BOUNDARY",
+      "proven_behavior_units": [
+        "harness.resolve_dynamic_modules"
+      ],
+      "validation_gate": "DYNAMIC_IMPORT_DEPENDENCY_CLOSURE"
+    }
+  ],
+  "mapping_digest": "193f15657a853027658ee60d75bac4e6545a727c9fc89af931c7de18b123d307",
+  "mapping_scope": "Reviewed C7 FIFO/capacity/credit and C7 launcher, plus selected C6 Harness v2 dynamic boundary; all other paths fail closed",
+  "protected_invariants": [
+    "source_cleanliness",
+    "registered_capacity_propagation",
+    "fifo_service_semantics",
+    "same_frame_released_credit",
+    "eligibility_reconstruction",
+    "exact_formal_domain",
+    "dynamic_execution_binding"
+  ],
+  "schema_version": "GOVERNANCE_V2_DEPENDENCY_MAP_V1"
+}
