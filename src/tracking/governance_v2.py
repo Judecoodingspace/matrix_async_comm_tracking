@@ -50,8 +50,7 @@ def semantic_identity(mapping: Mapping[str, Any]) -> str:
     return digest({"mapping_scope": mapping["mapping_scope"],
                    "protected_invariants": mapping["protected_invariants"],
                    "behavior_units": sorted(units, key=lambda row: row["behavior_unit_id"]),
-                   "evidence": mapping["evidence"],
-                   "reviewed_unknown_scopes": mapping.get("reviewed_unknown_scopes", [])})
+                   "evidence": mapping["evidence"]})
 
 
 def mapping_digest(mapping: Mapping[str, Any]) -> str:
@@ -59,7 +58,9 @@ def mapping_digest(mapping: Mapping[str, Any]) -> str:
 
 
 def validate_mapping(mapping: Mapping[str, Any]) -> dict:
-    if mapping.get("schema_version") != "GOVERNANCE_V2_DEPENDENCY_MAP_V1":
+    allowed = {"schema_version", "mapping_scope", "protected_invariants", "behavior_units",
+               "evidence", "dependency_mapping_identity", "mapping_digest"}
+    if mapping.get("schema_version") != "GOVERNANCE_V2_DEPENDENCY_MAP_V1" or set(mapping) != allowed:
         raise ImpactError("MAP_SCHEMA_INVALID")
     if mapping.get("dependency_mapping_identity") != semantic_identity(mapping):
         raise ImpactError("MAP_SEMANTIC_IDENTITY_MISMATCH")
@@ -84,15 +85,6 @@ def validate_mapping(mapping: Mapping[str, Any]) -> dict:
     for row in mapping["evidence"]:
         if not set(row["proven_behavior_units"]).issubset(known):
             raise ImpactError("MAP_EVIDENCE_INVALID")
-    scope_keys = set()
-    for row in mapping.get("reviewed_unknown_scopes", []):
-        key = (row.get("diff_sha256"), row.get("hunk_sha256"))
-        if (key in scope_keys or not all(re.fullmatch(r"[0-9a-f]{64}", item or "") for item in key)
-                or not set(row.get("potential_behavior_units", [])).issubset(known)
-                or not row.get("potential_behavior_units") or not row.get("scope_basis")
-                or not row.get("path") or not row.get("hunk")):
-            raise ImpactError("MAP_REVIEWED_UNKNOWN_SCOPE_INVALID")
-        scope_keys.add(key)
     return dict(mapping)
 
 
@@ -262,6 +254,58 @@ def _unbounded_unknown(item: dict, by_id: Mapping[str, dict], evidence_rows: lis
     return item
 
 
+def _validate_unknown_scope_review(
+    review: Mapping[str, Any] | None, mapping: Mapping[str, Any], base: str,
+    target: str, diff_sha: str, hunks: list, by_id: Mapping[str, dict],
+) -> tuple[dict, dict]:
+    """Accept only exact per-diff review evidence, never map-embedded decisions."""
+    if review is None:
+        return {"status": "NOT_SUPPLIED"}, {}
+    review_digest = digest(review)
+    rejected = lambda reason: ({"status": "REJECTED", "reason": reason,
+                                "review_sha256": review_digest}, {})
+    if not isinstance(review, Mapping):
+        return rejected("REVIEW_OBJECT_INVALID")
+    expected_keys = {"schema_version", "role", "dependency_mapping_identity",
+                     "mapping_digest", "base_sha", "target_sha", "diff_sha256",
+                     "reviewed_unknown_hunks"}
+    if (set(review) != expected_keys
+            or review.get("schema_version") != "GOVERNANCE_V2_UNKNOWN_SCOPE_REVIEW_V1"
+            or review.get("role") != "TEAM_A_CANDIDATE_EVIDENCE_NOT_AUTHORIZATION"):
+        return rejected("REVIEW_SCHEMA_OR_ROLE_INVALID")
+    for key, expected in (("dependency_mapping_identity", mapping["dependency_mapping_identity"]),
+                          ("mapping_digest", mapping["mapping_digest"]),
+                          ("base_sha", base), ("target_sha", target),
+                          ("diff_sha256", diff_sha)):
+        if review.get(key) != expected:
+            return rejected("REVIEW_" + key.upper() + "_MISMATCH")
+    rows = review["reviewed_unknown_hunks"]
+    if not isinstance(rows, list):
+        return rejected("REVIEW_HUNKS_INVALID")
+    actual_hunks = {(hunk["path"], hunk["header"], _hunk_digest(hunk)) for hunk in hunks}
+    reviewed = {}
+    row_keys = {"path", "hunk", "hunk_sha256", "potential_behavior_units",
+                "potential_invariants", "potential_evidence_families", "scope_basis"}
+    for row in rows:
+        if not isinstance(row, Mapping) or set(row) != row_keys:
+            return rejected("REVIEW_HUNK_SCHEMA_INVALID")
+        key = (row["path"], row["hunk"], row["hunk_sha256"])
+        if key not in actual_hunks or key in reviewed:
+            return rejected("REVIEW_HUNK_IDENTITY_MISMATCH")
+        units = row["potential_behavior_units"]
+        if (not isinstance(units, list) or not units or len(units) != len(set(units))
+                or not set(units).issubset(by_id) or not isinstance(row["scope_basis"], str)
+                or not row["scope_basis"].strip()):
+            return rejected("REVIEW_SCOPE_INVALID")
+        expected = _scope_unknown({}, set(units), by_id, mapping["evidence"], row["scope_basis"])
+        if (row["potential_invariants"] != expected["potential_invariants"]
+                or row["potential_evidence_families"] != expected["potential_evidence_families"]):
+            return rejected("REVIEW_SCOPE_CLOSURE_MISMATCH")
+        reviewed[key] = row
+    return {"status": "EXACT_BOUND", "review_sha256": review_digest,
+            "reviewed_hunk_count": len(reviewed)}, reviewed
+
+
 def classify_evidence(evidence: Mapping[str, Any], by_id: Mapping[str, dict],
                       changed: set, *, unknown_paths: list = None,
                       applicability_blocked: bool = False) -> dict:
@@ -297,7 +341,7 @@ def classify_evidence(evidence: Mapping[str, Any], by_id: Mapping[str, dict],
 
 
 def audit_diff(root: Path, base: str, target: str, mapping: Mapping[str, Any],
-               claim: Mapping[str, Any]) -> dict:
+               claim: Mapping[str, Any], unknown_scope_review: Mapping[str, Any] | None = None) -> dict:
     """Produce a candidate CIM from real Git bytes. BLOCK is the safe default."""
     mapping = validate_mapping(mapping)
     base, target = _commit(root, base), _commit(root, target)
@@ -306,12 +350,13 @@ def audit_diff(root: Path, base: str, target: str, mapping: Mapping[str, Any],
     paths = [line for line in raw_names.decode().splitlines() if line]
     hunks = _hunks(raw_diff.decode("utf-8", errors="replace"))
     diff_sha = hashlib.sha256(raw_diff).hexdigest()
-    reviewed_scopes = {(row["diff_sha256"], row["hunk_sha256"]): row
-                       for row in mapping.get("reviewed_unknown_scopes", [])}
     by_id = {row["behavior_unit_id"]: row for row in mapping["behavior_units"]}
+    review_status, reviewed_scopes = _validate_unknown_scope_review(
+        unknown_scope_review, mapping, base, target, diff_sha, hunks, by_id)
     changed = set()
     unknown = []
     covered_paths = set()
+    used_scope_keys = set()
     details = []
     for hunk in hunks:
         matched = set()
@@ -342,11 +387,13 @@ def audit_diff(root: Path, base: str, target: str, mapping: Mapping[str, Any],
             hunk_sha = _hunk_digest(hunk)
             item = {"path": hunk["path"], "hunk": hunk["header"],
                     "hunk_sha256": hunk_sha, "reason": "NO_REVIEWED_BEHAVIOR_MATCH"}
-            reviewed = reviewed_scopes.get((diff_sha, hunk_sha))
-            if reviewed and reviewed["path"] == hunk["path"] and reviewed["hunk"] == hunk["header"]:
+            reviewed = reviewed_scopes.get((hunk["path"], hunk["header"], hunk_sha))
+            if reviewed:
+                used_scope_keys.add((hunk["path"], hunk["header"], hunk_sha))
                 item = _scope_unknown(item, set(reviewed["potential_behavior_units"]),
                                       by_id, mapping["evidence"], reviewed["scope_basis"])
                 item["reviewed_scope_diff_sha256"] = diff_sha
+                item["scope_review_sha256"] = review_status["review_sha256"]
             else:
                 item = _unbounded_unknown(item, by_id, mapping["evidence"])
             unknown.append(item)
@@ -358,6 +405,14 @@ def audit_diff(root: Path, base: str, target: str, mapping: Mapping[str, Any],
         if path not in covered_paths:
             unknown.append(_unbounded_unknown({"path": path, "reason": "NON_TEXT_OR_NO_HUNK"},
                                                by_id, mapping["evidence"]))
+    if review_status["status"] == "EXACT_BOUND" and set(reviewed_scopes) != used_scope_keys:
+        review_status = {"status": "REJECTED", "reason": "REVIEW_UNUSED_HUNK",
+                         "review_sha256": review_status["review_sha256"]}
+        for item in unknown:
+            if "scope_review_sha256" in item:
+                item.pop("scope_review_sha256")
+                item.pop("reviewed_scope_diff_sha256")
+                _unbounded_unknown(item, by_id, mapping["evidence"])
     affected_behavior = _downstream_closure(changed, by_id)
     affected = {inv for unit_id in affected_behavior
                 for inv in by_id[unit_id]["protected_invariants"]}
@@ -377,7 +432,9 @@ def audit_diff(root: Path, base: str, target: str, mapping: Mapping[str, Any],
     required = set()
     for evidence in mapping["evidence"]:
         row = classify_evidence(evidence, by_id, changed,
-                                unknown_paths=unknown, applicability_blocked=applicable["status"] == "BLOCK")
+                                unknown_paths=unknown,
+                                applicability_blocked=(applicable["status"] == "BLOCK"
+                                                       or review_status["status"] == "REJECTED"))
         inherited.append(row)
         if row["classification"] == "NON_INHERITABLE":
             required.add(evidence["validation_gate"])
@@ -394,10 +451,12 @@ def audit_diff(root: Path, base: str, target: str, mapping: Mapping[str, Any],
             "dependency_mapping_identity": mapping["dependency_mapping_identity"],
             "mapping_digest": mapping["mapping_digest"],
             "mapping_applicability": applicable,
+            "unknown_scope_review": review_status,
             "changed_behavior_units": sorted(changed), "changed_hunks": details,
             "affected_behavior_units": sorted(affected_behavior),
             "affected_invariants": sorted(affected), "unmapped_unknown_paths": unknown,
             "evidence_inheritance": inherited, "required_requalification_layers": levels,
             "minimum_requalification": sorted(required),
             "candidate_verdict": "BLOCK" if unknown or applicable["status"] == "BLOCK"
+            or review_status["status"] == "REJECTED"
             else "CANDIDATE_REVIEWABLE_TEAM_B_PENDING"}

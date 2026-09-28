@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from tracking.governance_v2 import (
-    ImpactError, _downstream_closure, audit_diff, check_applicability, classify_evidence,
+    ImpactError, _downstream_closure, _hunk_digest, _hunks, audit_diff, check_applicability, classify_evidence,
     make_applicability, make_mapping, mapping_digest, semantic_identity, validate_mapping,
 )
 
@@ -27,9 +27,14 @@ def _parent(sha):
     return subprocess.check_output(["git", "rev-parse", sha + "^"], cwd=str(ROOT), text=True).strip()
 
 
-def _audit(sha):
+def _scope_review():
+    return json.loads((DOC / "candidate_evidence/Q3_UNKNOWN_SCOPE_REVIEW.json").read_text())
+
+
+def _audit(sha, include_q3_review=True):
     mapping, claim = _load()
-    return audit_diff(ROOT, _parent(sha), sha, mapping, claim)
+    review = _scope_review() if sha == Q3 and include_q3_review else None
+    return audit_diff(ROOT, _parent(sha), sha, mapping, claim, review)
 
 
 def _classes(result):
@@ -40,6 +45,7 @@ def test_map_identity_is_semantic_and_applicability_is_byte_bound():
     mapping, claim = _load()
     assert mapping["dependency_mapping_identity"] == semantic_identity(mapping)
     assert mapping["mapping_digest"] == mapping_digest(mapping)
+    assert "reviewed_unknown_scopes" not in mapping
     assert check_applicability(mapping, claim, ROOT, Q1, Q1)["status"] == "RETROSPECTIVE"
     changed_locator = copy.deepcopy(mapping)
     changed_locator["behavior_units"][0]["source_locator"][0]["symbol"] = "renamed_symbol"
@@ -68,6 +74,7 @@ def test_q1_real_l1_child_environment_change_preserves_unrelated_science():
     assert _classes(result)["C7_FIFO_MECHANISM"] == "INHERITABLE"
     assert _classes(result)["C7_CAPACITY_PROPAGATION"] == "INHERITABLE"
     assert _classes(result)["C7_ELIGIBILITY_RECONSTRUCTION"] == "INHERITABLE"
+    assert _classes(result)["C7_FULL_DOMAIN_PATH"] == "INHERITABLE"
     assert _classes(result)["C6_HARNESS_DYNAMIC_BOUNDARY"] == "UNMAPPED"
     assert "CHILD_ENV_SOURCE_CLEANLINESS_TEST" in result["minimum_requalification"]
 
@@ -83,6 +90,7 @@ def test_q2_real_l2_credit_change_invalidates_proof_of_changed_mechanism():
     assert _classes(result)["C7_ELIGIBILITY_RECONSTRUCTION"] == "NON_INHERITABLE"
     assert _classes(result)["C7_FIFO_MECHANISM"] == "INHERITABLE"
     assert _classes(result)["C7_CAPACITY_PROPAGATION"] == "INHERITABLE"
+    assert _classes(result)["C7_FULL_DOMAIN_PATH"] == "INHERITABLE"
     assert _classes(result)["C6_HARNESS_DYNAMIC_BOUNDARY"] == "UNMAPPED"
 
 
@@ -91,6 +99,7 @@ def test_q3_real_dynamic_harness_path_fails_closed():
     assert "importlib.util.spec_from_file_location" in source
     result = _audit(Q3)
     assert result["candidate_verdict"] == "BLOCK"
+    assert result["unknown_scope_review"]["status"] == "EXACT_BOUND"
     assert "harness.resolve_dynamic_modules" in result["changed_behavior_units"]
     assert any(row["reason"] == "DYNAMIC_DEPENDENCY_UNMAPPED"
                for row in result["unmapped_unknown_paths"])
@@ -140,15 +149,32 @@ def test_cr1_existing_unmapped_node_blocks_inheritance_without_any_change():
     assert "harness.resolve_dynamic_modules" in result["protected_dependency_closure"]
 
 
-def test_cr2_q3_exact_scopes_are_bound_to_real_diff_and_exclude_closed_c7_mechanisms():
-    mapping, _ = _load()
+def test_cr2_map_identity_is_independent_of_per_diff_review_evidence():
+    mapping, claim = _load()
+    review = _scope_review()
+    assert "reviewed_unknown_scopes" not in mapping
+    assert mapping["dependency_mapping_identity"] == semantic_identity(mapping)
+    assert review["dependency_mapping_identity"] == mapping["dependency_mapping_identity"]
+    with_review = audit_diff(ROOT, _parent(Q3), Q3, mapping, claim, review)
+    without_review = audit_diff(ROOT, _parent(Q3), Q3, mapping, claim)
+    assert with_review["dependency_mapping_identity"] == without_review["dependency_mapping_identity"]
+    assert with_review["mapping_digest"] == without_review["mapping_digest"]
+    illegal = dict(mapping)
+    illegal["reviewed_unknown_scopes"] = review["reviewed_unknown_hunks"]
+    with pytest.raises(ImpactError, match="MAP_SCHEMA_INVALID"):
+        validate_mapping(illegal)
+
+
+def test_cr2_q3_exact_review_scopes_only_intersecting_evidence():
+    review = _scope_review()
     result = _audit(Q3)
-    reviewed = mapping["reviewed_unknown_scopes"]
-    assert len(reviewed) == 5
-    assert {row["diff_sha256"] for row in reviewed} == {result["diff_sha256"]}
+    assert result["unknown_scope_review"]["status"] == "EXACT_BOUND"
+    assert len(review["reviewed_unknown_hunks"]) == 5
+    assert review["diff_sha256"] == result["diff_sha256"]
     observed = [row for row in result["unmapped_unknown_paths"]
                 if row["reason"] == "NO_REVIEWED_BEHAVIOR_MATCH"]
-    assert {row["hunk_sha256"] for row in observed} == {row["hunk_sha256"] for row in reviewed}
+    assert {row["hunk_sha256"] for row in observed} == {
+        row["hunk_sha256"] for row in review["reviewed_unknown_hunks"]}
     assert all(row["reviewed_scope_diff_sha256"] == result["diff_sha256"] for row in observed)
     assert all("C6_HARNESS_DYNAMIC_BOUNDARY" in row["potential_evidence_families"]
                for row in observed)
@@ -156,21 +182,59 @@ def test_cr2_q3_exact_scopes_are_bound_to_real_diff_and_exclude_closed_c7_mechan
                for row in observed)
 
 
-def test_cr3_synthetic_missing_scope_becomes_unbounded_and_blocks_inheritance():
-    mapping, _ = _load()
-    synthetic = copy.deepcopy(mapping)
-    synthetic["reviewed_unknown_scopes"] = []
-    synthetic.pop("dependency_mapping_identity")
-    synthetic.pop("mapping_digest")
-    synthetic = make_mapping(synthetic)
-    claim = make_applicability(synthetic, ROOT, json.loads(
-        (DOC / "MAP_APPLICABILITY.json").read_text())["anchor_implementation_sha"])
-    result = audit_diff(ROOT, _parent(Q3), Q3, synthetic, claim)
+def test_cr2_missing_review_is_unbounded_and_blocks_unsafe_inheritance():
+    result = _audit(Q3, include_q3_review=False)
+    assert result["unknown_scope_review"]["status"] == "NOT_SUPPLIED"
     assert result["candidate_verdict"] == "BLOCK"
     assert any(row["unknown_scope_kind"] == "UNBOUNDED_UNKNOWN"
                for row in result["unmapped_unknown_paths"])
     assert _classes(result)["C7_FIFO_MECHANISM"] == "UNMAPPED"
     assert _classes(result)["C7_CAPACITY_PROPAGATION"] == "UNMAPPED"
+
+
+@pytest.mark.parametrize("field", [
+    "dependency_mapping_identity", "mapping_digest", "base_sha", "target_sha",
+    "diff_sha256", "hunk_sha256", "path", "hunk",
+])
+def test_cr2_mismatched_review_rejected_and_fails_closed(field):
+    mapping, claim = _load()
+    review = copy.deepcopy(_scope_review())
+    row = review["reviewed_unknown_hunks"][0] if field in {"hunk_sha256", "path", "hunk"} else review
+    row[field] = "0" * 64 if field.endswith("sha256") or field == "dependency_mapping_identity" else "wrong"
+    result = audit_diff(ROOT, _parent(Q3), Q3, mapping, claim, review)
+    assert result["unknown_scope_review"]["status"] == "REJECTED"
+    assert result["candidate_verdict"] == "BLOCK"
+    assert any(item["unknown_scope_kind"] == "UNBOUNDED_UNKNOWN"
+               for item in result["unmapped_unknown_paths"])
+    assert _classes(result)["C7_FIFO_MECHANISM"] == "UNMAPPED"
+
+
+def test_cr2_review_row_for_already_mapped_hunk_is_rejected():
+    mapping, claim = _load()
+    review = copy.deepcopy(_scope_review())
+    raw = subprocess.check_output(
+        ["git", "diff", "--binary", "--no-ext-diff", "--no-renames",
+         _parent(Q3), Q3, "--"], cwd=str(ROOT))
+    first = _hunks(raw.decode())[0]
+    extra = copy.deepcopy(review["reviewed_unknown_hunks"][0])
+    extra["path"] = first["path"]
+    extra["hunk"] = first["header"]
+    extra["hunk_sha256"] = _hunk_digest(first)
+    review["reviewed_unknown_hunks"].append(extra)
+    result = audit_diff(ROOT, _parent(Q3), Q3, mapping, claim, review)
+    assert result["unknown_scope_review"]["status"] == "REJECTED"
+    assert result["unknown_scope_review"]["reason"] == "REVIEW_UNUSED_HUNK"
+    assert result["candidate_verdict"] == "BLOCK"
+    assert _classes(result)["C7_FIFO_MECHANISM"] == "UNMAPPED"
+
+
+def test_cr2_mismatched_extraneous_review_blocks_even_fully_mapped_diff():
+    mapping, claim = _load()
+    result = audit_diff(ROOT, _parent(Q1), Q1, mapping, claim, _scope_review())
+    assert result["unmapped_unknown_paths"] == []
+    assert result["unknown_scope_review"]["status"] == "REJECTED"
+    assert result["candidate_verdict"] == "BLOCK"
+    assert _classes(result)["C7_FIFO_MECHANISM"] == "UNMAPPED"
 
 
 def test_cr4_declared_dependency_direction_propagates_affected_invariants_downstream():

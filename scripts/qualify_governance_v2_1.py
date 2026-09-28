@@ -29,25 +29,38 @@ def main(argv=None):
     data = ROOT / "summary_md/governance/v2_1"
     mapping = validate_mapping(json.loads((data / "DEPENDENCY_MAP.json").read_text()))
     claim = json.loads((data / "MAP_APPLICABILITY.json").read_text())
+    q3_review = json.loads((data / "candidate_evidence/Q3_UNKNOWN_SCOPE_REVIEW.json").read_text())
     results = {}
     for label, target in CASES.items():
         base = subprocess.check_output(["git", "rev-parse", target + "^"], cwd=str(ROOT), text=True).strip()
-        results[label] = audit_diff(ROOT, base, target, mapping, claim)
+        review = q3_review if label == "Q3_REAL_DYNAMIC_UNMAPPED" else None
+        results[label] = audit_diff(ROOT, base, target, mapping, claim, review)
+    q3_without_review = audit_diff(ROOT, q3_review["base_sha"], q3_review["target_sha"], mapping, claim)
     q1, q2, q3 = (results[name] for name in CASES)
     kinds = lambda row: {item["evidence_id"]: item["classification"] for item in row["evidence_inheritance"]}
     assert q1["candidate_verdict"] == "CANDIDATE_REVIEWABLE_TEAM_B_PENDING"
     assert q1["unmapped_unknown_paths"] == []
+    assert q1["unknown_scope_review"]["status"] == "NOT_SUPPLIED"
     assert kinds(q1)["C7_FIFO_MECHANISM"] == "INHERITABLE"
     assert kinds(q1)["C7_CAPACITY_PROPAGATION"] == "INHERITABLE"
     assert kinds(q1)["C7_ELIGIBILITY_RECONSTRUCTION"] == "INHERITABLE"
+    assert kinds(q1)["C7_FULL_DOMAIN_PATH"] == "INHERITABLE"
     assert kinds(q1)["C6_HARNESS_DYNAMIC_BOUNDARY"] == "UNMAPPED"
     assert q2["candidate_verdict"] == "CANDIDATE_REVIEWABLE_TEAM_B_PENDING"
     assert q2["unmapped_unknown_paths"] == []
+    assert q2["unknown_scope_review"]["status"] == "NOT_SUPPLIED"
     assert kinds(q2)["C7_ELIGIBILITY_RECONSTRUCTION"] == "NON_INHERITABLE"
     assert kinds(q2)["C7_FIFO_MECHANISM"] == "INHERITABLE"
     assert kinds(q2)["C7_CAPACITY_PROPAGATION"] == "INHERITABLE"
+    assert kinds(q2)["C7_FULL_DOMAIN_PATH"] == "INHERITABLE"
     assert kinds(q2)["C6_HARNESS_DYNAMIC_BOUNDARY"] == "UNMAPPED"
     assert q3["candidate_verdict"] == "BLOCK"
+    assert q3["unknown_scope_review"]["status"] == "EXACT_BOUND"
+    assert q3_without_review["candidate_verdict"] == "BLOCK"
+    assert q3_without_review["unknown_scope_review"]["status"] == "NOT_SUPPLIED"
+    assert any(row["unknown_scope_kind"] == "UNBOUNDED_UNKNOWN"
+               for row in q3_without_review["unmapped_unknown_paths"])
+    assert kinds(q3_without_review)["C7_FIFO_MECHANISM"] == "UNMAPPED"
     assert any(item["reason"] == "DYNAMIC_DEPENDENCY_UNMAPPED"
                for item in q3["unmapped_unknown_paths"])
     assert all(item["unknown_scope_kind"] == "SCOPED_UNKNOWN"
@@ -62,7 +75,13 @@ def main(argv=None):
             json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     summary = {"schema_version": "GOVERNANCE_V2_1_TEAM_A_QUALIFICATION_V1",
                "role": "TEAM_A_SELF_CHECK_NOT_INDEPENDENT_APPROVAL",
-               "corrective_revision": "V2-1_CR1",
+               "corrective_revision": "V2-1_CR2",
+               "q3_without_scope_review": {
+                   "verdict": q3_without_review["candidate_verdict"],
+                   "scope_status": q3_without_review["unknown_scope_review"]["status"],
+                   "unknown_scope_kinds": sorted({item["unknown_scope_kind"]
+                                                  for item in q3_without_review["unmapped_unknown_paths"]}),
+                   "fifo_evidence_classification": kinds(q3_without_review)["C7_FIFO_MECHANISM"]},
                "dependency_mapping_identity": mapping["dependency_mapping_identity"],
                "mapping_digest": mapping["mapping_digest"],
                "cases": {name: {"target_sha": case["target_implementation_sha"],

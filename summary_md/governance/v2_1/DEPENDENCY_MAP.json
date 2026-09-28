@@ -237,7 +237,7 @@
       "validation_level": "L0"
     }
   ],
-  "dependency_mapping_identity": "5ad83a7d5b1fe20caae10dabe152d6d61160afa4e0d7be4f45dfac6c5b8b385d",
+  "dependency_mapping_identity": "ae802ff343f82acdc4966bf497c6c96e5b2e1590c547c6cd174544637172d2d5",
   "evidence": [
     {
       "evidence_id": "C7_FIFO_MECHANISM",
@@ -277,7 +277,7 @@
       "validation_gate": "DYNAMIC_IMPORT_DEPENDENCY_CLOSURE"
     }
   ],
-  "mapping_digest": "76609323eb03373eb96d643c003cd147f1b76a1c6ddb3a97aab2653520705316",
+  "mapping_digest": "193f15657a853027658ee60d75bac4e6545a727c9fc89af931c7de18b123d307",
   "mapping_scope": "Reviewed C7 FIFO/capacity/credit and C7 launcher, plus selected C6 Harness v2 dynamic boundary; all other paths fail closed",
   "protected_invariants": [
     "source_cleanliness",
@@ -287,63 +287,6 @@
     "eligibility_reconstruction",
     "exact_formal_domain",
     "dynamic_execution_binding"
-  ],
-  "reviewed_unknown_scopes": [
-    {
-      "diff_sha256": "98cf9b021c8b90191d1c4a3b0754b9e2ab3658388168fddcb3901ffcff4b713c",
-      "hunk": "@@ -222,7 +222,8 @@ def qualify(args: argparse.Namespace) -> int:",
-      "hunk_sha256": "0e652f1661ba1b43d4900f5b69302c6209c9e836d35064813ca923bdc24e08c7",
-      "path": "scripts/run_harness_v2.py",
-      "potential_behavior_units": [
-        "harness.resolve_dynamic_modules",
-        "c7.launch_exact_domain"
-      ],
-      "scope_basis": "Exact Q3 qualify hunk selects a Harness platform-qualification evidence input. It can affect Harness authorization and C7 launch eligibility, but it does not edit FIFO, registered-capacity, or credit mechanism sources."
-    },
-    {
-      "diff_sha256": "98cf9b021c8b90191d1c4a3b0754b9e2ab3658388168fddcb3901ffcff4b713c",
-      "hunk": "@@ -252,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:",
-      "hunk_sha256": "6808d1532f4972764583955c7f5d97c726c9bab144d5b8281a6872bd45403c91",
-      "path": "scripts/run_harness_v2.py",
-      "potential_behavior_units": [
-        "harness.resolve_dynamic_modules",
-        "c7.launch_exact_domain"
-      ],
-      "scope_basis": "Exact Q3 CLI hunk adds the Harness qualification-evidence argument. Conservative scope includes Harness authorization and C7 launch eligibility; C7 mechanism source and its declared protected closures are separate."
-    },
-    {
-      "diff_sha256": "98cf9b021c8b90191d1c4a3b0754b9e2ab3658388168fddcb3901ffcff4b713c",
-      "hunk": "@@ -205,11 +205,17 @@ def compute_platform_identity(",
-      "hunk_sha256": "1bc5d7bb5868a3fed8805f31652d9598f771b64d1358d24061090ba9c8ae7b80",
-      "path": "src/tracking/harness_v2.py",
-      "potential_behavior_units": [
-        "harness.resolve_dynamic_modules",
-        "c7.launch_exact_domain"
-      ],
-      "scope_basis": "Exact Q3 platform-identity hunk changes the hash of Harness component files. Conservative scope includes Harness binding and C7 launch eligibility, not the independent C7 FIFO/capacity/credit implementation closures."
-    },
-    {
-      "diff_sha256": "98cf9b021c8b90191d1c4a3b0754b9e2ab3658388168fddcb3901ffcff4b713c",
-      "hunk": "@@ -1 +1 @@",
-      "hunk_sha256": "23ea908f6122ec7e9dee70aeb330305cd3233d02699b475df473f5c576936cc0",
-      "path": "summary_md/communication/harness_v2/PLATFORM_AUTHORITY_V2.json",
-      "potential_behavior_units": [
-        "harness.resolve_dynamic_modules",
-        "c7.launch_exact_domain"
-      ],
-      "scope_basis": "Exact Q3 Platform Authority data hunk updates Harness platform identity. It may gate Harness and C7 launch eligibility; it does not alter C7 mechanism source."
-    },
-    {
-      "diff_sha256": "98cf9b021c8b90191d1c4a3b0754b9e2ab3658388168fddcb3901ffcff4b713c",
-      "hunk": "@@ -105,6 +105,26 @@ def test_platform_identity_excludes_test_and_rehearsal_provenance(tmp_path):",
-      "hunk_sha256": "123b8b19edbbc0c46341b98f5a4d9bcd6c5eeb8a5e649e3592d2454c5c7b4992",
-      "path": "tests/test_harness_v2.py",
-      "potential_behavior_units": [
-        "harness.resolve_dynamic_modules",
-        "c7.launch_exact_domain"
-      ],
-      "scope_basis": "Exact Q3 Harness-only qualification test hunk exercises platform identity. Conservatively include Harness and C7 launch eligibility even though test bytes are not production implementation."
-    }
   ],
   "schema_version": "GOVERNANCE_V2_DEPENDENCY_MAP_V1"
 }

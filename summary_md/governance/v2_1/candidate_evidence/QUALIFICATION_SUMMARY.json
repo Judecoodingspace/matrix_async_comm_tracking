@@ -42,9 +42,18 @@
       "verdict": "BLOCK"
     }
   },
-  "corrective_revision": "V2-1_CR1",
-  "dependency_mapping_identity": "5ad83a7d5b1fe20caae10dabe152d6d61160afa4e0d7be4f45dfac6c5b8b385d",
-  "mapping_digest": "76609323eb03373eb96d643c003cd147f1b76a1c6ddb3a97aab2653520705316",
+  "corrective_revision": "V2-1_CR2",
+  "dependency_mapping_identity": "ae802ff343f82acdc4966bf497c6c96e5b2e1590c547c6cd174544637172d2d5",
+  "mapping_digest": "193f15657a853027658ee60d75bac4e6545a727c9fc89af931c7de18b123d307",
+  "q3_without_scope_review": {
+    "fifo_evidence_classification": "UNMAPPED",
+    "scope_status": "NOT_SUPPLIED",
+    "unknown_scope_kinds": [
+      "SCOPED_UNKNOWN",
+      "UNBOUNDED_UNKNOWN"
+    ],
+    "verdict": "BLOCK"
+  },
   "result": "TEAM_A_SELF_CHECK_PASS",
   "role": "TEAM_A_SELF_CHECK_NOT_INDEPENDENT_APPROVAL",
   "schema_version": "GOVERNANCE_V2_1_TEAM_A_QUALIFICATION_V1"

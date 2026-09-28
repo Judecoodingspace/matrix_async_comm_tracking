@@ -32,7 +32,7 @@
       "path": "tests/test_mdmt_mia_c7_batch_b.py"
     }
   ],
-  "dependency_mapping_identity": "5ad83a7d5b1fe20caae10dabe152d6d61160afa4e0d7be4f45dfac6c5b8b385d",
+  "dependency_mapping_identity": "ae802ff343f82acdc4966bf497c6c96e5b2e1590c547c6cd174544637172d2d5",
   "diff_sha256": "b458dade21912ade1eb02aff4e7eb90150e09368c31e163ca4aa9d689f761b8e",
   "evidence_inheritance": [
     {
@@ -109,7 +109,7 @@
     "anchor_implementation_sha": "89256787c93036fa1350a97a9832ae9a56c03cac",
     "status": "RETROSPECTIVE"
   },
-  "mapping_digest": "76609323eb03373eb96d643c003cd147f1b76a1c6ddb3a97aab2653520705316",
+  "mapping_digest": "193f15657a853027658ee60d75bac4e6545a727c9fc89af931c7de18b123d307",
   "minimum_requalification": [
     "C7_CHILD_TEST_REVIEW",
     "CHILD_ENV_SOURCE_CLEANLINESS_TEST"
@@ -121,5 +121,8 @@
   "role": "TEAM_A_CANDIDATE_EVIDENCE_NOT_AUTHORIZATION",
   "schema_version": "CHANGE_IMPACT_MANIFEST_V1",
   "target_implementation_sha": "ec8be0bc7098da015956b7e9fe56dbe21bb6a9f6",
+  "unknown_scope_review": {
+    "status": "NOT_SUPPLIED"
+  },
   "unmapped_unknown_paths": []
 }

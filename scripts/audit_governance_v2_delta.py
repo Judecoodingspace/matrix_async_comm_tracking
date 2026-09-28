@@ -18,12 +18,14 @@ def main(argv=None):
     parser.add_argument("--target", required=True, help="exact 40-character commit SHA")
     parser.add_argument("--map", default=str(ROOT / "summary_md/governance/v2_1/DEPENDENCY_MAP.json"))
     parser.add_argument("--applicability", default=str(ROOT / "summary_md/governance/v2_1/MAP_APPLICABILITY.json"))
+    parser.add_argument("--unknown-scope-review", help="optional exact per-diff review JSON; never inferred from the map")
     parser.add_argument("--output", help="new JSON path; existing files are never overwritten")
     args = parser.parse_args(argv)
     try:
         mapping = validate_mapping(json.loads(Path(args.map).read_text(encoding="utf-8")))
         claim = json.loads(Path(args.applicability).read_text(encoding="utf-8"))
-        result = audit_diff(ROOT, args.base, args.target, mapping, claim)
+        review = json.loads(Path(args.unknown_scope_review).read_text(encoding="utf-8")) if args.unknown_scope_review else None
+        result = audit_diff(ROOT, args.base, args.target, mapping, claim, review)
     except (ImpactError, OSError, ValueError, KeyError, TypeError) as exc:
         print("V2_1_IMPACT_AUDIT_ERROR=" + str(exc), file=sys.stderr)
         return 2

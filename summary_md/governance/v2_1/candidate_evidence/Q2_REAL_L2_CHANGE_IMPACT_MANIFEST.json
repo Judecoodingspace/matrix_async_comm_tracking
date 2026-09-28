@@ -162,7 +162,7 @@
       "path": "tests/test_mdmt_mia_c7_batch_a_core.py"
     }
   ],
-  "dependency_mapping_identity": "5ad83a7d5b1fe20caae10dabe152d6d61160afa4e0d7be4f45dfac6c5b8b385d",
+  "dependency_mapping_identity": "ae802ff343f82acdc4966bf497c6c96e5b2e1590c547c6cd174544637172d2d5",
   "diff_sha256": "77633b67c6f872017c3146b4895fe87d1d4200321a16900d02bc28017a6a8463",
   "evidence_inheritance": [
     {
@@ -242,7 +242,7 @@
     "anchor_implementation_sha": "89256787c93036fa1350a97a9832ae9a56c03cac",
     "status": "RETROSPECTIVE"
   },
-  "mapping_digest": "76609323eb03373eb96d643c003cd147f1b76a1c6ddb3a97aab2653520705316",
+  "mapping_digest": "193f15657a853027658ee60d75bac4e6545a727c9fc89af931c7de18b123d307",
   "minimum_requalification": [
     "C7_CREDIT_ADVERSARIAL_QUALIFICATION",
     "C7_CREDIT_AND_VALIDATOR_QUALIFICATION",
@@ -256,5 +256,8 @@
   "role": "TEAM_A_CANDIDATE_EVIDENCE_NOT_AUTHORIZATION",
   "schema_version": "CHANGE_IMPACT_MANIFEST_V1",
   "target_implementation_sha": "f484ac5b886e68393c581936f1e764d4d08366d8",
+  "unknown_scope_review": {
+    "status": "NOT_SUPPLIED"
+  },
   "unmapped_unknown_paths": []
 }

@@ -1,15 +1,17 @@
 {
-  "corrective_revision": "V2-1_CR1",
-  "dependency_mapping_identity": "5ad83a7d5b1fe20caae10dabe152d6d61160afa4e0d7be4f45dfac6c5b8b385d",
-  "focused_governance_result": "9 passed in 1.73s",
-  "fresh_qualification_output": "/tmp/v2_1_cr1_qualification_final_20260928",
+  "cli_q3_with_scope_review": "BLOCK / EXACT_BOUND / SCOPED_UNKNOWN",
+  "cli_q3_without_scope_review": "BLOCK / NOT_SUPPLIED / UNBOUNDED_UNKNOWN",
+  "corrective_revision": "V2-1_CR2",
+  "dependency_mapping_identity": "ae802ff343f82acdc4966bf497c6c96e5b2e1590c547c6cd174544637172d2d5",
+  "fresh_qualification_output": "/tmp/v2_1_cr2_qualification_final_20260928",
   "fresh_qualification_result": "TEAM_A_SELF_CHECK_PASS",
   "git_diff_check": "PASS",
-  "mapping_digest": "76609323eb03373eb96d643c003cd147f1b76a1c6ddb3a97aab2653520705316",
+  "mapping_digest": "193f15657a853027658ee60d75bac4e6545a727c9fc89af931c7de18b123d307",
+  "q3_scope_review_role": "TEAM_A_CANDIDATE_EVIDENCE_NOT_AUTHORIZATION",
   "role": "TEAM_A_SELF_CHECK_NOT_INDEPENDENT_APPROVAL",
   "schema_version": "GOVERNANCE_V2_1_CORRECTIVE_TEST_SUMMARY_V1",
   "scientific_formal_execution": false,
   "syntax_compile": "PASS",
   "test_command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src /mnt/data/deeplearning_env/anaconda3/bin/python -m pytest -q tests/test_governance_v2.py tests/test_harness_v2.py tests/test_mdmt_mia_c7_batch_a_core.py tests/test_mdmt_mia_c7_batch_b.py tests/test_mdmt_mia_c7_real_evidence.py",
-  "test_result": "224 passed in 16.94s"
+  "test_result": "235 passed in 22.20s"
 }
