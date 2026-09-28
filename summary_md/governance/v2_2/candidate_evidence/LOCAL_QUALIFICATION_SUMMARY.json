@@ -1,0 +1,62 @@
+{
+  "Q3_REAL_SSH_DISCONNECT": "OPERATOR_ACTION_REQUIRED",
+  "cases": {
+    "Q1_NORMAL_COMPLETION": {
+      "result": "PASS",
+      "state": "COMPLETED"
+    },
+    "Q2A_NONZERO_EXIT": {
+      "exit_code": 7,
+      "result": "PASS",
+      "state": "FAILED"
+    },
+    "Q2B_SIGNAL_DEATH": {
+      "result": "PASS",
+      "signal": 9,
+      "state": "FAILED"
+    },
+    "Q4A_WHOLE_SESSION_DEATH": {
+      "result": "PASS",
+      "state": "INCOMPLETE"
+    },
+    "Q4B_WRAPPER_ONLY_DEATH": {
+      "phase1": "RUNNING",
+      "phase2": "INCOMPLETE",
+      "result": "PASS"
+    },
+    "Q5A_EXISTING_NAMESPACE": {
+      "rejection": "ATTEMPT_NAMESPACE_OCCUPIED",
+      "result": "PASS"
+    },
+    "Q5B_CONCURRENT_NAMESPACE_RACE": {
+      "outcomes": [
+        "ATTEMPT_NAMESPACE_OCCUPIED",
+        "STARTED"
+      ],
+      "result": "PASS"
+    },
+    "STRAY_BEFORE_COMPLETED": {
+      "early_state": "RUNNING",
+      "result": "PASS"
+    }
+  },
+  "host_session_configuration": {
+    "KillUserProcesses": [
+      {
+        "path": "/etc/systemd/logind.conf",
+        "setting": "no"
+      }
+    ],
+    "boot_id": "06ced256-1944-4449-87d3-784b50605caf",
+    "host": "aisoserver-HP",
+    "launch_path": "nohup + wrapper os.setsid() via governance_v2_execution.py",
+    "linger": "DISABLED_OR_UNAVAILABLE",
+    "operator_session": "EXTERNAL_SSH_OR_VSCODE_NOT_EXERCISED_BY_THIS_RUNNER",
+    "platform": "Linux-5.4.0-050400-generic-x86_64-with-glibc2.10",
+    "user": "aiso-image"
+  },
+  "result": "AVAILABLE_LOCAL_CASES_PASS_Q3_PENDING",
+  "role": "TEAM_A_CANDIDATE_EVIDENCE_NOT_AUTHORIZATION",
+  "schema_version": "GOVERNANCE_V2_2_TEAM_A_QUALIFICATION_V1",
+  "synthetic_non_scientific": true
+}
