@@ -1,4 +1,4 @@
 interface:
   display_name: "Experiment Governance Core"
-  short_description: "Route experiment changes through Harness v2"
-  default_prompt: "Use $experiment-governance-core to classify this proposed experiment change and its minimum governance path."
+  short_description: "Select minimum Governance v2 requalification"
+  default_prompt: "Use $experiment-governance-core to route this change by behavior impact, evidence inheritance, and minimum requalification."
