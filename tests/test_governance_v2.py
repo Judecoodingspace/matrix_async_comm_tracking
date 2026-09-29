@@ -1,5 +1,6 @@
 """V2-1 tests use committed production diffs and their real source symbols."""
 import copy
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -16,6 +17,8 @@ DOC = ROOT / "summary_md/governance/v2_1"
 Q1 = "ec8be0bc7098da015956b7e9fe56dbe21bb6a9f6"
 Q2 = "f484ac5b886e68393c581936f1e764d4d08366d8"
 Q3 = "0aa88ea1d02d9cfe1d81f923cf4a73c2dd6062dc"
+INTRO_BASE = "3430054ec32489116523644fc958ccb7ac29f4d3"
+INTRO_TARGET = "5c59a2e51bb65dd9a59b6ba2801dc26292a9c2a4"
 
 
 def _load():
@@ -248,3 +251,142 @@ def test_cr4_declared_dependency_direction_propagates_affected_invariants_downst
     invariants = {inv for unit in affected for inv in by_id[unit]["protected_invariants"]}
     assert {"registered_capacity_propagation", "fifo_service_semantics",
             "same_frame_released_credit", "eligibility_reconstruction"} <= invariants
+
+
+def _introduction_review():
+    return json.loads((DOC / "candidate_evidence/V2_2_INTRODUCTION_UNKNOWN_SCOPE_REVIEW.json").read_text())
+
+
+def _introduction_audit(review):
+    mapping, claim = _load()
+    return audit_diff(ROOT, INTRO_BASE, INTRO_TARGET, mapping, claim, review)
+
+
+def test_introduction_exact_zero_impact_preserves_old_graph_and_applicability():
+    mapping, claim = _load()
+    review = _introduction_review()
+    result = _introduction_audit(review)
+    assert check_applicability(mapping, claim, ROOT, INTRO_BASE, INTRO_TARGET)["status"] == "APPLICABLE_TO_BASE"
+    assert result["dependency_mapping_identity"] == mapping["dependency_mapping_identity"]
+    assert result["mapping_digest"] == mapping["mapping_digest"]
+    assert result["unknown_scope_review"]["status"] == "EXACT_BOUND"
+    assert result["unknown_scope_review"]["reviewed_hunk_count"] == 11
+    assert result["candidate_verdict"] == "CANDIDATE_REVIEWABLE_TEAM_B_PENDING"
+    assert result["changed_behavior_units"] == []
+    assert result["affected_invariants"] == []
+    assert len(result["unmapped_unknown_paths"]) == 11
+    assert all(row["unknown_scope_kind"] == "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+               and row["potential_behavior_units"] == []
+               and row["potential_invariants"] == []
+               and row["potential_evidence_families"] == []
+               for row in result["unmapped_unknown_paths"])
+    assert {row["introduction_kind"] for row in result["unmapped_unknown_paths"]} == {
+        "NEW_BEHAVIOR", "TEST_ONLY", "SUPPORTING_DOC_OR_EVIDENCE"}
+    assert all(_classes(result)[evidence] == "INHERITABLE" for evidence in (
+        "C7_FIFO_MECHANISM", "C7_CAPACITY_PROPAGATION",
+        "C7_ELIGIBILITY_RECONSTRUCTION", "C7_FULL_DOMAIN_PATH"))
+    assert _classes(result)["C6_HARNESS_DYNAMIC_BOUNDARY"] == "UNMAPPED"
+    assert "INDEPENDENT_DEPENDENCY_CLOSURE_REVIEW" in result["minimum_requalification"]
+
+
+def test_introduction_ordinary_empty_scope_still_fails_closed():
+    review = copy.deepcopy(_introduction_review())
+    row = review["reviewed_unknown_hunks"][0]
+    row.pop("review_semantic")
+    row.pop("introduction_kind")
+    result = _introduction_audit(review)
+    assert result["unknown_scope_review"]["reason"] == "REVIEW_SCOPE_INVALID"
+    assert result["candidate_verdict"] == "BLOCK"
+    assert _classes(result)["C7_FIFO_MECHANISM"] == "UNMAPPED"
+
+
+@pytest.mark.parametrize("field", [
+    "base_sha", "target_sha", "diff_sha256", "hunk", "hunk_sha256",
+    "dependency_mapping_identity", "mapping_digest",
+])
+def test_introduction_exact_binding_mismatch_fails_closed(field):
+    review = copy.deepcopy(_introduction_review())
+    row = review["reviewed_unknown_hunks"][0] if field in {"hunk", "hunk_sha256"} else review
+    row[field] = "wrong"
+    result = _introduction_audit(review)
+    assert result["unknown_scope_review"]["status"] == "REJECTED"
+    assert result["candidate_verdict"] == "BLOCK"
+    assert any(item["unknown_scope_kind"] == "UNBOUNDED_UNKNOWN"
+               for item in result["unmapped_unknown_paths"])
+    assert _classes(result)["C7_FIFO_MECHANISM"] == "UNMAPPED"
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("potential_behavior_units", ["runtime.fifo_frame_service"]),
+    ("potential_invariants", ["fifo_service_semantics"]),
+    ("potential_evidence_families", ["C7_FIFO_MECHANISM"]),
+])
+def test_introduction_false_nonempty_impact_is_rejected(field, value):
+    review = copy.deepcopy(_introduction_review())
+    review["reviewed_unknown_hunks"][0][field] = value
+    result = _introduction_audit(review)
+    assert result["unknown_scope_review"]["reason"] == "REVIEW_ZERO_EXISTING_IMPACT_INVALID"
+    assert result["candidate_verdict"] == "BLOCK"
+
+
+def test_introduction_omitted_impact_field_and_missing_basis_are_rejected():
+    for change in ("omit", "basis"):
+        review = copy.deepcopy(_introduction_review())
+        row = review["reviewed_unknown_hunks"][0]
+        if change == "omit":
+            row.pop("potential_evidence_families")
+        else:
+            row["scope_basis"] = ""
+        result = _introduction_audit(review)
+        assert result["unknown_scope_review"]["status"] == "REJECTED"
+        assert result["candidate_verdict"] == "BLOCK"
+
+
+def test_introduction_without_review_remains_unbounded_and_blocks():
+    result = _introduction_audit(None)
+    assert result["unknown_scope_review"]["status"] == "NOT_SUPPLIED"
+    assert result["candidate_verdict"] == "BLOCK"
+    assert all(row["unknown_scope_kind"] == "UNBOUNDED_UNKNOWN"
+               for row in result["unmapped_unknown_paths"])
+    assert _classes(result)["C7_FIFO_MECHANISM"] == "UNMAPPED"
+
+
+
+def test_introduction_zero_impact_requires_an_added_file():
+    mapping, claim = _load()
+    base = _parent(Q1)
+    raw = subprocess.check_output(
+        ["git", "diff", "--binary", "--no-ext-diff", "--no-renames",
+         base, Q1, "--"], cwd=str(ROOT))
+    hunk = _hunks(raw.decode())[0]
+    review = {
+        "schema_version": "GOVERNANCE_V2_UNKNOWN_SCOPE_REVIEW_V1",
+        "role": "TEAM_A_CANDIDATE_EVIDENCE_NOT_AUTHORIZATION",
+        "dependency_mapping_identity": mapping["dependency_mapping_identity"],
+        "mapping_digest": mapping["mapping_digest"],
+        "base_sha": base,
+        "target_sha": Q1,
+        "diff_sha256": hashlib.sha256(raw).hexdigest(),
+        "reviewed_unknown_hunks": [{
+            "path": hunk["path"],
+            "hunk": hunk["header"],
+            "hunk_sha256": _hunk_digest(hunk),
+            "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+            "introduction_kind": "NEW_BEHAVIOR",
+            "potential_behavior_units": [],
+            "potential_invariants": [],
+            "potential_evidence_families": [],
+            "scope_basis": "Intentionally false introduction claim for a modified old file.",
+        }],
+    }
+    result = audit_diff(ROOT, base, Q1, mapping, claim, review)
+    assert result["unknown_scope_review"]["reason"] == "REVIEW_ZERO_EXISTING_IMPACT_INVALID"
+    assert result["candidate_verdict"] == "BLOCK"
+
+
+def test_introduction_kind_must_match_path_category():
+    review = copy.deepcopy(_introduction_review())
+    review["reviewed_unknown_hunks"][0]["introduction_kind"] = "TEST_ONLY"
+    result = _introduction_audit(review)
+    assert result["unknown_scope_review"]["reason"] == "REVIEW_ZERO_EXISTING_IMPACT_INVALID"
+    assert result["candidate_verdict"] == "BLOCK"

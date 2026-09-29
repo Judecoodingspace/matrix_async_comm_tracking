@@ -15,6 +15,16 @@ class ImpactError(ValueError):
     pass
 
 
+# A per-diff review of added files; it does not extend the prospective map.
+ZERO_EXISTING_IMPACT_SEMANTIC = "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT"
+ZERO_EXISTING_IMPACT_KIND = "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+INTRODUCTION_KINDS = {
+    "NEW_BEHAVIOR": ("src/", "scripts/"),
+    "TEST_ONLY": ("tests/",),
+    "SUPPORTING_DOC_OR_EVIDENCE": ("summary_md/",),
+}
+
+
 def canonical(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
 
@@ -257,6 +267,7 @@ def _unbounded_unknown(item: dict, by_id: Mapping[str, dict], evidence_rows: lis
 def _validate_unknown_scope_review(
     review: Mapping[str, Any] | None, mapping: Mapping[str, Any], base: str,
     target: str, diff_sha: str, hunks: list, by_id: Mapping[str, dict],
+    introduced_paths: set,
 ) -> tuple[dict, dict]:
     """Accept only exact per-diff review evidence, never map-embedded decisions."""
     if review is None:
@@ -287,15 +298,29 @@ def _validate_unknown_scope_review(
     row_keys = {"path", "hunk", "hunk_sha256", "potential_behavior_units",
                 "potential_invariants", "potential_evidence_families", "scope_basis"}
     for row in rows:
-        if not isinstance(row, Mapping) or set(row) != row_keys:
+        if not isinstance(row, Mapping):
+            return rejected("REVIEW_HUNK_SCHEMA_INVALID")
+        introduction = row.get("review_semantic") == ZERO_EXISTING_IMPACT_SEMANTIC
+        if set(row) != (row_keys | {"review_semantic", "introduction_kind"} if introduction
+                        else row_keys):
             return rejected("REVIEW_HUNK_SCHEMA_INVALID")
         key = (row["path"], row["hunk"], row["hunk_sha256"])
         if key not in actual_hunks or key in reviewed:
             return rejected("REVIEW_HUNK_IDENTITY_MISMATCH")
         units = row["potential_behavior_units"]
-        if (not isinstance(units, list) or not units or len(units) != len(set(units))
+        if (not isinstance(units, list) or len(units) != len(set(units))
                 or not set(units).issubset(by_id) or not isinstance(row["scope_basis"], str)
                 or not row["scope_basis"].strip()):
+            return rejected("REVIEW_SCOPE_INVALID")
+        if introduction:
+            kind = row["introduction_kind"]
+            if (not isinstance(kind, str) or kind not in INTRODUCTION_KINDS
+                    or row["path"] not in introduced_paths
+                    or not row["path"].startswith(INTRODUCTION_KINDS[kind])
+                    or units != [] or row["potential_invariants"] != []
+                    or row["potential_evidence_families"] != []):
+                return rejected("REVIEW_ZERO_EXISTING_IMPACT_INVALID")
+        elif not units:
             return rejected("REVIEW_SCOPE_INVALID")
         expected = _scope_unknown({}, set(units), by_id, mapping["evidence"], row["scope_basis"])
         if (row["potential_invariants"] != expected["potential_invariants"]
@@ -317,8 +342,9 @@ def classify_evidence(evidence: Mapping[str, Any], by_id: Mapping[str, dict],
     dynamic = sorted(unit for unit in dependency_closure
                      if by_id[unit]["dynamic_dependency_status"] == "UNMAPPED")
     relevant_unknown = [item for item in (unknown_paths or [])
-                        if item.get("unknown_scope_kind") != "SCOPED_UNKNOWN"
-                        or evidence["evidence_id"] in item.get("potential_evidence_families", [])]
+                        if item.get("unknown_scope_kind") not in {
+                            "SCOPED_UNKNOWN", ZERO_EXISTING_IMPACT_KIND,
+                        } or evidence["evidence_id"] in item.get("potential_evidence_families", [])]
     if relevant_unknown or applicability_blocked or dynamic:
         classification = "UNMAPPED"
         condition = "BLOCK until unknown dependency or applicability is independently closed"
@@ -348,11 +374,14 @@ def audit_diff(root: Path, base: str, target: str, mapping: Mapping[str, Any],
     raw_diff = _git(root, "diff", "--binary", "--no-ext-diff", "--no-renames", base, target, "--")
     raw_names = _git(root, "diff", "--name-only", "--no-renames", base, target, "--")
     paths = [line for line in raw_names.decode().splitlines() if line]
+    introduced_paths = set(_git(root, "diff", "--name-only", "--diff-filter=A",
+                                "--no-renames", base, target, "--").decode().splitlines())
     hunks = _hunks(raw_diff.decode("utf-8", errors="replace"))
     diff_sha = hashlib.sha256(raw_diff).hexdigest()
     by_id = {row["behavior_unit_id"]: row for row in mapping["behavior_units"]}
     review_status, reviewed_scopes = _validate_unknown_scope_review(
-        unknown_scope_review, mapping, base, target, diff_sha, hunks, by_id)
+        unknown_scope_review, mapping, base, target, diff_sha, hunks, by_id,
+        introduced_paths)
     changed = set()
     unknown = []
     covered_paths = set()
@@ -392,6 +421,10 @@ def audit_diff(root: Path, base: str, target: str, mapping: Mapping[str, Any],
                 used_scope_keys.add((hunk["path"], hunk["header"], hunk_sha))
                 item = _scope_unknown(item, set(reviewed["potential_behavior_units"]),
                                       by_id, mapping["evidence"], reviewed["scope_basis"])
+                if reviewed.get("review_semantic") == ZERO_EXISTING_IMPACT_SEMANTIC:
+                    item["unknown_scope_kind"] = ZERO_EXISTING_IMPACT_KIND
+                    item["review_semantic"] = ZERO_EXISTING_IMPACT_SEMANTIC
+                    item["introduction_kind"] = reviewed["introduction_kind"]
                 item["reviewed_scope_diff_sha256"] = diff_sha
                 item["scope_review_sha256"] = review_status["review_sha256"]
             else:
@@ -412,6 +445,8 @@ def audit_diff(root: Path, base: str, target: str, mapping: Mapping[str, Any],
             if "scope_review_sha256" in item:
                 item.pop("scope_review_sha256")
                 item.pop("reviewed_scope_diff_sha256")
+                item.pop("review_semantic", None)
+                item.pop("introduction_kind", None)
                 _unbounded_unknown(item, by_id, mapping["evidence"])
     affected_behavior = _downstream_closure(changed, by_id)
     affected = {inv for unit_id in affected_behavior
@@ -443,6 +478,9 @@ def audit_diff(root: Path, base: str, target: str, mapping: Mapping[str, Any],
     required.update(by_id[unit]["requalification_gate"] for unit in changed)
     if unknown:
         required.add("INDEPENDENT_DEPENDENCY_CLOSURE_REVIEW")
+    # Only exact-bound introductions with no old-graph impact may be reviewable.
+    blocking_unknown = any(item.get("unknown_scope_kind") != ZERO_EXISTING_IMPACT_KIND
+                           for item in unknown)
     levels = sorted({by_id[unit]["validation_level"] for unit in changed})
     return {"schema_version": "CHANGE_IMPACT_MANIFEST_V1",
             "role": "TEAM_A_CANDIDATE_EVIDENCE_NOT_AUTHORIZATION",
@@ -457,6 +495,6 @@ def audit_diff(root: Path, base: str, target: str, mapping: Mapping[str, Any],
             "affected_invariants": sorted(affected), "unmapped_unknown_paths": unknown,
             "evidence_inheritance": inherited, "required_requalification_layers": levels,
             "minimum_requalification": sorted(required),
-            "candidate_verdict": "BLOCK" if unknown or applicable["status"] == "BLOCK"
+            "candidate_verdict": "BLOCK" if blocking_unknown or applicable["status"] == "BLOCK"
             or review_status["status"] == "REJECTED"
             else "CANDIDATE_REVIEWABLE_TEAM_B_PENDING"}

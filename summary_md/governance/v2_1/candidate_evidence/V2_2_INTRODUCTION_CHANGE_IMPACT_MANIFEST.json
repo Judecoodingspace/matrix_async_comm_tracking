@@ -1,0 +1,335 @@
+{
+  "affected_behavior_units": [],
+  "affected_invariants": [],
+  "base_implementation_sha": "3430054ec32489116523644fc958ccb7ac29f4d3",
+  "candidate_verdict": "CANDIDATE_REVIEWABLE_TEAM_B_PENDING",
+  "changed_behavior_units": [],
+  "changed_files": [
+    "scripts/governance_v2_execution.py",
+    "scripts/qualify_governance_v2_2.py",
+    "src/tracking/governance_v2_execution.py",
+    "summary_md/governance/v2_2/G1_G2_SCOPE.md",
+    "summary_md/governance/v2_2/IMPLEMENTATION_SUMMARY.md",
+    "summary_md/governance/v2_2/Q3_REAL_SESSION_PROCEDURE.md",
+    "summary_md/governance/v2_2/TEAM_B_REVIEW_CONTEXT.md",
+    "summary_md/governance/v2_2/candidate_evidence/LOCAL_QUALIFICATION_SUMMARY.json",
+    "summary_md/governance/v2_2/candidate_evidence/Q3_REAL_SESSION_EVIDENCE.json",
+    "summary_md/governance/v2_2/candidate_evidence/TEST_SUMMARY.json",
+    "tests/test_governance_v2_execution.py"
+  ],
+  "changed_hunks": [
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,49 @@",
+      "path": "scripts/governance_v2_execution.py"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,209 @@",
+      "path": "scripts/qualify_governance_v2_2.py"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,291 @@",
+      "path": "src/tracking/governance_v2_execution.py"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,9 @@",
+      "path": "summary_md/governance/v2_2/G1_G2_SCOPE.md"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,13 @@",
+      "path": "summary_md/governance/v2_2/IMPLEMENTATION_SUMMARY.md"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,27 @@",
+      "path": "summary_md/governance/v2_2/Q3_REAL_SESSION_PROCEDURE.md"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,9 @@",
+      "path": "summary_md/governance/v2_2/TEAM_B_REVIEW_CONTEXT.md"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,68 @@",
+      "path": "summary_md/governance/v2_2/candidate_evidence/LOCAL_QUALIFICATION_SUMMARY.json"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,90 @@",
+      "path": "summary_md/governance/v2_2/candidate_evidence/Q3_REAL_SESSION_EVIDENCE.json"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,18 @@",
+      "path": "summary_md/governance/v2_2/candidate_evidence/TEST_SUMMARY.json"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,156 @@",
+      "path": "tests/test_governance_v2_execution.py"
+    }
+  ],
+  "dependency_mapping_identity": "ae802ff343f82acdc4966bf497c6c96e5b2e1590c547c6cd174544637172d2d5",
+  "diff_sha256": "26c4a5b4e56c36c2fb53ee2a871757f7bb1f1baf54ff358de2635aeb3c4ca573",
+  "evidence_inheritance": [
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_FIFO_MECHANISM",
+      "protected_dependency_closure": [
+        "child.propagate_registered_capacity",
+        "runtime.fifo_frame_service",
+        "runtime.parse_registered_capacity"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_CAPACITY_PROPAGATION",
+      "protected_dependency_closure": [
+        "child.propagate_registered_capacity",
+        "runtime.parse_registered_capacity"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_ELIGIBILITY_RECONSTRUCTION",
+      "protected_dependency_closure": [
+        "c7.bound_released_credit",
+        "c7.reconstruct_credit_validation",
+        "child.propagate_registered_capacity",
+        "runtime.fifo_frame_service",
+        "runtime.parse_registered_capacity"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_FULL_DOMAIN_PATH",
+      "protected_dependency_closure": [
+        "c7.launch_exact_domain"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "UNMAPPED",
+      "condition": "BLOCK until unknown dependency or applicability is independently closed",
+      "direct_changed_units": [],
+      "evidence_id": "C6_HARNESS_DYNAMIC_BOUNDARY",
+      "protected_dependency_closure": [
+        "harness.resolve_dynamic_modules"
+      ],
+      "unresolved_dynamic_units": [
+        "harness.resolve_dynamic_modules"
+      ],
+      "upstream_changed_units": []
+    }
+  ],
+  "mapping_applicability": {
+    "anchor_implementation_sha": "89256787c93036fa1350a97a9832ae9a56c03cac",
+    "status": "APPLICABLE_TO_BASE",
+    "target_requires_delta_review": true
+  },
+  "mapping_digest": "193f15657a853027658ee60d75bac4e6545a727c9fc89af931c7de18b123d307",
+  "minimum_requalification": [
+    "INDEPENDENT_DEPENDENCY_CLOSURE_REVIEW"
+  ],
+  "required_requalification_layers": [],
+  "role": "TEAM_A_CANDIDATE_EVIDENCE_NOT_AUTHORIZATION",
+  "schema_version": "CHANGE_IMPACT_MANIFEST_V1",
+  "target_implementation_sha": "5c59a2e51bb65dd9a59b6ba2801dc26292a9c2a4",
+  "unknown_scope_review": {
+    "review_sha256": "f48c29010286a030d67a571f716855333bd6d465cf5f10177f0e6119f74fcd98",
+    "reviewed_hunk_count": 11,
+    "status": "EXACT_BOUND"
+  },
+  "unmapped_unknown_paths": [
+    {
+      "hunk": "@@ -0,0 +1,49 @@",
+      "hunk_sha256": "2c13f4051612369fb25acbe7bbe33fd7d56d927f54149172f83f279275c8ee24",
+      "introduction_kind": "NEW_BEHAVIOR",
+      "path": "scripts/governance_v2_execution.py",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "26c4a5b4e56c36c2fb53ee2a871757f7bb1f1baf54ff358de2635aeb3c4ca573",
+      "scope_basis": "New CLI delegates only to the newly introduced execution module and Python standard-library parsing/output. It does not import, call, or modify any mapped C6/C7 source or protected behavior.",
+      "scope_review_sha256": "f48c29010286a030d67a571f716855333bd6d465cf5f10177f0e6119f74fcd98",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,209 @@",
+      "hunk_sha256": "3477251f80d815219373ea6b6cdc0b89518f78ffea4b1445cb85549964f464c9",
+      "introduction_kind": "NEW_BEHAVIOR",
+      "path": "scripts/qualify_governance_v2_2.py",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "26c4a5b4e56c36c2fb53ee2a871757f7bb1f1baf54ff358de2635aeb3c4ca573",
+      "scope_basis": "New non-scientific synthetic qualification orchestrator imports the new execution module, not mapped C6/C7 runtime. Its fixtures and report do not execute, alter, or supply any pre-existing protected C6/C7 behavior or evidence family.",
+      "scope_review_sha256": "f48c29010286a030d67a571f716855333bd6d465cf5f10177f0e6119f74fcd98",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,291 @@",
+      "hunk_sha256": "dda76d15d9215d053b1e878131a37441f8c1a75287887c3fb08ec126cce9e765",
+      "introduction_kind": "NEW_BEHAVIOR",
+      "path": "src/tracking/governance_v2_execution.py",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "26c4a5b4e56c36c2fb53ee2a871757f7bb1f1baf54ff358de2635aeb3c4ca573",
+      "scope_basis": "New attempt-launch, wrapper, inspection, and terminal infrastructure uses Python standard-library and OS process interfaces only. It has no import, call, dependency edge, or source modification involving the existing mapped C6/C7 protected graph.",
+      "scope_review_sha256": "f48c29010286a030d67a571f716855333bd6d465cf5f10177f0e6119f74fcd98",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,9 @@",
+      "hunk_sha256": "90ffd39204a83366e252ebbdf90e15611b576adf3ad3c839013e8ba84b3e4e9f",
+      "introduction_kind": "SUPPORTING_DOC_OR_EVIDENCE",
+      "path": "summary_md/governance/v2_2/G1_G2_SCOPE.md",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "26c4a5b4e56c36c2fb53ee2a871757f7bb1f1baf54ff358de2635aeb3c4ca573",
+      "scope_basis": "New V2-2 scope note governs future execution-entry wording; it contains no executable source and changes no existing C6/C7 protected source, dependency edge, or historical evidence provenance.",
+      "scope_review_sha256": "f48c29010286a030d67a571f716855333bd6d465cf5f10177f0e6119f74fcd98",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,13 @@",
+      "hunk_sha256": "30ffafb68a16b8a1935241fd8bc3318bb404aca6766853b2993b8898f8cae273",
+      "introduction_kind": "SUPPORTING_DOC_OR_EVIDENCE",
+      "path": "summary_md/governance/v2_2/IMPLEMENTATION_SUMMARY.md",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "26c4a5b4e56c36c2fb53ee2a871757f7bb1f1baf54ff358de2635aeb3c4ca573",
+      "scope_basis": "New Team A description of V2-2 infrastructure and bounded Q3 evidence is non-executable and does not change the old C6/C7 protected graph or its historical proof inputs.",
+      "scope_review_sha256": "f48c29010286a030d67a571f716855333bd6d465cf5f10177f0e6119f74fcd98",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,27 @@",
+      "hunk_sha256": "1d540e2a1fe3be7370b88cd16b9781124b98898df2e09d75a928d182dca4e996",
+      "introduction_kind": "SUPPORTING_DOC_OR_EVIDENCE",
+      "path": "summary_md/governance/v2_2/Q3_REAL_SESSION_PROCEDURE.md",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "26c4a5b4e56c36c2fb53ee2a871757f7bb1f1baf54ff358de2635aeb3c4ca573",
+      "scope_basis": "New operator procedure describes a V2-2 non-scientific disconnect attempt; the document itself does not execute code or alter existing mapped C6/C7 behavior and evidence.",
+      "scope_review_sha256": "f48c29010286a030d67a571f716855333bd6d465cf5f10177f0e6119f74fcd98",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,9 @@",
+      "hunk_sha256": "98eb814c9c8596b19e3c37e1d61d23fb6372bec80328031419e19b2bab9966cc",
+      "introduction_kind": "SUPPORTING_DOC_OR_EVIDENCE",
+      "path": "summary_md/governance/v2_2/TEAM_B_REVIEW_CONTEXT.md",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "26c4a5b4e56c36c2fb53ee2a871757f7bb1f1baf54ff358de2635aeb3c4ca573",
+      "scope_basis": "New independent-review instructions are non-executable candidate context, with no change to mapped C6/C7 sources, protected closures, or historical evidence bytes.",
+      "scope_review_sha256": "f48c29010286a030d67a571f716855333bd6d465cf5f10177f0e6119f74fcd98",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,68 @@",
+      "hunk_sha256": "31202388b0a82474296eff54a8c47a7ec459edd2e6e322d5493546ae56f7e7af",
+      "introduction_kind": "SUPPORTING_DOC_OR_EVIDENCE",
+      "path": "summary_md/governance/v2_2/candidate_evidence/LOCAL_QUALIFICATION_SUMMARY.json",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "26c4a5b4e56c36c2fb53ee2a871757f7bb1f1baf54ff358de2635aeb3c4ca573",
+      "scope_basis": "New Team A V2-2 synthetic qualification summary records local attempt results; it is not consumed by mapped C6/C7 scientific runtime or existing protected evidence.",
+      "scope_review_sha256": "f48c29010286a030d67a571f716855333bd6d465cf5f10177f0e6119f74fcd98",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,90 @@",
+      "hunk_sha256": "c7a6557e076f077f689b648f09b5e00a08193e35121d5a2c6c7c3ddeeec6390c",
+      "introduction_kind": "SUPPORTING_DOC_OR_EVIDENCE",
+      "path": "summary_md/governance/v2_2/candidate_evidence/Q3_REAL_SESSION_EVIDENCE.json",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "26c4a5b4e56c36c2fb53ee2a871757f7bb1f1baf54ff358de2635aeb3c4ca573",
+      "scope_basis": "New Team A Q3 operator-session evidence records process identity and bounded disconnect observations; it is not an input to mapped C6/C7 protected behavior or historical evidence.",
+      "scope_review_sha256": "f48c29010286a030d67a571f716855333bd6d465cf5f10177f0e6119f74fcd98",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,18 @@",
+      "hunk_sha256": "be3825853dd227b8e9437bd964e992ea9881955a2f994436dfb5a86a0a4b9723",
+      "introduction_kind": "SUPPORTING_DOC_OR_EVIDENCE",
+      "path": "summary_md/governance/v2_2/candidate_evidence/TEST_SUMMARY.json",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "26c4a5b4e56c36c2fb53ee2a871757f7bb1f1baf54ff358de2635aeb3c4ca573",
+      "scope_basis": "New Team A V2-2 test summary describes validation already performed; it does not execute or modify existing protected C6/C7 sources or evidence.",
+      "scope_review_sha256": "f48c29010286a030d67a571f716855333bd6d465cf5f10177f0e6119f74fcd98",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,156 @@",
+      "hunk_sha256": "4dabccfa197670257325cabf5782c24a26a88e127aca99987b3fbc350f1cf51e",
+      "introduction_kind": "TEST_ONLY",
+      "path": "tests/test_governance_v2_execution.py",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "26c4a5b4e56c36c2fb53ee2a871757f7bb1f1baf54ff358de2635aeb3c4ca573",
+      "scope_basis": "New tests exercise only the newly introduced V2-2 execution module and synthetic fixture. They do not change mapped C6/C7 production sources, dependency closures, or historical evidence.",
+      "scope_review_sha256": "f48c29010286a030d67a571f716855333bd6d465cf5f10177f0e6119f74fcd98",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    }
+  ]
+}
