@@ -235,9 +235,103 @@
         }
       ],
       "validation_level": "L0"
+    },
+    {
+      "behavior_unit_id": "v2_2.execution_lifecycle",
+      "dependency_edges": [],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "attempt_identity_integrity",
+        "attempt_namespace_isolation",
+        "attempt_session_liveness",
+        "mechanical_terminal_integrity",
+        "outcome_blind_stdio_boundary",
+        "detached_execution_reliability"
+      ],
+      "requalification_gate": "V2_2_EXECUTION_RELIABILITY_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "ATTEMPT_ID_PATTERN",
+            "LAUNCH_SCHEMA",
+            "TERMINAL_SCHEMA",
+            "INSPECTION_SCHEMA"
+          ],
+          "path": "src/tracking/governance_v2_execution.py",
+          "symbol": "<module>"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/governance_v2_execution.py",
+          "symbol": "_attempt_root / _boot_id / _proc_stat / _proc_argv / _live_session_members / _atomic_json / _read_object / _validated_launch / _valid_terminal / _wrapper_identity_status / inspect / run_wrapper / launch"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/governance_v2_execution.py",
+          "symbol": "_command_tail / main"
+        },
+        {
+          "match_tokens": [
+            "from tracking.governance_v2_execution import"
+          ],
+          "path": "scripts/governance_v2_execution.py",
+          "symbol": "<module>"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "v2_2.qualification_protocol",
+      "dependency_edges": [
+        "v2_2.execution_lifecycle"
+      ],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "execution_reliability_qualification_semantics"
+      ],
+      "requalification_gate": "V2_2_EXECUTION_RELIABILITY_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/qualify_governance_v2_2.py",
+          "symbol": "child / _argv / _wait_state / _wait_child_pid / _launch / _terminal / _host_settings / qualify / main"
+        },
+        {
+          "match_tokens": [
+            "WRAPPER",
+            "from tracking.governance_v2_execution import"
+          ],
+          "path": "scripts/qualify_governance_v2_2.py",
+          "symbol": "<module>"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "tests.v2_2_execution_qualification",
+      "dependency_edges": [],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [],
+      "requalification_gate": "V2_2_EXECUTION_TEST_REVIEW",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "tests/test_governance_v2_execution.py",
+          "symbol": "test-only qualification"
+        }
+      ],
+      "validation_level": "L0"
     }
   ],
-  "dependency_mapping_identity": "ae802ff343f82acdc4966bf497c6c96e5b2e1590c547c6cd174544637172d2d5",
+  "dependency_mapping_identity": "ff0a2b71bcb49da21dbdbb32f62e8c1d68191a601245817c1105a873194e267d",
   "evidence": [
     {
       "evidence_id": "C7_FIFO_MECHANISM",
@@ -275,10 +369,18 @@
         "harness.resolve_dynamic_modules"
       ],
       "validation_gate": "DYNAMIC_IMPORT_DEPENDENCY_CLOSURE"
+    },
+    {
+      "evidence_id": "V2_2_EXECUTION_RELIABILITY",
+      "proven_behavior_units": [
+        "v2_2.execution_lifecycle",
+        "v2_2.qualification_protocol"
+      ],
+      "validation_gate": "V2_2_EXECUTION_RELIABILITY_QUALIFICATION"
     }
   ],
-  "mapping_digest": "193f15657a853027658ee60d75bac4e6545a727c9fc89af931c7de18b123d307",
-  "mapping_scope": "Reviewed C7 FIFO/capacity/credit and C7 launcher, plus selected C6 Harness v2 dynamic boundary; all other paths fail closed",
+  "mapping_digest": "dcfbdfb73c59a327973064b1d13a1fb91ebb1ef5e1cb565a39df27d85cdd6ab0",
+  "mapping_scope": "Reviewed C7 FIFO/capacity/credit and C7 launcher, selected C6 Harness v2 dynamic boundary, and prospective V2-2 execution reliability lifecycle and qualification protocol; all other paths fail closed",
   "protected_invariants": [
     "source_cleanliness",
     "registered_capacity_propagation",
@@ -286,7 +388,14 @@
     "same_frame_released_credit",
     "eligibility_reconstruction",
     "exact_formal_domain",
-    "dynamic_execution_binding"
+    "dynamic_execution_binding",
+    "attempt_identity_integrity",
+    "attempt_namespace_isolation",
+    "attempt_session_liveness",
+    "mechanical_terminal_integrity",
+    "outcome_blind_stdio_boundary",
+    "detached_execution_reliability",
+    "execution_reliability_qualification_semantics"
   ],
   "schema_version": "GOVERNANCE_V2_DEPENDENCY_MAP_V1"
 }

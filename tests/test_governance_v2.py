@@ -2,6 +2,7 @@
 import copy
 import hashlib
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -19,9 +20,20 @@ Q2 = "f484ac5b886e68393c581936f1e764d4d08366d8"
 Q3 = "0aa88ea1d02d9cfe1d81f923cf4a73c2dd6062dc"
 INTRO_BASE = "3430054ec32489116523644fc958ccb7ac29f4d3"
 INTRO_TARGET = "5c59a2e51bb65dd9a59b6ba2801dc26292a9c2a4"
+PROSPECTIVE_ANCHOR = "42118c0594523efa3823397fed054770549a827d"
+ORIGINAL_MAP_AUTHORITY = "3430054ec32489116523644fc958ccb7ac29f4d3"
 
 
 def _load():
+    # Historical diff tests must keep the map and claim that existed at their authority.
+    def committed(path):
+        return json.loads(subprocess.check_output(
+            ["git", "show", ORIGINAL_MAP_AUTHORITY + ":" + path], cwd=str(ROOT)))
+    return (validate_mapping(committed("summary_md/governance/v2_1/DEPENDENCY_MAP.json")),
+            committed("summary_md/governance/v2_1/MAP_APPLICABILITY.json"))
+
+
+def _prospective_load():
     return (validate_mapping(json.loads((DOC / "DEPENDENCY_MAP.json").read_text())),
             json.loads((DOC / "MAP_APPLICABILITY.json").read_text()))
 
@@ -390,3 +402,102 @@ def test_introduction_kind_must_match_path_category():
     result = _introduction_audit(review)
     assert result["unknown_scope_review"]["reason"] == "REVIEW_ZERO_EXISTING_IMPACT_INVALID"
     assert result["candidate_verdict"] == "BLOCK"
+
+
+
+def test_prospective_v2_2_map_identity_applicability_and_historical_graph():
+    mapping, claim = _prospective_load()
+    historical, _ = _load()
+    assert mapping["dependency_mapping_identity"] == semantic_identity(mapping)
+    assert mapping["mapping_digest"] == mapping_digest(mapping)
+    assert mapping["dependency_mapping_identity"] != historical["dependency_mapping_identity"]
+    assert mapping["mapping_digest"] != historical["mapping_digest"]
+    assert mapping["behavior_units"][:len(historical["behavior_units"])] == historical["behavior_units"]
+    assert mapping["evidence"][:len(historical["evidence"])] == historical["evidence"]
+    assert mapping["protected_invariants"][:len(historical["protected_invariants"])] == historical["protected_invariants"]
+    assert claim["anchor_implementation_sha"] == PROSPECTIVE_ANCHOR
+    assert make_applicability(mapping, ROOT, PROSPECTIVE_ANCHOR) == claim
+    assert claim["audited_source_sha256"]["src/tracking/governance_v2_execution.py"]
+    assert claim["audited_source_sha256"]["scripts/governance_v2_execution.py"]
+    assert claim["audited_source_sha256"]["scripts/qualify_governance_v2_2.py"]
+    by_id = {row["behavior_unit_id"]: row for row in mapping["behavior_units"]}
+    assert set(by_id) - {row["behavior_unit_id"] for row in historical["behavior_units"]} == {
+        "v2_2.execution_lifecycle", "v2_2.qualification_protocol",
+        "tests.v2_2_execution_qualification"}
+    assert by_id["v2_2.qualification_protocol"]["dependency_edges"] == ["v2_2.execution_lifecycle"]
+    assert by_id["v2_2.execution_lifecycle"]["dependency_edges"] == []
+    assert by_id["tests.v2_2_execution_qualification"]["validation_level"] == "L0"
+    assert by_id["tests.v2_2_execution_qualification"]["protected_invariants"] == []
+    assert by_id["harness.resolve_dynamic_modules"]["dynamic_dependency_status"] == "UNMAPPED"
+    assert next(row for row in mapping["evidence"]
+                if row["evidence_id"] == "V2_2_EXECUTION_RELIABILITY")["proven_behavior_units"] == [
+                    "v2_2.execution_lifecycle", "v2_2.qualification_protocol"]
+
+
+def _prospective_fixture_audit(tmp_path, changed_path, original, replacement):
+    mapping, _ = _prospective_load()
+    root = tmp_path / "repo"
+    root.mkdir()
+    paths = {locator["path"] for row in mapping["behavior_units"]
+             for locator in row["source_locator"]}
+    for relative in paths:
+        destination = root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / relative, destination)
+    def git(*args):
+        return subprocess.check_output(["git", *args], cwd=str(root), text=True).strip()
+    git("init", "-q")
+    git("config", "user.name", "Governance Fixture")
+    git("config", "user.email", "governance-fixture@example.invalid")
+    git("add", ".")
+    git("commit", "-qm", "prospective anchor")
+    base = git("rev-parse", "HEAD")
+    claim = make_applicability(mapping, root, base)
+    path = root / changed_path
+    source = path.read_text()
+    assert source.count(original) == 1
+    path.write_text(source.replace(original, replacement))
+    git("add", changed_path)
+    git("commit", "-qm", "future change fixture")
+    target = git("rev-parse", "HEAD")
+    result = audit_diff(root, base, target, mapping, claim)
+    assert result["mapping_applicability"]["status"] == "APPLICABLE_TO_BASE"
+    assert result["candidate_verdict"] == "CANDIDATE_REVIEWABLE_TEAM_B_PENDING"
+    assert result["unmapped_unknown_paths"] == []
+    return result
+
+
+@pytest.mark.parametrize(("path", "original", "replacement", "unit"), [
+    ("src/tracking/governance_v2_execution.py",
+     "metadata_timeout: float = 5.0", "metadata_timeout: float = 6.0",
+     "v2_2.execution_lifecycle"),
+    ("scripts/qualify_governance_v2_2.py",
+     "output.mkdir(parents=True)", "output.mkdir(parents=True, exist_ok=True)",
+     "v2_2.qualification_protocol"),
+])
+def test_prospective_v2_2_behavior_change_targets_only_v2_2(
+        tmp_path, path, original, replacement, unit):
+    result = _prospective_fixture_audit(tmp_path, path, original, replacement)
+    assert result["changed_behavior_units"] == [unit]
+    assert _classes(result)["V2_2_EXECUTION_RELIABILITY"] == "NON_INHERITABLE"
+    assert "V2_2_EXECUTION_RELIABILITY_QUALIFICATION" in result["minimum_requalification"]
+    assert all(_classes(result)[family] == "INHERITABLE" for family in (
+        "C7_FIFO_MECHANISM", "C7_CAPACITY_PROPAGATION",
+        "C7_ELIGIBILITY_RECONSTRUCTION", "C7_FULL_DOMAIN_PATH"))
+    assert _classes(result)["C6_HARNESS_DYNAMIC_BOUNDARY"] == "UNMAPPED"
+
+
+def test_prospective_v2_2_test_only_change_stays_non_scientific(tmp_path):
+    result = _prospective_fixture_audit(
+        tmp_path, "tests/test_governance_v2_execution.py",
+        'assert execution._wrapper_identity_status(launch) == "MATCH"',
+        'assert execution._wrapper_identity_status(launch) == "ABSENT"')
+    assert result["changed_behavior_units"] == ["tests.v2_2_execution_qualification"]
+    assert result["required_requalification_layers"] == ["L0"]
+    assert result["affected_invariants"] == []
+    assert "V2_2_EXECUTION_TEST_REVIEW" in result["minimum_requalification"]
+    assert _classes(result)["V2_2_EXECUTION_RELIABILITY"] == "INHERITABLE"
+    assert all(_classes(result)[family] == "INHERITABLE" for family in (
+        "C7_FIFO_MECHANISM", "C7_CAPACITY_PROPAGATION",
+        "C7_ELIGIBILITY_RECONSTRUCTION", "C7_FULL_DOMAIN_PATH"))
+    assert _classes(result)["C6_HARNESS_DYNAMIC_BOUNDARY"] == "UNMAPPED"
