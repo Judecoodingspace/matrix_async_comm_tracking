@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the 28 small synthetic V2-3 artifact qualification cases."""
+"""Run the synthetic V2-3 artifact and corrective qualification cases."""
 from __future__ import annotations
 
 import argparse
@@ -42,6 +42,15 @@ CASES = {
     "Q26_FORMAL_AUTHORITY_BOUNDARY": "test_explicit_adoption_verifies_content_and_formal_rehashes",
     "Q27_PLAIN_FILE_CONSUMER_RECORD": "test_unknown_schema_and_independent_consumer_anchor",
     "Q28_EXACT_GIT_REFERENCE_ONLY": "test_git_exact_commit_and_branch_rejected",
+    "Q29_C4_REAL_CIM_BINDING": "test_fabricated_pass_wrapper_cannot_satisfy_c4",
+    "Q30_C4_REQUALIFICATION_CLOSURE": "test_c4_recomputes_real_cim_and_checks_closure",
+    "Q31_AUTHORITY_EXACT_SCOPE": "test_correction_authority_exact_scope_rejects_mismatch",
+    "Q32_MINIATURE_CHANGE_IMPACT_REJECTED": "test_correction_rejects_miniature_change_impact_even_with_authority",
+    "Q33_MULTI_INCIDENT_STICKY_A2": "test_multiple_sticky_a2_incidents_survive_restore_and_child",
+    "Q34_PARTIAL_RETRY_CONFLICT": "test_partial_retry_conflict_blocks_without_touching_artifacts",
+    "Q35_C1_C2_C3_REPORTING": "test_c1_c2_c3_report_separate_failures",
+    "Q36_PARTIAL_UNRECOGNIZED_BLOCK": "test_partial_retry_unrecognized_metadata_blocks",
+    "Q37_SCIENCE_AUTHORITY_ROUTE": "test_scientific_defect_routes_only_to_science_authority",
 }
 
 

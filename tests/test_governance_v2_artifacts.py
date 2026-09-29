@@ -11,6 +11,7 @@ import subprocess
 import pytest
 
 from tracking import governance_v2_artifacts as a
+from tracking.governance_v2 import audit_diff, validate_mapping
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -69,13 +70,52 @@ def _finalize(attempts: Path, declaration: dict, **kwargs):
 
 
 def _v21(tmp_path: Path, purpose: str = "ordinary", status: str = "PASS") -> dict:
-    path = tmp_path / ("v21_" + purpose + ".json")
-    value = {"schema_version": "V2_1_APPLICABILITY_RESULT_V1", "status": status,
-             "purpose": purpose, "audit_sha256": "a" * 64, "independent_review": "PASS"}
-    raw = a._canonical(value)
-    path.write_bytes(raw)
-    return {"path": str(path), "sha256": hashlib.sha256(raw).hexdigest(),
-            "status": status, "purpose": purpose}
+    sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO, text=True).strip()
+    mapping = validate_mapping(json.loads((REPO / "summary_md/governance/v2_1/DEPENDENCY_MAP.json").read_text()))
+    claim = json.loads((REPO / "summary_md/governance/v2_1/MAP_APPLICABILITY.json").read_text())
+    cim = audit_diff(REPO, sha, sha, mapping, claim)
+    assert cim["candidate_verdict"] == "CANDIDATE_REVIEWABLE_TEAM_B_PENDING"
+    cim_path = tmp_path / ("cim_" + purpose + ".json")
+    cim_path.write_bytes(a._canonical(cim))
+    cim_sha = hashlib.sha256(cim_path.read_bytes()).hexdigest()
+    attestation = {"schema_version": "V2_1_INDEPENDENT_CLOSURE_ATTESTATION_V1",
+                   "review_role": "INDEPENDENT", "decision": "ACCEPT" if status == "PASS" else "REJECT",
+                   "cim_sha256": cim_sha, "scope_review_sha256": None, "purposes": [purpose],
+                   "relied_evidence_ids": [row["evidence_id"] for row in cim["evidence_inheritance"]],
+                   "closed_evidence_ids": [row["evidence_id"] for row in cim["evidence_inheritance"]
+                                           if row["classification"] != "INHERITABLE"],
+                   "closed_requalification": cim["minimum_requalification"]}
+    review_path = tmp_path / ("review_" + purpose + ".json")
+    review_path.write_bytes(a._canonical(attestation))
+    return {"cim_path": str(cim_path), "cim_sha256": cim_sha,
+            "scope_review_path": None, "scope_review_sha256": None,
+            "attestation_path": str(review_path),
+            "attestation_sha256": hashlib.sha256(review_path.read_bytes()).hexdigest()}
+
+
+def _authority(tmp_path: Path, attempt: str, correction: dict) -> dict:
+    impact = correction["v2_1_change_impact"]
+    record = {"schema_version": "V2_3_EXISTING_AUTHORITY_ACCEPTANCE_V1",
+              "authority_layer": ("SCIENCE" if correction["defect_class"].startswith("SCIENTIFIC_")
+                                  else "PLATFORM"),
+              "attempt_id": attempt, "parent_node_id": correction["parent_node_id"],
+              "defect_class": correction["defect_class"],
+              "affected_layers": correction["affected_layers"], "purposes": correction["purposes"],
+              "v2_1_cim_sha256": impact["cim_sha256"],
+              "v2_1_review_sha256": impact["attestation_sha256"],
+              "v2_1_scope_review_sha256": impact["scope_review_sha256"], "decision": "ACCEPT"}
+    path = tmp_path / ("authority_" + correction["parent_node_id"] + "_"
+                       + correction["purposes"][0] + ".json")
+    path.write_bytes(a._canonical(record))
+    return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
+def _rewrite_authority(ref: dict, change: dict) -> None:
+    path = Path(ref["path"])
+    value = json.loads(path.read_text())
+    value.update(change)
+    path.write_bytes(a._canonical(value))
+    ref["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _reuse(tmp_path: Path, attempts: Path, declaration: dict, node_id: str = "initial",
@@ -158,8 +198,7 @@ def test_marker_last_interruption_refinalization_and_lock(tmp_path, monkeypatch)
         _finalize(attempts, declaration, fail_before_marker=True)
     assert a.inspect(attempts, "run1")["state"] == "NOT_FINALIZED"
     assert not (root / "v2_3/finalization_receipt.json").exists()
-    with pytest.raises(a.ArtifactError, match="PARTIAL_FINALIZATION"):
-        _finalize(attempts, declaration)
+    assert _finalize(attempts, declaration)["state"] == "FINALIZED"
     second, _, declaration2 = _setup(tmp_path / "second", monkeypatch)
     assert _finalize(second, declaration2)["state"] == "FINALIZED"
     with pytest.raises(a.ArtifactError, match="ALREADY_FINALIZED"):
@@ -232,17 +271,13 @@ def _correction(attempts: Path, declaration: dict, node_id: str, purpose: str = 
            "sha256": parent["evidence"]["RAW_EVIDENCE"]["sha256"]}
     normalized = _file_ref(node, "normalized.dat")
     result = _declaration(raw, normalized, declaration["effective_scientific_config"])
-    impact_path = attempts.parent / ("impact_" + node_id + ".json")
-    impact_bytes = a._canonical({"schema_version": "V2_1_CHANGE_IMPACT_RESULT_V1",
-                                 "status": "PASS", "review_status": "PASS", "scientific_impact": "NONE"})
-    impact_path.write_bytes(impact_bytes)
+    impact_ref = _v21(attempts.parent, purpose)
     result["correction"] = {"parent_node_id": parent_id, "affected_layers": ["NORMALIZED_EVIDENCE"],
                             "purposes": [purpose], "defect_class": "VALIDATOR",
                             "defect_evidence": {"route": "A2", "reference": _git_ref()},
-                            "v2_1_change_impact": {"status": "PASS", "reference_path": str(impact_path),
-                                                   "reference_sha256": hashlib.sha256(impact_bytes).hexdigest(),
-                                                   "scientific_impact": "NONE"},
-                            "accepted_authority": {"layer": "PLATFORM", "identity": _git_ref()}}
+                            "v2_1_change_impact": {**impact_ref, "scientific_impact": "NONE"},
+                            "accepted_authority": None}
+    result["correction"]["accepted_authority"] = _authority(attempts.parent, "run1", result["correction"])
     return result
 
 
@@ -270,6 +305,7 @@ def test_raw_a2_cannot_be_corrected_and_tier_holds(tmp_path, monkeypatch):
     child = _correction(attempts, declaration, "fix1")
     child["correction"]["affected_layers"] = ["RAW_EVIDENCE"]
     child["correction"]["defect_evidence"]["route"] = "A2_RAW"
+    _rewrite_authority(child["correction"]["accepted_authority"], {"affected_layers": ["RAW_EVIDENCE"]})
     with pytest.raises(a.ArtifactError, match="RAW_A2_REPLACEMENT_FORBIDDEN"):
         a.create_correction(attempts, "run1", "fix1", child, repo_root=REPO)
     assert a.check_cleanup_eligibility(attempts, "run1", "initial", "output/normalized.dat")["cleanup_eligible"]
@@ -357,17 +393,13 @@ def test_inherited_tier3_layer_becomes_tier1_while_live_child_uses_it(tmp_path, 
                   "sha256": parent["evidence"]["NORMALIZED_EVIDENCE"]["sha256"]}
     child = _declaration(_file_ref(node, "raw.dat"), normalized,
                          declaration["effective_scientific_config"])
-    impact_path = tmp_path / "impact_rawfix.json"
-    raw = a._canonical({"schema_version": "V2_1_CHANGE_IMPACT_RESULT_V1",
-                        "status": "PASS", "review_status": "PASS", "scientific_impact": "NONE"})
-    impact_path.write_bytes(raw)
+    impact_ref = _v21(tmp_path)
     child["correction"] = {"parent_node_id": "initial", "affected_layers": ["RAW_EVIDENCE"],
                            "purposes": ["ordinary"], "defect_class": "ARTIFACT",
                            "defect_evidence": {"route": "OTHER", "reference": _git_ref()},
-                           "v2_1_change_impact": {"status": "PASS", "reference_path": str(impact_path),
-                                                  "reference_sha256": hashlib.sha256(raw).hexdigest(),
-                                                  "scientific_impact": "NONE"},
-                           "accepted_authority": {"layer": "PLATFORM", "identity": _git_ref()}}
+                           "v2_1_change_impact": {**impact_ref, "scientific_impact": "NONE"},
+                           "accepted_authority": None}
+    child["correction"]["accepted_authority"] = _authority(tmp_path, "run1", child["correction"])
     a.create_correction(attempts, "run1", "rawfix", child, repo_root=REPO)
     status = a.check_cleanup_eligibility(attempts, "run1", "initial", "output/normalized.dat")
     assert status["tier"] == 1 and status["inherited_by_current_lineage"]
@@ -430,8 +462,8 @@ def test_raw_a2_incident_blocks_inherited_correction_even_after_restore(tmp_path
                   consumption_class="FORMAL_AUTHORIZATION_SUPPORT")["route"] == "A2_RAW"
     (root / "output/raw.dat").write_bytes(original)
     child = _correction(attempts, declaration, "fix1")
-    with pytest.raises(a.ArtifactError, match="RAW_A2_LINEAGE_BLOCKED"):
-        a.create_correction(attempts, "run1", "fix1", child, repo_root=REPO)
+    assert a.create_correction(attempts, "run1", "fix1", child, repo_root=REPO)["state"] == "FINALIZED"
+    assert _reuse(tmp_path, attempts, child, "fix1")["route"] == "A2_RAW"
 
 
 def test_inherited_raw_a2_marks_canonical_parent_owner(tmp_path, monkeypatch):
@@ -443,6 +475,177 @@ def test_inherited_raw_a2_marks_canonical_parent_owner(tmp_path, monkeypatch):
     (root / "output/raw.dat").write_bytes(b"x" * len(original))
     result = _reuse(tmp_path, attempts, child, "fix1", consumption_class="FORMAL_AUTHORIZATION_SUPPORT")
     assert result["route"] == "A2_RAW"
-    assert (attempts / ".v2_3_incidents/run1/initial.json").is_file()
+    assert (attempts / ".v2_3_incidents/run1/initial/RAW_EVIDENCE.json").is_file()
     (root / "output/raw.dat").write_bytes(original)
     assert _reuse(tmp_path, attempts, declaration, purpose="other")["route"] == "A2_RAW"
+
+
+def test_fabricated_pass_wrapper_cannot_satisfy_c4(tmp_path, monkeypatch):
+    attempts, _, declaration = _setup(tmp_path, monkeypatch)
+    _finalize(attempts, declaration)
+    path = tmp_path / "fabricated.json"
+    path.write_bytes(a._canonical({"schema_version": "V2_1_APPLICABILITY_RESULT_V1",
+                                   "status": "PASS", "purpose": "ordinary",
+                                   "audit_sha256": "a" * 64, "independent_review": "PASS"}))
+    fabricated = {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                  "status": "PASS", "purpose": "ordinary"}
+    result = _reuse(tmp_path, attempts, declaration, v2_1_applicability=fabricated)
+    assert result["C1_C6"]["C4"]["status"] == "FAIL"
+    assert result["decision"] == "REUSE_REFUSED"
+    real = _v21(tmp_path)
+    real["cim_path"] = str(tmp_path / "nonexistent-cim.json")
+    assert _reuse(tmp_path, attempts, declaration,
+                  v2_1_applicability=real)["C1_C6"]["C4"]["status"] == "FAIL"
+
+
+def test_c4_recomputes_real_cim_and_checks_closure(tmp_path, monkeypatch):
+    attempts, _, declaration = _setup(tmp_path, monkeypatch)
+    _finalize(attempts, declaration)
+    reference = _v21(tmp_path)
+    assert _reuse(tmp_path, attempts, declaration, v2_1_applicability=reference)["decision"] == "REUSE_ADMISSIBLE"
+    att_path = Path(reference["attestation_path"])
+    att = json.loads(att_path.read_text())
+    omitted = dict(att)
+    omitted["relied_evidence_ids"] = [row for row in att["relied_evidence_ids"]
+                                      if row != "C6_HARNESS_DYNAMIC_BOUNDARY"]
+    omitted["closed_evidence_ids"] = []
+    att_path.write_bytes(a._canonical(omitted))
+    reference["attestation_sha256"] = hashlib.sha256(att_path.read_bytes()).hexdigest()
+    assert _reuse(tmp_path, attempts, declaration,
+                  v2_1_applicability=reference)["C1_C6"]["C4"]["status"] == "FAIL"
+    att["closed_evidence_ids"] = []
+    att_path.write_bytes(a._canonical(att))
+    reference["attestation_sha256"] = hashlib.sha256(att_path.read_bytes()).hexdigest()
+    assert _reuse(tmp_path, attempts, declaration,
+                  v2_1_applicability=reference)["C1_C6"]["C4"]["status"] == "FAIL"
+    reference = _v21(tmp_path)
+    cim_path = Path(reference["cim_path"])
+    cim = json.loads(cim_path.read_text())
+    cim["candidate_verdict"] = "BLOCK"
+    cim_path.write_bytes(a._canonical(cim))
+    reference["cim_sha256"] = hashlib.sha256(cim_path.read_bytes()).hexdigest()
+    assert _reuse(tmp_path, attempts, declaration,
+                  v2_1_applicability=reference)["C1_C6"]["C4"]["status"] == "FAIL"
+
+
+@pytest.mark.parametrize("mutation", [
+    "readme", "wrong_attempt", "wrong_defect", "wrong_layers", "wrong_purposes", "wrong_v21"
+])
+def test_correction_authority_exact_scope_rejects_mismatch(tmp_path, monkeypatch, mutation):
+    attempts, _, declaration = _setup(tmp_path, monkeypatch)
+    _finalize(attempts, declaration)
+    child = _correction(attempts, declaration, "fix1")
+    correction = child["correction"]
+    if mutation == "readme":
+        raw = (REPO / "README.md").read_bytes()
+        correction["accepted_authority"] = {"path": str(REPO / "README.md"),
+                                            "sha256": hashlib.sha256(raw).hexdigest()}
+    else:
+        changes = {
+            "wrong_attempt": {"attempt_id": "other"},
+            "wrong_defect": {"defect_class": "ARTIFACT"},
+            "wrong_layers": {"affected_layers": ["RAW_EVIDENCE"]},
+            "wrong_purposes": {"purposes": ["other"]},
+            "wrong_v21": {"v2_1_cim_sha256": "0" * 64},
+        }
+        _rewrite_authority(correction["accepted_authority"], changes[mutation])
+    with pytest.raises(a.ArtifactError):
+        a.create_correction(attempts, "run1", "fix1", child, repo_root=REPO)
+
+
+def test_correction_rejects_miniature_change_impact_even_with_authority(tmp_path, monkeypatch):
+    attempts, _, declaration = _setup(tmp_path, monkeypatch)
+    _finalize(attempts, declaration)
+    child = _correction(attempts, declaration, "fix1")
+    impact = child["correction"]["v2_1_change_impact"]
+    path = Path(impact["cim_path"])
+    path.write_bytes(a._canonical({"schema_version": "V2_1_CHANGE_IMPACT_RESULT_V1",
+                                   "status": "PASS", "review_status": "PASS",
+                                   "scientific_impact": "NONE"}))
+    impact["cim_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    _rewrite_authority(child["correction"]["accepted_authority"],
+                       {"v2_1_cim_sha256": impact["cim_sha256"]})
+    with pytest.raises(a.ArtifactError, match="V2_1_CHANGE_IMPACT_UNRESOLVED"):
+        a.create_correction(attempts, "run1", "fix1", child, repo_root=REPO)
+
+
+def test_multiple_sticky_a2_incidents_survive_restore_and_child(tmp_path, monkeypatch):
+    attempts, root, declaration = _setup(tmp_path, monkeypatch)
+    _finalize(attempts, declaration)
+    normalized = root / "output/normalized.dat"
+    raw = root / "output/raw.dat"
+    original_normalized, original_raw = normalized.read_bytes(), raw.read_bytes()
+    normalized.write_bytes(b"x" * len(original_normalized))
+    assert _reuse(tmp_path, attempts, declaration,
+                  consumption_class="FORMAL_AUTHORIZATION_SUPPORT")["route"] == "A2"
+    normalized.write_bytes(original_normalized)
+    raw.write_bytes(b"x" * len(original_raw))
+    assert _reuse(tmp_path, attempts, declaration,
+                  consumption_class="FORMAL_AUTHORIZATION_SUPPORT")["route"] == "A2_RAW"
+    raw.write_bytes(original_raw)
+    incident_root = attempts / ".v2_3_incidents/run1/initial"
+    assert (incident_root / "NORMALIZED_EVIDENCE.json").is_file()
+    assert (incident_root / "RAW_EVIDENCE.json").is_file()
+    child = _correction(attempts, declaration, "fix1")
+    a.create_correction(attempts, "run1", "fix1", child, repo_root=REPO)
+    result = _reuse(tmp_path, attempts, child, "fix1")
+    assert result["decision"] == "BLOCK" and result["route"] == "A2_RAW"
+
+
+def test_partial_retry_conflict_blocks_without_touching_artifacts(tmp_path, monkeypatch):
+    attempts, root, declaration = _setup(tmp_path, monkeypatch)
+    with pytest.raises(a.ArtifactError, match="SIMULATED_PRE_MARKER"):
+        _finalize(attempts, declaration, fail_before_marker=True)
+    raw_before = (root / "output/raw.dat").read_bytes()
+    manifest = root / "v2_3/manifest.json"
+    value = json.loads(manifest.read_text())
+    value["node_id"] = "different"
+    manifest.write_bytes(a._canonical(value))
+    with pytest.raises(a.ArtifactError, match="PARTIAL_FINALIZATION_CONFLICT"):
+        _finalize(attempts, declaration)
+    assert a.inspect(attempts, "run1")["state"] == "NOT_FINALIZED"
+    assert (root / "output/raw.dat").read_bytes() == raw_before
+    assert json.loads(manifest.read_text())["node_id"] == "different"
+
+
+def test_c1_c2_c3_report_separate_failures(tmp_path, monkeypatch):
+    attempts, _, declaration = _setup(tmp_path, monkeypatch)
+    _finalize(attempts, declaration)
+    pin = a.inspect(attempts, "run1")
+    anchor = {"attempt_id": "run1", "node_id": "initial",
+              "manifest_sha256": "0" * 64,
+              "finalization_sha256": pin["finalization_sha256"]}
+    result = _reuse(tmp_path, attempts, declaration, anchor=anchor)
+    assert result["C1_C6"]["C1"]["status"] == "PASS"
+    assert result["C1_C6"]["C2"]["status"] == "FAIL"
+    assert result["C1_C6"]["C3"]["status"] == "UNKNOWN"
+    provenance = copy.deepcopy(declaration["provenance"])
+    provenance["validation"]["validator"]["sha256"] = "0" * 64
+    result = _reuse(tmp_path, attempts, declaration, expected_provenance=provenance)
+    assert result["C1_C6"]["C1"]["status"] == "PASS"
+    assert result["C1_C6"]["C2"]["status"] == "PASS"
+    assert result["C1_C6"]["C3"]["status"] == "FAIL"
+
+
+def test_partial_retry_unrecognized_metadata_blocks(tmp_path, monkeypatch):
+    attempts, root, declaration = _setup(tmp_path, monkeypatch)
+    with pytest.raises(a.ArtifactError, match="SIMULATED_PRE_MARKER"):
+        _finalize(attempts, declaration, fail_before_marker=True)
+    (root / "v2_3/unrecognized.json").write_text("{}")
+    with pytest.raises(a.ArtifactError, match="PARTIAL_FINALIZATION_UNRECOGNIZED"):
+        _finalize(attempts, declaration)
+    assert a.inspect(attempts, "run1")["state"] == "NOT_FINALIZED"
+
+
+def test_scientific_defect_routes_only_to_science_authority(tmp_path, monkeypatch):
+    attempts, _, declaration = _setup(tmp_path, monkeypatch)
+    _finalize(attempts, declaration)
+    child = _correction(attempts, declaration, "fix1")
+    correction = child["correction"]
+    correction["defect_class"] = "SCIENTIFIC_CONFIG"
+    correction["v2_1_change_impact"]["scientific_impact"] = "POSSIBLE"
+    with pytest.raises(a.ArtifactError, match="ACCEPTED_AUTHORITY_UNBOUND"):
+        a.create_correction(attempts, "run1", "fix1", child, repo_root=REPO)
+    _rewrite_authority(correction["accepted_authority"],
+                       {"authority_layer": "SCIENCE", "defect_class": "SCIENTIFIC_CONFIG"})
+    assert a.create_correction(attempts, "run1", "fix1", child, repo_root=REPO)["state"] == "FINALIZED"

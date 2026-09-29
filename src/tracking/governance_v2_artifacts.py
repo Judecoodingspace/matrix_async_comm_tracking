@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from tracking.governance_v2_execution import inspect as inspect_execution
+from tracking.governance_v2 import ImpactError, audit_diff, validate_mapping
 
 SCHEMA = "GOVERNANCE_V2_ARTIFACT_NODE_V1"
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
@@ -322,15 +323,18 @@ def finalize(attempts_root: Path, attempt_id: str, declaration: Mapping[str, Any
     _require(adopt and authority_boundary, "EXPLICIT_ADOPTION_AND_AUTHORITY_BOUNDARY_REQUIRED")
     _require(node_id == "initial" or _allow_correction, "CORRECTION_CREATION_PATH_REQUIRED")
     meta.mkdir(exist_ok=True)
+    _require(meta.is_dir() and not meta.is_symlink(), "METADATA_ROOT_INVALID")
     lock_fd = os.open(meta / ".finalize.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
         try:
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             raise ArtifactError("FINALIZATION_BUSY") from exc
-        _require(not (meta / "finalization_receipt.json").exists(), "ALREADY_FINALIZED")
-        _require(not (meta / "manifest.json").exists() and not (meta / "validation_receipt.json").exists(),
-                 "PARTIAL_FINALIZATION_REQUIRES_RESOLUTION")
+        marker = meta / "finalization_receipt.json"
+        _require(not marker.exists() and not marker.is_symlink(), "ALREADY_FINALIZED")
+        allowed = {".finalize.lock", "manifest.json", "validation_receipt.json"}
+        _require(all(entry.name in allowed and not entry.is_dir()
+                     for entry in meta.iterdir()), "PARTIAL_FINALIZATION_UNRECOGNIZED")
         state = _eligible(attempts_root, attempt_id, declaration)
         _declaration(declaration, "initial" if node_id == "initial" else "corrective")
         if node_id != "initial":
@@ -360,6 +364,17 @@ def finalize(attempts_root: Path, attempt_id: str, declaration: Mapping[str, Any
                  and validation["validation_provenance"] == manifest["provenance"]["validation"]
                  and validation["effective_scientific_config"] == manifest["effective_scientific_config"],
                  "STAGED_SELF_CHECK_FAILED")
+        # A missing marker is retryable only when the published pre-marker
+        # bytes match this node and declaration exactly.
+        partials = ((meta / "validation_receipt.json", validation),
+                    (meta / "manifest.json", manifest))
+        for path, expected in partials:
+            if path.exists() or path.is_symlink():
+                _, observed = _read(path)
+                _require(observed == _canonical(expected), "PARTIAL_FINALIZATION_CONFLICT")
+        for path, _ in partials:
+            if path.exists():
+                path.unlink()
         _write_new(meta / "validation_receipt.json", validation)
         _write_new(meta / "manifest.json", manifest)
         if fail_before_marker:
@@ -377,13 +392,15 @@ def finalize(attempts_root: Path, attempt_id: str, declaration: Mapping[str, Any
             os.close(lock_fd)
 
 
-def _incident_path(attempts_root: Path, attempt_id: str, node_id: str) -> Path:
-    return Path(attempts_root).resolve() / ".v2_3_incidents" / _id(attempt_id) / (_id(node_id) + ".json")
+def _incident_path(attempts_root: Path, attempt_id: str, node_id: str, layer: str) -> Path:
+    _require(layer in (*LAYERS, "METADATA"), "INCIDENT_LAYER_INVALID")
+    return (Path(attempts_root).resolve() / ".v2_3_incidents" / _id(attempt_id)
+            / _id(node_id) / (layer + ".json"))
 
 
 def _record_incident(attempts_root: Path, attempt_id: str, node_id: str,
                      layer: str, reason: str) -> None:
-    path = _incident_path(attempts_root, attempt_id, node_id)
+    path = _incident_path(attempts_root, attempt_id, node_id, layer)
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
         _write_new(path, {"schema_version": SCHEMA, "attempt_id": attempt_id,
@@ -406,14 +423,15 @@ def _incident_for_layer(attempts_root: Path, attempt_id: str, node_id: str,
     current_id = node_id
     current = manifest
     while True:
-        path = _incident_path(attempts_root, attempt_id, current_id)
-        if path.exists():
-            incident, _ = _read(path)
-            _require(incident.get("schema_version") == SCHEMA
-                     and incident.get("attempt_id") == attempt_id
-                     and incident.get("node_id") == current_id
-                     and incident.get("route") == "A2", "INCIDENT_INVALID")
-            if incident.get("layer") in {layer, "METADATA"}:
+        for scope in (layer, "METADATA"):
+            path = _incident_path(attempts_root, attempt_id, current_id, scope)
+            if path.exists() or path.is_symlink():
+                incident, _ = _read(path)
+                _require(incident.get("schema_version") == SCHEMA
+                         and incident.get("attempt_id") == attempt_id
+                         and incident.get("node_id") == current_id
+                         and incident.get("layer") == scope
+                         and incident.get("route") == "A2", "INCIDENT_INVALID")
                 return incident
         ref = current["evidence"][layer]
         if ref["kind"] != "INHERITED":
@@ -458,20 +476,82 @@ def _lineage(attempts_root: Path, attempt_id: str, purpose: str, layer: str) -> 
             "heads": heads, "edges": edges, "nodes": sorted(nodes)}, ambiguous
 
 
-def _v21_check(reference: Mapping[str, Any], purpose: str) -> dict:
+def _v21_evidence(reference: Mapping[str, Any], purpose: str, repo_root: Path) -> dict:
+    """Recompute the referenced V2-1 CIM from Git; a PASS wrapper is insufficient."""
+    _require(isinstance(reference, Mapping) and set(reference) == {
+        "cim_path", "cim_sha256", "scope_review_path", "scope_review_sha256",
+        "attestation_path", "attestation_sha256"}, "V2_1_REFERENCE_SCHEMA")
+    cim, raw = _read(Path(reference["cim_path"]))
+    cim_sha = _hex(reference["cim_sha256"])
+    _require(_digest(raw) == cim_sha
+             and cim.get("schema_version") == "CHANGE_IMPACT_MANIFEST_V1"
+             and cim.get("role") == "TEAM_A_CANDIDATE_EVIDENCE_NOT_AUTHORIZATION",
+             "V2_1_CIM_IDENTITY_INVALID")
+    _require(cim.get("candidate_verdict") == "CANDIDATE_REVIEWABLE_TEAM_B_PENDING"
+             and isinstance(cim.get("mapping_applicability"), dict)
+             and cim["mapping_applicability"].get("status") != "BLOCK",
+             "V2_1_CIM_BLOCKED")
+    root = Path(repo_root).resolve()
+    mapping = validate_mapping(_read(root / "summary_md/governance/v2_1/DEPENDENCY_MAP.json")[0])
+    applicability = _read(root / "summary_md/governance/v2_1/MAP_APPLICABILITY.json")[0]
+    scope_path, scope_sha = reference["scope_review_path"], reference["scope_review_sha256"]
+    if scope_path is None and scope_sha is None:
+        scope = None
+        _require(cim.get("unknown_scope_review", {}).get("status") == "NOT_SUPPLIED",
+                 "V2_1_SCOPE_REVIEW_MISSING")
+    else:
+        _require(isinstance(scope_path, str) and scope_path, "V2_1_SCOPE_REVIEW_MISSING")
+        scope, scope_raw = _read(Path(scope_path))
+        _require(_digest(scope_raw) == _hex(scope_sha), "V2_1_SCOPE_REVIEW_MISMATCH")
+        canonical_review_sha = hashlib.sha256(json.dumps(
+            scope, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()).hexdigest()
+        _require(cim.get("unknown_scope_review", {}).get("review_sha256") == canonical_review_sha,
+                 "V2_1_SCOPE_REVIEW_MISMATCH")
     try:
-        _require(set(reference) == {"path", "sha256", "status", "purpose"}, "V2_1_REFERENCE_SCHEMA")
-        _require(reference["purpose"] == purpose and reference["status"] == "PASS",
-                 "V2_1_APPLICABILITY_NOT_PASS")
-        value, raw = _read(Path(reference["path"]))
-        _require(_digest(raw) == _hex(reference["sha256"]), "V2_1_REFERENCE_MISMATCH")
-        _require(set(value) == {"schema_version", "status", "purpose", "audit_sha256", "independent_review"}
-                 and value["schema_version"] == "V2_1_APPLICABILITY_RESULT_V1"
-                 and value["status"] == "PASS" and value["purpose"] == purpose
-                 and value["independent_review"] == "PASS", "V2_1_RESULT_NOT_VALIDATED")
-        _hex(value["audit_sha256"])
-        return {"status": "PASS", "reference_sha256": reference["sha256"]}
-    except (ArtifactError, KeyError, TypeError) as exc:
+        recomputed = audit_diff(root, cim["base_implementation_sha"],
+                                cim["target_implementation_sha"], mapping, applicability, scope)
+    except (ImpactError, KeyError, TypeError, ValueError) as exc:
+        raise ArtifactError("V2_1_CIM_RECOMPUTE_FAILED") from exc
+    _require(recomputed == cim, "V2_1_CIM_NOT_REAL")
+    _require(not any(row.get("unknown_scope_kind") != "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+                     for row in cim.get("unmapped_unknown_paths", [])), "V2_1_UNKNOWN_SCOPE_UNCLOSED")
+    attestation, att_raw = _read(Path(reference["attestation_path"]))
+    att_sha = _hex(reference["attestation_sha256"])
+    _require(_digest(att_raw) == att_sha
+             and set(attestation) == {"schema_version", "review_role", "decision", "cim_sha256",
+                                      "scope_review_sha256", "purposes", "relied_evidence_ids",
+                                      "closed_evidence_ids", "closed_requalification"}
+             and attestation["schema_version"] == "V2_1_INDEPENDENT_CLOSURE_ATTESTATION_V1"
+             and attestation["review_role"] == "INDEPENDENT"
+             and attestation["decision"] == "ACCEPT"
+             and attestation["cim_sha256"] == cim_sha
+             and attestation["scope_review_sha256"] == scope_sha
+             and isinstance(attestation["purposes"], list)
+             and purpose in attestation["purposes"],
+             "V2_1_INDEPENDENT_REVIEW_UNBOUND")
+    evidence = cim["evidence_inheritance"]
+    evidence_by_id = {row["evidence_id"]: row for row in evidence}
+    relied = attestation["relied_evidence_ids"]
+    closed = attestation["closed_evidence_ids"]
+    obligations = attestation["closed_requalification"]
+    _require(isinstance(relied, list) and relied and len(relied) == len(set(relied))
+             and isinstance(closed, list) and isinstance(obligations, list)
+             and set(relied) == set(evidence_by_id)
+             and set(closed).issubset(relied)
+             and set(cim["minimum_requalification"]).issubset(obligations),
+             "V2_1_REQUALIFICATION_UNCLOSED")
+    for evidence_id in relied:
+        row = evidence_by_id[evidence_id]
+        _require(row["classification"] == "INHERITABLE" or evidence_id in closed,
+                 "V2_1_EVIDENCE_UNCLOSED")
+    return {"status": "PASS", "cim_sha256": cim_sha,
+            "independent_review_sha256": att_sha, "relied_evidence_ids": relied}
+
+
+def _v21_check(reference: Mapping[str, Any], purpose: str, repo_root: Path) -> dict:
+    try:
+        return _v21_evidence(reference, purpose, repo_root)
+    except (ArtifactError, KeyError, TypeError, ValueError, OSError) as exc:
         return {"status": "FAIL", "reason": str(exc)}
 
 
@@ -515,7 +595,7 @@ def check_reuse(attempts_root: Path, attempt_id: str, node_id: str, *, purpose: 
         _resolve(attempts_root, attempt_id, node_id, manifest["effective_scientific_config"],
                  repo_root, consumption_class == "FORMAL_AUTHORIZATION_SUPPORT")
         checks["C3"] = {"status": "PASS"}
-        checks["C4"] = _v21_check(v2_1_applicability, purpose)
+        checks["C4"] = _v21_check(v2_1_applicability, purpose, repo_root)
         lineage_rows = {}
         any_ambiguous = False
         any_superseded = False
@@ -546,11 +626,12 @@ def check_reuse(attempts_root: Path, attempt_id: str, node_id: str, *, purpose: 
             _record_incident(attempts_root, attempt_id, node_id, "METADATA", exc.code)
         if exc.code == "ATTEMPT_IDENTITY_MISMATCH":
             checks["C1"] = {"status": "FAIL"}
-        elif exc.code in {"CONTENT_BINDING_MISMATCH", "EXPECTED_ARTIFACT_MISMATCH"}:
+        elif exc.code in {"CONTENT_BINDING_MISMATCH", "EXPECTED_ARTIFACT_MISMATCH",
+                          "CONSUMER_ANCHOR_MISMATCH"}:
             checks["C2"] = {"status": "FAIL"}
             if current_layer == "RAW_EVIDENCE" and exc.route == "A2":
                 route = "A2_RAW"
-        elif exc.code in {"VALIDATION_PROVENANCE_MISMATCH", "CONSUMER_ANCHOR_MISMATCH"}:
+        elif exc.code == "VALIDATION_PROVENANCE_MISMATCH":
             checks["C3"] = {"status": "FAIL"}
     decision = "REUSE_ADMISSIBLE" if all(row["status"] == "PASS" for row in checks.values()) else "REUSE_REFUSED"
     if route == "A2_RAW":
@@ -585,29 +666,41 @@ def create_correction(attempts_root: Path, attempt_id: str, node_id: str,
     _resolve(attempts_root, attempt_id, c["parent_node_id"],
              c["defect_evidence"]["reference"], repo_root, True)
     impact = c["v2_1_change_impact"]
-    _require(isinstance(impact, Mapping) and set(impact) == {"status", "reference_path",
-             "reference_sha256", "scientific_impact"} and impact["status"] == "PASS",
-             "V2_1_CHANGE_IMPACT_UNRESOLVED")
-    impact_doc, impact_raw = _read(Path(impact["reference_path"]))
-    _require(_digest(impact_raw) == _hex(impact["reference_sha256"])
-             and impact_doc == {"schema_version": "V2_1_CHANGE_IMPACT_RESULT_V1",
-                                "status": "PASS", "review_status": "PASS",
-                                "scientific_impact": impact["scientific_impact"]},
-             "V2_1_CHANGE_IMPACT_UNRESOLVED")
+    _require(isinstance(impact, Mapping) and set(impact) == {
+        "cim_path", "cim_sha256", "scope_review_path", "scope_review_sha256",
+        "attestation_path", "attestation_sha256", "scientific_impact"},
+        "V2_1_CHANGE_IMPACT_UNRESOLVED")
+    impact_ref = {key: impact[key] for key in impact if key != "scientific_impact"}
+    for purpose in c["purposes"]:
+        _require(_v21_check(impact_ref, purpose, repo_root)["status"] == "PASS",
+                 "V2_1_CHANGE_IMPACT_UNRESOLVED")
     expected_layer = "SCIENCE" if c["defect_class"].startswith("SCIENTIFIC_") else "PLATFORM"
-    _require(isinstance(c["accepted_authority"], Mapping)
-             and c["accepted_authority"].get("layer") == expected_layer
-             and isinstance(c["accepted_authority"].get("identity"), Mapping),
-             "ACCEPTED_AUTHORITY_MISSING")
-    _resolve(attempts_root, attempt_id, c["parent_node_id"],
-             c["accepted_authority"]["identity"], repo_root, True)
+    authority_ref = c["accepted_authority"]
+    _require(isinstance(authority_ref, Mapping)
+             and set(authority_ref) == {"path", "sha256"}, "ACCEPTED_AUTHORITY_MISSING")
+    authority, authority_raw = _read(Path(authority_ref["path"]))
+    _require(_digest(authority_raw) == _hex(authority_ref["sha256"])
+             and authority.get("schema_version") == "V2_3_EXISTING_AUTHORITY_ACCEPTANCE_V1"
+             and set(authority) == {"schema_version", "authority_layer", "attempt_id",
+                                    "parent_node_id", "defect_class", "affected_layers",
+                                    "purposes", "v2_1_cim_sha256",
+                                    "v2_1_review_sha256", "v2_1_scope_review_sha256",
+                                    "decision"}
+             and authority["authority_layer"] == expected_layer
+             and authority["attempt_id"] == attempt_id
+             and authority["parent_node_id"] == c["parent_node_id"]
+             and authority["defect_class"] == c["defect_class"]
+             and authority["affected_layers"] == c["affected_layers"]
+             and authority["purposes"] == c["purposes"]
+             and authority["v2_1_cim_sha256"] == impact["cim_sha256"]
+             and authority["v2_1_review_sha256"] == impact["attestation_sha256"]
+             and authority["v2_1_scope_review_sha256"] == impact["scope_review_sha256"]
+             and authority["decision"] == "ACCEPT", "ACCEPTED_AUTHORITY_UNBOUND")
     if expected_layer == "PLATFORM":
-        _require(impact.get("scientific_impact") == "NONE", "NON_SCIENTIFIC_DEFECT_UNPROVEN")
+        _require(impact["scientific_impact"] == "NONE", "NON_SCIENTIFIC_DEFECT_UNPROVEN")
     _require(not ("RAW_EVIDENCE" in c["affected_layers"]
                    and c["defect_evidence"].get("route") == "A2_RAW"), "RAW_A2_REPLACEMENT_FORBIDDEN")
     parent, _, pmsha, pfsha = _published(attempts_root, attempt_id, c["parent_node_id"])
-    _require(_incident_for_layer(attempts_root, attempt_id, c["parent_node_id"],
-                                 "RAW_EVIDENCE", parent) is None, "RAW_A2_LINEAGE_BLOCKED")
     for layer in LAYERS:
         if layer not in c["affected_layers"]:
             ref = declaration["evidence"][layer]
