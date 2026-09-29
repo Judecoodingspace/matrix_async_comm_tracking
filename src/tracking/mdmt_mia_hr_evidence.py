@@ -1,7 +1,6 @@
 """Outcome-blind, self-contained H_R communication evidence."""
 from __future__ import annotations
 
-import copy
 import hashlib
 import json
 from pathlib import Path
@@ -9,7 +8,6 @@ from typing import Any, Mapping
 
 from .mdmt_mia_c7_batch_b_schema import registered_cells
 from .mdmt_mia_async_deadline_runtime import validate_packet_census_records
-from .mdmt_mia_c7_real_evidence import analyze_real_window, REAL_WINDOW_SCHEMA
 
 
 class HREvidenceError(ValueError):
@@ -160,14 +158,52 @@ def validate_raw(records: list[dict], auth: Mapping[str, Any]) -> dict:
     if any(frame.get("frame_index") != index or frame.get("observer_failures")
            for index, frame in enumerate(observer["frames"])):
         raise HREvidenceError("C7_OBSERVER_FRAME_INVALID")
-    state = {"packet_wires": {}, "first_service_classifications": {}, "queue_snapshot": []}
-    for frame in observer["frames"]:
-        _, state = analyze_real_window({
-            "schema_version": REAL_WINDOW_SCHEMA,
-            "raw_observation": frame,
-            "service_config": config,
-            "state_before": copy.deepcopy(state),
-        }, cell=cell, run_id=auth["run_id"])
+    ledger = by["service_ledger"]
+    event_by_ordinal = {}
+    for event in ledger:
+        ordinal = event.get("event_ordinal")
+        if type(ordinal) is not int or ordinal in event_by_ordinal:
+            raise HREvidenceError("SERVICE_LEDGER_ORDINAL_INVALID")
+        event_by_ordinal[ordinal] = event
+    seen_observer_ordinals = set()
+    for index, frame in enumerate(observer["frames"]):
+        observations = frame.get("observations")
+        if not isinstance(observations, list) or not observations:
+            raise HREvidenceError("C7_OBSERVER_EMPTY_FRAME")
+        types = []
+        for row in observations:
+            event = row.get("event") if isinstance(row, dict) else None
+            ordinal = event.get("event_ordinal") if isinstance(event, dict) else None
+            if (event != event_by_ordinal.get(ordinal)
+                    or event.get("frame") != index
+                    or ordinal in seen_observer_ordinals):
+                raise HREvidenceError("C7_OBSERVER_LEDGER_MISMATCH")
+            seen_observer_ordinals.add(ordinal)
+            types.append(event["event_type"])
+        if types[0] != "frame_open" or types[-1] != "frame_summary":
+            raise HREvidenceError("C7_OBSERVER_FRAME_BOUNDARY_INVALID")
+        opening = observations[0]["event"]
+        closing = observations[-1]["event"]
+        budget = cell["capacity_bytes"]
+        slices = [row["event"] for row in observations
+                  if row["event"]["event_type"] == "service_slice"]
+        if (opening.get("frame_service_budget") != budget
+                or closing.get("frame_service_budget") != budget
+                or opening.get("frame_unused_budget") != budget
+                or type(closing.get("frame_unused_budget")) is not int
+                or closing["frame_unused_budget"] < 0
+                or closing["frame_unused_budget"] > budget
+                or sum(row.get("bytes_served", 0) for row in slices)
+                   != budget - closing["frame_unused_budget"]):
+            raise HREvidenceError("OBSERVED_FIFO_FRAME_BUDGET_MISMATCH")
+    expected_observer_ordinals = {
+        row["event_ordinal"] for row in ledger
+        if row.get("event_type") not in {
+            "suppression", "terminal", "packet_summary", "service_finalization"}}
+    if seen_observer_ordinals != expected_observer_ordinals:
+        raise HREvidenceError("C7_OBSERVER_EVENT_COVERAGE_MISMATCH")
+    if any(event.get("record_type") != "C4_SERVICE_EVENT" for event in ledger):
+        raise HREvidenceError("SERVICE_LEDGER_RECORD_INVALID")
     summary = by["service_summary"]
     manifest = by["packet_manifest"]
     if (summary.get("run_id") != auth["run_id"]
@@ -194,8 +230,43 @@ def validate_raw(records: list[dict], auth: Mapping[str, Any]) -> dict:
             or payload.get("run_id") != auth["run_id"] or payload.get("status") != "PASS"
             or payload.get("decision_record_count") != len(decisions)
             or payload.get("unique_packet_id_count") != len(set(keys))
-            or payload.get("ordered_decision_records_sha256") != digest(decision_bytes)):
+            or payload.get("ordered_decision_records_sha256") != digest(decision_bytes)
+            or payload.get("suppressed_packet_count") != sum(
+                row.get("whole_packet_currently_non_applicable") is True for row in decisions)
+            or payload.get("serviceable_packet_count") != sum(
+                row.get("whole_packet_currently_non_applicable") is False for row in decisions)
+            or payload.get("suppressed_wire_bytes") != sum(
+                row["JSON_WIRE_BYTES"] for row in decisions
+                if row.get("whole_packet_currently_non_applicable") is True)
+            or payload.get("serviceable_wire_bytes") != sum(
+                row["JSON_WIRE_BYTES"] for row in decisions
+                if row.get("whole_packet_currently_non_applicable") is False)):
         raise HREvidenceError("C6_SUPPRESSION_SEAL_INVALID")
+    ledger_by_packet = {}
+    for event in ledger:
+        packet_id = event.get("packet_id")
+        if packet_id is not None:
+            ledger_by_packet.setdefault(json.dumps(packet_id, sort_keys=True), []).append(event)
+    terminal_by_packet = {
+        json.dumps(row["packet_id"], sort_keys=True): row for row in by["census_terminals"]
+    }
+    for decision in decisions:
+        if (decision.get("schema_version") != "C6_TRUE_FIRST_SERVICE_SUPPRESSION_V1"
+                or decision.get("channel") != "id_state"
+                or type(decision.get("whole_packet_currently_non_applicable")) is not bool):
+            raise HREvidenceError("C6_DECISION_INVALID")
+        key = json.dumps(decision["packet_id"], sort_keys=True)
+        events = ledger_by_packet.get(key, [])
+        suppressed = decision["whole_packet_currently_non_applicable"]
+        expected_type = "suppression" if suppressed else "service_start"
+        if not any(row.get("event_type") == expected_type
+                   and row.get("frame") == decision["frame"] for row in events):
+            raise HREvidenceError("C6_DECISION_SERVICE_MISMATCH")
+        terminal = terminal_by_packet.get(key)
+        if suppressed and (terminal is None or terminal.get("terminal_class") != "SUPPRESSED"
+                           or terminal.get("terminal_reason") != "c6_whole_packet_non_applicable"
+                           or any(row.get("event_type") == "service_slice" for row in events)):
+            raise HREvidenceError("C6_SUPPRESSION_TERMINAL_MISMATCH")
     if (not isinstance(by["service_ledger"], list) or not isinstance(by["service_summary"], dict)
             or not isinstance(by["packet_manifest"], dict)):
         raise HREvidenceError("SERVICE_EVIDENCE_INVALID")

@@ -120,3 +120,80 @@ def test_raw_family_is_self_contained_and_fail_closed(tmp_path):
     path.write_bytes(canonical({"family": "header", "value": {}}))
     with pytest.raises(HREvidenceError, match="RAW_FAMILY_COUNT_MISMATCH"):
         read_raw(path)
+
+
+def test_c6_suppression_is_a_valid_c7_service_terminal(tmp_path, monkeypatch):
+    from tracking import mdmt_mia_hr_evidence as hr
+    auth = _auth(tmp_path)
+    packet = {"census_run_id": auth["run_id"], "sequence_name": "66-1",
+              "runtime_instance_id": "runtime1", "emission_ordinal": 1}
+    def event(ordinal, kind, packet_id=None):
+        return {"record_type": "C4_SERVICE_EVENT", "event_ordinal": ordinal,
+                "event_type": kind, "frame": 0, "run_id": auth["run_id"],
+                "pair_id": "P66", "packet_id": packet_id,
+                "frame_service_budget": 16649, "frame_unused_budget": 16649}
+    opening, enqueue, suppressed, closing = (
+        event(1, "frame_open"), event(2, "enqueue", packet),
+        event(3, "suppression", packet), event(4, "frame_summary"))
+    config = {"schema_version": "C7_REGISTERED_FIFO_SERVICE_V1",
+              "run_id": auth["run_id"], "pair_id": "P66", "capacity_id": "P20",
+              "rate_logical_bytes_per_frame": 16649, "mode": "fifo",
+              "ledger_enabled": True}
+    decision = {"schema_version": "C6_TRUE_FIRST_SERVICE_SUPPRESSION_V1",
+                "packet_id": packet, "channel": "id_state", "frame": 0,
+                "JSON_WIRE_BYTES": 100, "whole_packet_currently_non_applicable": True}
+    payload = {"run_id": auth["run_id"], "status": "PASS", "decision_record_count": 1,
+               "unique_packet_id_count": 1, "suppressed_packet_count": 1,
+               "serviceable_packet_count": 0,
+               "suppressed_wire_bytes": 100, "serviceable_wire_bytes": 0,
+               "ordered_decision_records_sha256": digest(canonical(decision).rstrip(b"\n"))}
+    values = {
+        "c7_observer": {"schema_version": "C7_REAL_RAW_OBSERVER_RUN_V1",
+                        "sequence_name": "66-1", "service_config": config,
+                        "frames": [{"frame_index": 0, "observer_failures": [],
+                                    "observations": [{"event": row} for row in (opening, enqueue, closing)]}]},
+        "packet_manifest": {"c4_service_config": config},
+        "service_ledger": [opening, enqueue, suppressed, closing],
+        "service_summary": {"run_id": auth["run_id"], "pair_id": "P66",
+                            "R": 16649, "mode": "fifo", "ledger_io_failure": ""},
+        "census_emissions": [], "census_terminals": [
+            {"packet_id": packet, "terminal_class": "SUPPRESSED",
+             "terminal_reason": "c6_whole_packet_non_applicable"}],
+        "census_finalization": [], "census_validation": {"census_status": "CENSUS_COMPLETE"},
+        "suppression_decisions": [decision],
+        "suppression_seal": {"schema_version": "C6_SUPPRESSION_DECISION_SEAL_V1",
+                             "sealed_payload": payload,
+                             "seal_sha256": digest(canonical(payload).rstrip(b"\n"))},
+    }
+    header = {"schema_version": "H_R_RAW_COMMUNICATION_EVIDENCE_V1",
+              "run_id": auth["run_id"], "attempt_id": auth["attempt_id"],
+              "authorization_hash": auth["authorization_hash"], "selected_cell": auth["cell"],
+              "selection_sha256": SELECTION_SHA256, "validation_sha256": VALIDATION_SHA256,
+              "source_sha": auth["source_sha"], "tracking_outcome_read": False,
+              "generated_source_inventory": {}}
+    records = [{"family": "header", "value": header}] + [
+        {"family": family, "value": value} for family, value in values.items()]
+    monkeypatch.setattr(hr, "validate_packet_census_records", lambda *args: {"passed": True})
+    assert validate_raw(records, auth)["rate_logical_bytes_per_frame"] == 16649
+    values["census_terminals"][0]["terminal_class"] = "COMPLETED"
+    with pytest.raises(HREvidenceError, match="C6_SUPPRESSION_TERMINAL_MISMATCH"):
+        validate_raw(records, auth)
+
+
+def test_qualification_inspect_uses_operator_inspect_contract(tmp_path, monkeypatch):
+    import qualify_mdmt_mia_hr_production_path as qualification
+
+    seen = {}
+    class Completed:
+        returncode = 0
+        stdout = '{"state":"COMPLETED"}'
+        stderr = ""
+
+    def fake_run(command, **kwargs):
+        seen["command"] = command
+        return Completed()
+
+    monkeypatch.setattr(qualification.subprocess, "run", fake_run)
+    result = qualification._operator("inspect", tmp_path, "one", tmp_path / "auth.json")
+    assert result["state"] == "COMPLETED"
+    assert "--authorization" not in seen["command"]

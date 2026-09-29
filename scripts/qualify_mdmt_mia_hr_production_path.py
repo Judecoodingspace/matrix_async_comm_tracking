@@ -30,7 +30,9 @@ def _git(*args: str) -> str:
 def _operator(phase: str, attempts_root: Path, attempt_id: str, auth_path: Path) -> dict:
     command = [sys.executable, str(ROOT / "scripts/run_mdmt_mia_hr_formal.py"),
                phase, "--attempts-root", str(attempts_root),
-               "--attempt-id", attempt_id, "--authorization", str(auth_path)]
+               "--attempt-id", attempt_id]
+    if phase != "inspect":
+        command += ["--authorization", str(auth_path)]
     completed = subprocess.run(command, cwd=ROOT, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, text=True, check=False)
     if completed.returncode:
