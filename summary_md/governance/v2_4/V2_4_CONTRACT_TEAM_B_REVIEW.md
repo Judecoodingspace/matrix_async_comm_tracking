@@ -1,0 +1,10 @@
+# V2-4 Contract Team B acceptance
+
+TEAM_B_V2_4_CONTRACT_REVISION_2_DELTA_REVIEW = PASS
+
+P0 = 0
+P1 = 0
+
+Accepted document: V2_4_IMPLEMENTATION_CONTRACT_REV2.md.
+V2_4_IMPLEMENTATION_AUTHORIZED = NO at contract acceptance.
+H_R_FORMAL_AUTHORIZED = NO.
