@@ -69,28 +69,34 @@ def _finalize(attempts: Path, declaration: dict, **kwargs):
                       adopt=True, authority_boundary=True, **kwargs)
 
 
-def _v21(tmp_path: Path, purpose: str = "ordinary", status: str = "PASS") -> dict:
+def _v21(tmp_path: Path, purpose: str = "ordinary", status: str = "PASS",
+         relied_ids: list[str] | None = None, closed_ids: list[str] | None = None) -> dict:
     sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO, text=True).strip()
-    mapping = validate_mapping(json.loads((REPO / "summary_md/governance/v2_1/DEPENDENCY_MAP.json").read_text()))
-    claim = json.loads((REPO / "summary_md/governance/v2_1/MAP_APPLICABILITY.json").read_text())
+    def pinned(relative: str) -> dict:
+        return json.loads(subprocess.check_output(["git", "show", sha + ":" + relative], cwd=REPO))
+    mapping = validate_mapping(pinned("summary_md/governance/v2_1/DEPENDENCY_MAP.json"))
+    claim = pinned("summary_md/governance/v2_1/MAP_APPLICABILITY.json")
     cim = audit_diff(REPO, sha, sha, mapping, claim)
     assert cim["candidate_verdict"] == "CANDIDATE_REVIEWABLE_TEAM_B_PENDING"
     cim_path = tmp_path / ("cim_" + purpose + ".json")
     cim_path.write_bytes(a._canonical(cim))
     cim_sha = hashlib.sha256(cim_path.read_bytes()).hexdigest()
+    if relied_ids is None:
+        relied_ids = ["C7_FIFO_MECHANISM", "V2_2_EXECUTION_RELIABILITY"]
+    if closed_ids is None:
+        closed_ids = []
     attestation = {"schema_version": "V2_1_INDEPENDENT_CLOSURE_ATTESTATION_V1",
                    "review_role": "INDEPENDENT", "decision": "ACCEPT" if status == "PASS" else "REJECT",
                    "cim_sha256": cim_sha, "scope_review_sha256": None, "purposes": [purpose],
-                   "relied_evidence_ids": [row["evidence_id"] for row in cim["evidence_inheritance"]],
-                   "closed_evidence_ids": [row["evidence_id"] for row in cim["evidence_inheritance"]
-                                           if row["classification"] != "INHERITABLE"],
+                   "relied_evidence_ids": relied_ids, "closed_evidence_ids": closed_ids,
                    "closed_requalification": cim["minimum_requalification"]}
     review_path = tmp_path / ("review_" + purpose + ".json")
     review_path.write_bytes(a._canonical(attestation))
     return {"cim_path": str(cim_path), "cim_sha256": cim_sha,
             "scope_review_path": None, "scope_review_sha256": None,
             "attestation_path": str(review_path),
-            "attestation_sha256": hashlib.sha256(review_path.read_bytes()).hexdigest()}
+            "attestation_sha256": hashlib.sha256(review_path.read_bytes()).hexdigest(),
+            "v2_1_inputs_commit": sha}
 
 
 def _authority(tmp_path: Path, attempt: str, correction: dict) -> dict:
@@ -121,13 +127,15 @@ def _rewrite_authority(ref: dict, change: dict) -> None:
 def _reuse(tmp_path: Path, attempts: Path, declaration: dict, node_id: str = "initial",
            purpose: str = "ordinary", consumption_class: str = "ORDINARY_COMPOSITION", **overrides):
     pin = a.inspect(attempts, "run1", node_id)
+    v21_reference = overrides.pop("v2_1_applicability", None)
     args = {"purpose": purpose, "consumption_class": consumption_class,
             "anchor": {"attempt_id": "run1", "node_id": node_id,
                        "manifest_sha256": pin["manifest_sha256"],
                        "finalization_sha256": pin["finalization_sha256"]},
             "expected_artifacts": declaration["evidence"],
             "expected_provenance": declaration["provenance"],
-            "v2_1_applicability": _v21(tmp_path, purpose),
+            "v2_1_applicability": (v21_reference if v21_reference is not None
+                                   else _v21(tmp_path, purpose)),
             "consumer_record": tmp_path / ("consume_" + str(len(list(tmp_path.glob('consume_*')))) + ".json"),
             "repo_root": REPO}
     args.update(overrides)
@@ -501,18 +509,11 @@ def test_fabricated_pass_wrapper_cannot_satisfy_c4(tmp_path, monkeypatch):
 def test_c4_recomputes_real_cim_and_checks_closure(tmp_path, monkeypatch):
     attempts, _, declaration = _setup(tmp_path, monkeypatch)
     _finalize(attempts, declaration)
-    reference = _v21(tmp_path)
+    reference = _v21(tmp_path, relied_ids=["C6_HARNESS_DYNAMIC_BOUNDARY"],
+                     closed_ids=["C6_HARNESS_DYNAMIC_BOUNDARY"])
     assert _reuse(tmp_path, attempts, declaration, v2_1_applicability=reference)["decision"] == "REUSE_ADMISSIBLE"
     att_path = Path(reference["attestation_path"])
     att = json.loads(att_path.read_text())
-    omitted = dict(att)
-    omitted["relied_evidence_ids"] = [row for row in att["relied_evidence_ids"]
-                                      if row != "C6_HARNESS_DYNAMIC_BOUNDARY"]
-    omitted["closed_evidence_ids"] = []
-    att_path.write_bytes(a._canonical(omitted))
-    reference["attestation_sha256"] = hashlib.sha256(att_path.read_bytes()).hexdigest()
-    assert _reuse(tmp_path, attempts, declaration,
-                  v2_1_applicability=reference)["C1_C6"]["C4"]["status"] == "FAIL"
     att["closed_evidence_ids"] = []
     att_path.write_bytes(a._canonical(att))
     reference["attestation_sha256"] = hashlib.sha256(att_path.read_bytes()).hexdigest()
@@ -649,3 +650,64 @@ def test_scientific_defect_routes_only_to_science_authority(tmp_path, monkeypatc
     _rewrite_authority(correction["accepted_authority"],
                        {"authority_layer": "SCIENCE", "defect_class": "SCIENTIFIC_CONFIG"})
     assert a.create_correction(attempts, "run1", "fix1", child, repo_root=REPO)["state"] == "FINALIZED"
+
+
+def test_historical_v21_inputs_remain_valid_after_current_map_changes(tmp_path, monkeypatch):
+    attempts, _, declaration = _setup(tmp_path, monkeypatch)
+    _finalize(attempts, declaration)
+    reference = _v21(tmp_path)
+    m2_commit = "3430054ec32489116523644fc958ccb7ac29f4d3"
+    current_map = REPO / "summary_md/governance/v2_1/DEPENDENCY_MAP.json"
+    current_applicability = REPO / "summary_md/governance/v2_1/MAP_APPLICABILITY.json"
+    m2_map = subprocess.check_output(
+        ["git", "show", m2_commit + ":summary_md/governance/v2_1/DEPENDENCY_MAP.json"], cwd=REPO)
+    m2_applicability = subprocess.check_output(
+        ["git", "show", m2_commit + ":summary_md/governance/v2_1/MAP_APPLICABILITY.json"], cwd=REPO)
+    assert json.loads(m2_map)["dependency_mapping_identity"] != json.loads(
+        subprocess.check_output(["git", "show", reference["v2_1_inputs_commit"]
+                                 + ":summary_md/governance/v2_1/DEPENDENCY_MAP.json"], cwd=REPO)
+    )["dependency_mapping_identity"]
+    original_read_bytes = Path.read_bytes
+    def later_checkout_bytes(path):
+        if path == current_map:
+            return m2_map
+        if path == current_applicability:
+            return m2_applicability
+        return original_read_bytes(path)
+    monkeypatch.setattr(Path, "read_bytes", later_checkout_bytes)
+    assert _reuse(tmp_path, attempts, declaration,
+                  v2_1_applicability=reference)["C1_C6"]["C4"]["status"] == "PASS"
+    wrong = dict(reference, v2_1_inputs_commit=m2_commit)
+    assert _reuse(tmp_path, attempts, declaration,
+                  v2_1_applicability=wrong)["C1_C6"]["C4"]["status"] == "FAIL"
+
+
+@pytest.mark.parametrize("commit", ["main", "0" * 40])
+def test_malformed_or_unresolvable_v21_input_pin_fails_c4(tmp_path, monkeypatch, commit):
+    attempts, _, declaration = _setup(tmp_path, monkeypatch)
+    _finalize(attempts, declaration)
+    reference = dict(_v21(tmp_path), v2_1_inputs_commit=commit)
+    result = _reuse(tmp_path, attempts, declaration, v2_1_applicability=reference)
+    assert result["C1_C6"]["C4"]["status"] == "FAIL"
+    assert result["decision"] == "REUSE_REFUSED"
+
+
+def test_purpose_scoped_relied_subset_passes_without_unrelated_c6(tmp_path, monkeypatch):
+    attempts, _, declaration = _setup(tmp_path, monkeypatch)
+    _finalize(attempts, declaration)
+    reference = _v21(tmp_path, relied_ids=["C7_FIFO_MECHANISM", "V2_2_EXECUTION_RELIABILITY"])
+    result = _reuse(tmp_path, attempts, declaration, v2_1_applicability=reference)
+    assert result["decision"] == "REUSE_ADMISSIBLE"
+    assert result["C1_C6"]["C4"]["relied_evidence_ids"] == [
+        "C7_FIFO_MECHANISM", "V2_2_EXECUTION_RELIABILITY"]
+
+
+@pytest.mark.parametrize("relied_ids", [[], ["UNKNOWN_EVIDENCE_ID"],
+                                          ["C6_HARNESS_DYNAMIC_BOUNDARY"]])
+def test_purpose_scoped_relied_set_fails_closed(tmp_path, monkeypatch, relied_ids):
+    attempts, _, declaration = _setup(tmp_path, monkeypatch)
+    _finalize(attempts, declaration)
+    reference = _v21(tmp_path, relied_ids=relied_ids)
+    result = _reuse(tmp_path, attempts, declaration, v2_1_applicability=reference)
+    assert result["C1_C6"]["C4"]["status"] == "FAIL"
+    assert result["decision"] == "REUSE_REFUSED"

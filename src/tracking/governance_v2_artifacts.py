@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from tracking.governance_v2_execution import inspect as inspect_execution
-from tracking.governance_v2 import ImpactError, audit_diff, validate_mapping
+from tracking.governance_v2 import ImpactError, audit_diff, make_applicability, validate_mapping
 
 SCHEMA = "GOVERNANCE_V2_ARTIFACT_NODE_V1"
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
@@ -476,11 +476,35 @@ def _lineage(attempts_root: Path, attempt_id: str, purpose: str, layer: str) -> 
             "heads": heads, "edges": edges, "nodes": sorted(nodes)}, ambiguous
 
 
+def _pinned_v21_json(repo_root: Path, commit: str, relative_path: str) -> dict:
+    """Read one fixed V2-1 input blob from an exact, immutable Git commit."""
+    _hex(commit, 40)
+    root = Path(repo_root).resolve()
+    def git(*args: str) -> bytes:
+        try:
+            return subprocess.run(["git", "-C", str(root), *args], capture_output=True,
+                                  check=True).stdout
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise ArtifactError("V2_1_PINNED_INPUT_UNRESOLVED") from exc
+    _require(git("rev-parse", "--verify", commit + "^{commit}").decode().strip() == commit,
+             "V2_1_PINNED_COMMIT_INVALID")
+    object_name = commit + ":" + relative_path
+    _require(git("cat-file", "-t", object_name).strip() == b"blob",
+             "V2_1_PINNED_INPUT_NOT_BLOB")
+    try:
+        value = json.loads(git("show", object_name))
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise ArtifactError("V2_1_PINNED_INPUT_INVALID_JSON") from exc
+    _require(isinstance(value, dict), "V2_1_PINNED_INPUT_SCHEMA")
+    return value
+
+
 def _v21_evidence(reference: Mapping[str, Any], purpose: str, repo_root: Path) -> dict:
     """Recompute the referenced V2-1 CIM from Git; a PASS wrapper is insufficient."""
     _require(isinstance(reference, Mapping) and set(reference) == {
         "cim_path", "cim_sha256", "scope_review_path", "scope_review_sha256",
-        "attestation_path", "attestation_sha256"}, "V2_1_REFERENCE_SCHEMA")
+        "attestation_path", "attestation_sha256", "v2_1_inputs_commit"},
+        "V2_1_REFERENCE_SCHEMA")
     cim, raw = _read(Path(reference["cim_path"]))
     cim_sha = _hex(reference["cim_sha256"])
     _require(_digest(raw) == cim_sha
@@ -492,8 +516,19 @@ def _v21_evidence(reference: Mapping[str, Any], purpose: str, repo_root: Path) -
              and cim["mapping_applicability"].get("status") != "BLOCK",
              "V2_1_CIM_BLOCKED")
     root = Path(repo_root).resolve()
-    mapping = validate_mapping(_read(root / "summary_md/governance/v2_1/DEPENDENCY_MAP.json")[0])
-    applicability = _read(root / "summary_md/governance/v2_1/MAP_APPLICABILITY.json")[0]
+    inputs_commit = _hex(reference["v2_1_inputs_commit"], 40)
+    mapping = validate_mapping(_pinned_v21_json(
+        root, inputs_commit, "summary_md/governance/v2_1/DEPENDENCY_MAP.json"))
+    applicability = _pinned_v21_json(
+        root, inputs_commit, "summary_md/governance/v2_1/MAP_APPLICABILITY.json")
+    _require(mapping["dependency_mapping_identity"] == cim["dependency_mapping_identity"]
+             and mapping["mapping_digest"] == cim["mapping_digest"],
+             "V2_1_PINNED_MAP_CIM_MISMATCH")
+    try:
+        _require(make_applicability(mapping, root, applicability["anchor_implementation_sha"])
+                 == applicability, "V2_1_PINNED_APPLICABILITY_INVALID")
+    except (ImpactError, KeyError, TypeError) as exc:
+        raise ArtifactError("V2_1_PINNED_APPLICABILITY_INVALID") from exc
     scope_path, scope_sha = reference["scope_review_path"], reference["scope_review_sha256"]
     if scope_path is None and scope_sha is None:
         scope = None
@@ -536,7 +571,7 @@ def _v21_evidence(reference: Mapping[str, Any], purpose: str, repo_root: Path) -
     obligations = attestation["closed_requalification"]
     _require(isinstance(relied, list) and relied and len(relied) == len(set(relied))
              and isinstance(closed, list) and isinstance(obligations, list)
-             and set(relied) == set(evidence_by_id)
+             and set(relied).issubset(evidence_by_id)
              and set(closed).issubset(relied)
              and set(cim["minimum_requalification"]).issubset(obligations),
              "V2_1_REQUALIFICATION_UNCLOSED")
@@ -668,7 +703,8 @@ def create_correction(attempts_root: Path, attempt_id: str, node_id: str,
     impact = c["v2_1_change_impact"]
     _require(isinstance(impact, Mapping) and set(impact) == {
         "cim_path", "cim_sha256", "scope_review_path", "scope_review_sha256",
-        "attestation_path", "attestation_sha256", "scientific_impact"},
+        "attestation_path", "attestation_sha256", "v2_1_inputs_commit",
+        "scientific_impact"},
         "V2_1_CHANGE_IMPACT_UNRESOLVED")
     impact_ref = {key: impact[key] for key in impact if key != "scientific_impact"}
     for purpose in c["purposes"]:

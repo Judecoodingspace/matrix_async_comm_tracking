@@ -51,6 +51,10 @@ CASES = {
     "Q35_C1_C2_C3_REPORTING": "test_c1_c2_c3_report_separate_failures",
     "Q36_PARTIAL_UNRECOGNIZED_BLOCK": "test_partial_retry_unrecognized_metadata_blocks",
     "Q37_SCIENCE_AUTHORITY_ROUTE": "test_scientific_defect_routes_only_to_science_authority",
+    "Q38_HISTORICAL_V21_INPUTS_PINNED": "test_historical_v21_inputs_remain_valid_after_current_map_changes",
+    "Q39_BAD_V21_INPUT_PIN": "test_malformed_or_unresolvable_v21_input_pin_fails_c4",
+    "Q40_PURPOSE_SCOPED_RELIED_SUBSET": "test_purpose_scoped_relied_subset_passes_without_unrelated_c6",
+    "Q41_RELIED_SET_FAIL_CLOSED": "test_purpose_scoped_relied_set_fails_closed",
 }
 
 
