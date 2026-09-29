@@ -329,9 +329,171 @@
         }
       ],
       "validation_level": "L0"
+    },
+    {
+      "behavior_unit_id": "v2_3.artifact_finalization",
+      "dependency_edges": [
+        "v2_2.execution_lifecycle"
+      ],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "authoritative_artifact_identity",
+        "atomic_finalization",
+        "mechanical_science_separation",
+        "reconstructible_artifact_binding"
+      ],
+      "requalification_gate": "V2_3_ARTIFACT_ARCHITECTURE_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/governance_v2_artifacts.py",
+          "symbol": "<module> / ArtifactError / ArtifactError.__init__ / _require / _hex / _id / _canonical / _digest / _now / _read / _write_new / _safe_file / _hash_file / _git_blob / _git_blob.git / _paths / _published / inspect / _resolve / _validation_receipt / _declaration / _eligible / finalize"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "v2_3.v21_evidence_binding",
+      "dependency_edges": [],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "historical_v2_1_input_identity",
+        "v2_1_applicability_reuse",
+        "independent_closure_binding"
+      ],
+      "requalification_gate": "V2_3_ARTIFACT_ARCHITECTURE_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/governance_v2_artifacts.py",
+          "symbol": "_pinned_v21_json / _pinned_v21_json.git / _v21_evidence / _v21_check"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "v2_3.corrective_lineage",
+      "dependency_edges": [
+        "v2_3.artifact_finalization",
+        "v2_3.v21_evidence_binding"
+      ],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "corrective_parent_immutability",
+        "purpose_scoped_supersession",
+        "sticky_verified_mismatch",
+        "raw_a2_lineage_block",
+        "retention_lineage_safety"
+      ],
+      "requalification_gate": "V2_3_ARTIFACT_ARCHITECTURE_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/governance_v2_artifacts.py",
+          "symbol": "_incident_path / _record_incident / _content_owner / _incident_for_layer / _corrections / _lineage / create_correction / check_cleanup_eligibility / check_cleanup_eligibility.retained_source"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "v2_3.receipt_consumption",
+      "dependency_edges": [
+        "v2_3.artifact_finalization",
+        "v2_3.v21_evidence_binding",
+        "v2_3.corrective_lineage"
+      ],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "receipt_reuse_admissibility",
+        "c1_c6_fail_close",
+        "verification_depth_boundary",
+        "current_lineage_consumption"
+      ],
+      "requalification_gate": "V2_3_ARTIFACT_ARCHITECTURE_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/governance_v2_artifacts.py",
+          "symbol": "check_reuse"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "v2_3.cli_interface",
+      "dependency_edges": [
+        "v2_3.artifact_finalization",
+        "v2_3.receipt_consumption",
+        "v2_3.corrective_lineage"
+      ],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "artifact_cli_delegation"
+      ],
+      "requalification_gate": "V2_3_ARTIFACT_ARCHITECTURE_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/governance_v2_artifacts.py",
+          "symbol": "<module> / _json / main"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "v2_3.qualification_protocol",
+      "dependency_edges": [
+        "v2_3.artifact_finalization",
+        "v2_3.v21_evidence_binding",
+        "v2_3.corrective_lineage",
+        "v2_3.receipt_consumption",
+        "v2_3.cli_interface"
+      ],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "v2_3_artifact_qualification_semantics"
+      ],
+      "requalification_gate": "V2_3_ARTIFACT_ARCHITECTURE_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/qualify_governance_v2_3.py",
+          "symbol": "<module> / qualify / main"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "tests.v2_3_artifact_qualification",
+      "dependency_edges": [],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [],
+      "requalification_gate": "V2_3_ARTIFACT_TEST_REVIEW",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "tests/test_governance_v2_artifacts.py",
+          "symbol": "test-only qualification"
+        }
+      ],
+      "validation_level": "L0"
     }
   ],
-  "dependency_mapping_identity": "ff0a2b71bcb49da21dbdbb32f62e8c1d68191a601245817c1105a873194e267d",
+  "dependency_mapping_identity": "a6d8f572b1f41fa8607743d03bb7cd4e8b479bfbf7f36a4b909926fa8c89641c",
   "evidence": [
     {
       "evidence_id": "C7_FIFO_MECHANISM",
@@ -377,10 +539,22 @@
         "v2_2.qualification_protocol"
       ],
       "validation_gate": "V2_2_EXECUTION_RELIABILITY_QUALIFICATION"
+    },
+    {
+      "evidence_id": "V2_3_ARTIFACT_ARCHITECTURE",
+      "proven_behavior_units": [
+        "v2_3.artifact_finalization",
+        "v2_3.v21_evidence_binding",
+        "v2_3.corrective_lineage",
+        "v2_3.receipt_consumption",
+        "v2_3.cli_interface",
+        "v2_3.qualification_protocol"
+      ],
+      "validation_gate": "V2_3_ARTIFACT_ARCHITECTURE_QUALIFICATION"
     }
   ],
-  "mapping_digest": "dcfbdfb73c59a327973064b1d13a1fb91ebb1ef5e1cb565a39df27d85cdd6ab0",
-  "mapping_scope": "Reviewed C7 FIFO/capacity/credit and C7 launcher, selected C6 Harness v2 dynamic boundary, and prospective V2-2 execution reliability lifecycle and qualification protocol; all other paths fail closed",
+  "mapping_digest": "0b61884bbf137cb8cec5e3c5ef5fc19dc958250b817078e8d9fc8e52f8bec286",
+  "mapping_scope": "Reviewed C7 FIFO/capacity/credit and C7 launcher, selected C6 Harness v2 dynamic boundary, and prospective V2-2 execution reliability lifecycle and qualification protocol; all other paths fail closed; prospective V2-3 artifact finalization, historical V2-1 input binding, corrective lineage, receipt consumption, CLI, and qualification behavior",
   "protected_invariants": [
     "source_cleanliness",
     "registered_capacity_propagation",
@@ -395,7 +569,25 @@
     "mechanical_terminal_integrity",
     "outcome_blind_stdio_boundary",
     "detached_execution_reliability",
-    "execution_reliability_qualification_semantics"
+    "execution_reliability_qualification_semantics",
+    "authoritative_artifact_identity",
+    "atomic_finalization",
+    "mechanical_science_separation",
+    "reconstructible_artifact_binding",
+    "historical_v2_1_input_identity",
+    "v2_1_applicability_reuse",
+    "independent_closure_binding",
+    "corrective_parent_immutability",
+    "purpose_scoped_supersession",
+    "sticky_verified_mismatch",
+    "raw_a2_lineage_block",
+    "retention_lineage_safety",
+    "receipt_reuse_admissibility",
+    "c1_c6_fail_close",
+    "verification_depth_boundary",
+    "current_lineage_consumption",
+    "artifact_cli_delegation",
+    "v2_3_artifact_qualification_semantics"
   ],
   "schema_version": "GOVERNANCE_V2_DEPENDENCY_MAP_V1"
 }

@@ -406,7 +406,14 @@ def test_introduction_kind_must_match_path_category():
 
 
 def test_prospective_v2_2_map_identity_applicability_and_historical_graph():
-    mapping, claim = _prospective_load()
+    # This is the V2-2 registration claim at its own accepted authority, not
+    # an assertion that all later prospective maps must stop at V2-2.
+    authority = "a174dc5d718ccc73b412d0ead9554ba7d8a857d2"
+    def committed(path):
+        return json.loads(subprocess.check_output(
+            ["git", "show", authority + ":" + path], cwd=str(ROOT)))
+    mapping = validate_mapping(committed("summary_md/governance/v2_1/DEPENDENCY_MAP.json"))
+    claim = committed("summary_md/governance/v2_1/MAP_APPLICABILITY.json")
     historical, _ = _load()
     assert mapping["dependency_mapping_identity"] == semantic_identity(mapping)
     assert mapping["mapping_digest"] == mapping_digest(mapping)
