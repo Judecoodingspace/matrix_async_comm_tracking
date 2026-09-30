@@ -210,9 +210,16 @@ def validate_raw(records: list[dict], auth: Mapping[str, Any]) -> dict:
             or summary.get("pair_id") != cell["pair_id"]
             or summary.get("R") != cell["capacity_bytes"]
             or summary.get("mode") != "fifo"
-            or summary.get("ledger_io_failure")
             or manifest.get("c4_service_config") != config):
         raise HREvidenceError("SERVICE_CONFIG_RECONCILIATION_FAILED")
+    finalization_flags = (
+        "passed", "byte_conservation", "frame_budget_conservation",
+        "work_conserving", "terminal_conservation", "packet_identity_authoritative",
+    )
+    if (any(type(summary.get(flag)) is not int or summary[flag] != 1
+            for flag in finalization_flags)
+            or summary.get("ledger_io_failure") != ""):
+        raise HREvidenceError("SERVICE_FINALIZATION_GATE_FAILED")
     if any(row.get("run_id") != auth["run_id"] or row.get("pair_id") != cell["pair_id"]
            for row in by["service_ledger"]):
         raise HREvidenceError("SERVICE_LEDGER_IDENTITY_MISMATCH")

@@ -122,7 +122,12 @@ def test_raw_family_is_self_contained_and_fail_closed(tmp_path):
         read_raw(path)
 
 
-def test_c6_suppression_is_a_valid_c7_service_terminal(tmp_path, monkeypatch):
+@pytest.mark.parametrize("failed_gate", [
+    None, "passed", "byte_conservation", "frame_budget_conservation",
+    "work_conserving", "terminal_conservation", "packet_identity_authoritative",
+    "ledger_io_failure",
+])
+def test_c6_suppression_is_a_valid_c7_service_terminal(tmp_path, monkeypatch, failed_gate):
     from tracking import mdmt_mia_hr_evidence as hr
     auth = _auth(tmp_path)
     packet = {"census_run_id": auth["run_id"], "sequence_name": "66-1",
@@ -155,7 +160,11 @@ def test_c6_suppression_is_a_valid_c7_service_terminal(tmp_path, monkeypatch):
         "packet_manifest": {"c4_service_config": config},
         "service_ledger": [opening, enqueue, suppressed, closing],
         "service_summary": {"run_id": auth["run_id"], "pair_id": "P66",
-                            "R": 16649, "mode": "fifo", "ledger_io_failure": ""},
+                            "R": 16649, "mode": "fifo", "ledger_io_failure": "",
+                            "passed": 1, "byte_conservation": 1,
+                            "frame_budget_conservation": 1, "work_conserving": 1,
+                            "terminal_conservation": 1,
+                            "packet_identity_authoritative": 1},
         "census_emissions": [], "census_terminals": [
             {"packet_id": packet, "terminal_class": "SUPPRESSED",
              "terminal_reason": "c6_whole_packet_non_applicable"}],
@@ -174,6 +183,11 @@ def test_c6_suppression_is_a_valid_c7_service_terminal(tmp_path, monkeypatch):
     records = [{"family": "header", "value": header}] + [
         {"family": family, "value": value} for family, value in values.items()]
     monkeypatch.setattr(hr, "validate_packet_census_records", lambda *args: {"passed": True})
+    if failed_gate is not None:
+        values["service_summary"][failed_gate] = "write failed" if failed_gate == "ledger_io_failure" else 0
+        with pytest.raises(HREvidenceError, match="SERVICE_FINALIZATION_GATE_FAILED"):
+            validate_raw(records, auth)
+        return
     assert validate_raw(records, auth)["rate_logical_bytes_per_frame"] == 16649
     values["census_terminals"][0]["terminal_class"] = "COMPLETED"
     with pytest.raises(HREvidenceError, match="C6_SUPPRESSION_TERMINAL_MISMATCH"):
@@ -197,3 +211,41 @@ def test_qualification_inspect_uses_operator_inspect_contract(tmp_path, monkeypa
     result = qualification._operator("inspect", tmp_path, "one", tmp_path / "auth.json")
     assert result["state"] == "COMPLETED"
     assert "--authorization" not in seen["command"]
+
+
+def test_qualification_report_stdout_does_not_mutate_finalized_attempt(tmp_path, monkeypatch, capsys):
+    import qualify_mdmt_mia_hr_production_path as qualification
+
+    attempt_id = "qual-one"
+    attempt = tmp_path / attempt_id
+    snapshot = {}
+
+    def fake_operator(phase, attempts_root, supplied_id, auth_path):
+        assert attempts_root == tmp_path
+        assert supplied_id == attempt_id
+        if phase == "launch":
+            return {"launch_identity": "launch-one"}
+        if phase == "inspect":
+            return {"state": "COMPLETED"}
+        assert phase == "finalize"
+        status = attempt / "output/hr/H_R_STRUCTURAL_VALIDATION.json"
+        status.parent.mkdir(parents=True)
+        status.write_text(json.dumps({
+            "STRUCTURAL_VERDICT": "PASS", "raw_sha256": "raw",
+            "normalized_sha256": "normalized", "effective_sha256": "effective",
+        }))
+        snapshot.update({path.relative_to(attempt): path.read_bytes()
+                         for path in attempt.rglob("*") if path.is_file()})
+        return {"state": "FINALIZED", "manifest_sha256": "manifest",
+                "finalization_sha256": "receipt"}
+
+    monkeypatch.setattr(qualification, "build_qualification_authorization",
+                        lambda root, supplied_id: {"source_sha": "a" * 40, "cell": {"cell_id": "P66__P20"}})
+    monkeypatch.setattr(qualification, "_operator", fake_operator)
+    monkeypatch.setattr(sys, "argv", ["qualify", "--attempts-root", str(tmp_path),
+                                  "--attempt-id", attempt_id])
+    assert qualification.main() == 0
+    assert json.loads(capsys.readouterr().out)["v2_3_state"] == "FINALIZED"
+    assert {path.relative_to(attempt): path.read_bytes()
+            for path in attempt.rglob("*") if path.is_file()} == snapshot
+    assert not (attempt / "output/hr/H_R_QUALIFICATION_REPORT.json").exists()

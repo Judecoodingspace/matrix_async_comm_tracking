@@ -123,7 +123,6 @@ def main() -> int:
         "finalization_sha256": final["finalization_sha256"],
         "v2_3_state": final["state"],
     }
-    (attempt / "output/hr/H_R_QUALIFICATION_REPORT.json").write_bytes(canonical(report))
     print(json.dumps(report, sort_keys=True))
     return 0
 
