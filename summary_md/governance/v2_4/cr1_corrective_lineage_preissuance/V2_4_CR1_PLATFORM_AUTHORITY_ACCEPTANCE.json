@@ -1,0 +1,18 @@
+{
+  "schema_version": "V2_3_EXISTING_AUTHORITY_ACCEPTANCE_V1",
+  "authority_layer": "PLATFORM",
+  "attempt_id": "v2_4_hr_qual_002",
+  "parent_node_id": "initial",
+  "defect_class": "VALIDATOR",
+  "affected_layers": [
+    "NORMALIZED_EVIDENCE"
+  ],
+  "purposes": [
+    "H_R_PRODUCTION_PROOF",
+    "H_R_FORMAL_PREISSUANCE"
+  ],
+  "v2_1_cim_sha256": "6b85caf2b8730ef4cdc6edb88ea3344e6ae9d7d10c990c868eaeecaa9515530d",
+  "v2_1_review_sha256": "240275e7adda24c5b60778bd0d0d3bf73a677fdea4f7c55de5d6dfbe44636e03",
+  "v2_1_scope_review_sha256": "4f012ec2207df1534b207f0edf7e7e898f429666fc7d7e392fddee9c344a0ba9",
+  "decision": "ACCEPT"
+}
