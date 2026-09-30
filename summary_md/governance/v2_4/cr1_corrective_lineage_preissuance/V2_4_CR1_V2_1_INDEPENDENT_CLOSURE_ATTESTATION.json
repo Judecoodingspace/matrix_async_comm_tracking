@@ -1,0 +1,21 @@
+{
+  "schema_version": "V2_1_INDEPENDENT_CLOSURE_ATTESTATION_V1",
+  "review_role": "INDEPENDENT",
+  "decision": "ACCEPT",
+  "cim_sha256": "6b85caf2b8730ef4cdc6edb88ea3344e6ae9d7d10c990c868eaeecaa9515530d",
+  "scope_review_sha256": "4f012ec2207df1534b207f0edf7e7e898f429666fc7d7e392fddee9c344a0ba9",
+  "purposes": [
+    "H_R_PRODUCTION_PROOF",
+    "H_R_FORMAL_PREISSUANCE"
+  ],
+  "relied_evidence_ids": [
+    "C7_FIFO_MECHANISM",
+    "C7_CAPACITY_PROPAGATION",
+    "V2_2_EXECUTION_RELIABILITY",
+    "V2_3_ARTIFACT_ARCHITECTURE"
+  ],
+  "closed_evidence_ids": [],
+  "closed_requalification": [
+    "INDEPENDENT_DEPENDENCY_CLOSURE_REVIEW"
+  ]
+}
