@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -249,3 +250,101 @@ def test_qualification_report_stdout_does_not_mutate_finalized_attempt(tmp_path,
     assert {path.relative_to(attempt): path.read_bytes()
             for path in attempt.rglob("*") if path.is_file()} == snapshot
     assert not (attempt / "output/hr/H_R_QUALIFICATION_REPORT.json").exists()
+
+
+def test_preissue_consumes_exact_corrective_child(tmp_path, monkeypatch):
+    import run_mdmt_mia_hr_formal as operator
+
+    attempts = tmp_path / "attempts"
+    attempt_id = "qual-one"
+    parent_manifest = attempts / attempt_id / "v2_3/manifest.json"
+    parent_manifest.parent.mkdir(parents=True)
+    parent_manifest.write_text("historical parent must not be read")
+    child_manifest = (attempts / ".v2_3_corrections" / attempt_id
+                      / "validator_cr1/v2_3/manifest.json")
+    child_manifest.parent.mkdir(parents=True)
+    child = {"evidence": {"RAW_EVIDENCE": "child-raw",
+                          "NORMALIZED_EVIDENCE": "child-normalized"},
+             "provenance": {"validation": "child-validator"}}
+    child_manifest.write_text(json.dumps(child))
+    applicability = tmp_path / "v2_1.json"
+    applicability.write_text('{"review":"child-purpose"}')
+    args = SimpleNamespace(attempts_root=attempts, attempt_id=attempt_id,
+                           authorization=tmp_path / "auth.json",
+                           v2_1_applicability=applicability,
+                           consumer_record=tmp_path / "consumer.json")
+    calls = {}
+
+    def fake_auth(path, root, supplied_id, *, require_current_head):
+        assert (path, root, supplied_id, require_current_head) == (
+            args.authorization, attempts, attempt_id, False)
+        return {}
+
+    def fake_inspect(root, supplied_id, node_id):
+        calls["inspect"] = (root, supplied_id, node_id)
+        return {"state": "FINALIZED", "manifest_sha256": "child-manifest",
+                "finalization_sha256": "child-finalization"}
+
+    def fake_reuse(root, supplied_id, node_id, **kwargs):
+        calls["reuse"] = (root, supplied_id, node_id, kwargs)
+        return {"decision": "REUSE_ADMISSIBLE"}
+
+    monkeypatch.setattr(operator, "_auth", fake_auth)
+    monkeypatch.setattr(operator.artifacts, "inspect", fake_inspect)
+    monkeypatch.setattr(operator.artifacts, "check_reuse", fake_reuse)
+    assert operator.preissue_check(args)["decision"] == "REUSE_ADMISSIBLE"
+    assert calls["inspect"] == (attempts, attempt_id, "validator_cr1")
+    root, supplied_id, node_id, kwargs = calls["reuse"]
+    assert (root, supplied_id, node_id) == (attempts, attempt_id, "validator_cr1")
+    assert kwargs["purpose"] == "H_R_FORMAL_PREISSUANCE"
+    assert kwargs["consumption_class"] == "FORMAL_AUTHORIZATION_SUPPORT"
+    assert kwargs["anchor"] == {
+        "attempt_id": attempt_id, "node_id": "validator_cr1",
+        "manifest_sha256": "child-manifest",
+        "finalization_sha256": "child-finalization",
+    }
+    assert kwargs["expected_artifacts"] == child["evidence"]
+    assert kwargs["expected_provenance"] == child["provenance"]
+    assert kwargs["v2_1_applicability"] == {"review": "child-purpose"}
+    assert kwargs["consumer_record"] == args.consumer_record
+    assert not args.consumer_record.exists()
+
+    monkeypatch.setattr(operator.artifacts, "check_reuse",
+                        lambda *unused, **kwargs: {"decision": "REUSE_REFUSED"})
+    with pytest.raises(operator.HROperatorError, match="PREISSUANCE_REUSE_REFUSED"):
+        operator.preissue_check(args)
+
+
+@pytest.mark.parametrize("state", [
+    "NOT_ADOPTED", "NOT_FINALIZED", "INVALID_FINALIZED_CLAIM", "COMPLETED",
+])
+def test_preissue_missing_or_invalid_child_fails_without_parent_fallback(
+        tmp_path, monkeypatch, state):
+    import run_mdmt_mia_hr_formal as operator
+
+    attempts = tmp_path / "attempts"
+    args = SimpleNamespace(attempts_root=attempts, attempt_id="qual-one",
+                           authorization=tmp_path / "auth.json",
+                           v2_1_applicability=tmp_path / "v2_1.json",
+                           consumer_record=tmp_path / "consumer.json")
+    inspected = []
+
+    monkeypatch.setattr(operator, "_auth",
+                        lambda *unused, **kwargs: {})
+
+    def fake_inspect(root, attempt_id, node_id):
+        inspected.append((root, attempt_id, node_id))
+        assert node_id == "validator_cr1"
+        return {"state": state}
+
+    monkeypatch.setattr(operator.artifacts, "inspect", fake_inspect)
+
+    def forbidden_reuse(*unused, **kwargs):
+        pytest.fail("check_reuse must not run without a finalized corrective child")
+
+    monkeypatch.setattr(operator.artifacts, "check_reuse", forbidden_reuse)
+
+    with pytest.raises(operator.HROperatorError, match="V2_3_NOT_FINALIZED"):
+        operator.preissue_check(args)
+    assert inspected == [(attempts, "qual-one", "validator_cr1")]
+    assert not args.consumer_record.exists()

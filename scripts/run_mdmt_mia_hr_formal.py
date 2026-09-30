@@ -20,6 +20,7 @@ from tracking.mdmt_mia_hr_evidence import (
 
 CONTRACT = "summary_md/governance/v2_4/V2_4_IMPLEMENTATION_CONTRACT_REV2.md"
 EXTRACTOR = "src/tracking/mdmt_mia_hr_evidence.py"
+PREISSUE_NODE_ID = "validator_cr1"
 
 
 class HROperatorError(RuntimeError):
@@ -120,16 +121,17 @@ def finalize(args) -> dict:
 
 def preissue_check(args) -> dict:
     _auth(args.authorization, args.attempts_root, args.attempt_id, require_current_head=False)
-    attempt_root = args.attempts_root.resolve() / args.attempt_id
-    final = artifacts.inspect(args.attempts_root, args.attempt_id)
+    final = artifacts.inspect(args.attempts_root, args.attempt_id, PREISSUE_NODE_ID)
     if final.get("state") != "FINALIZED":
         raise HROperatorError("V2_3_NOT_FINALIZED")
-    manifest = read_json(attempt_root / "v2_3/manifest.json")
+    child_root = (args.attempts_root.resolve() / ".v2_3_corrections"
+                  / args.attempt_id / PREISSUE_NODE_ID)
+    manifest = read_json(child_root / "v2_3/manifest.json")
     result = artifacts.check_reuse(
-        args.attempts_root, args.attempt_id, "initial",
+        args.attempts_root, args.attempt_id, PREISSUE_NODE_ID,
         purpose="H_R_FORMAL_PREISSUANCE",
         consumption_class="FORMAL_AUTHORIZATION_SUPPORT",
-        anchor={"attempt_id": args.attempt_id, "node_id": "initial",
+        anchor={"attempt_id": args.attempt_id, "node_id": PREISSUE_NODE_ID,
                 "manifest_sha256": final["manifest_sha256"],
                 "finalization_sha256": final["finalization_sha256"]},
         expected_artifacts=manifest["evidence"],
