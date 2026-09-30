@@ -1,0 +1,35 @@
+{
+  "affected_layers": [
+    "NORMALIZED_EVIDENCE"
+  ],
+  "attempt_id": "v2_4_hr_qual_002",
+  "authority_layer": "PLATFORM",
+  "decision": "PENDING_INDEPENDENT_REVIEW",
+  "defect_class": "VALIDATOR",
+  "defect_evidence": {
+    "reference": {
+      "commit": "b027d50e56b7ee200604308bcf664a2ace102c0b",
+      "kind": "GIT_BLOB",
+      "repo_path": "src/tracking/mdmt_mia_hr_evidence.py",
+      "sha256": "52ec2b546b89e529024a06cedecf5eaaae1b4e806cd18c3324dd7614cc63d369",
+      "size_bytes": 21044
+    },
+    "route": "VALIDATOR_FIFO_FINALIZATION_GATE_OMITTED"
+  },
+  "future_consumer_integration_status": "PENDING: current H_R preissue_check pins node_id=initial; for the corrected purpose it must later pin the accepted corrective child and its own manifest/provenance. No source change in this package.",
+  "future_independent_attestation_sha256": null,
+  "future_independent_review_identity": null,
+  "parent_node_id": "initial",
+  "purposes": [
+    "H_R_PRODUCTION_PROOF",
+    "H_R_FORMAL_PREISSUANCE"
+  ],
+  "record_status": "PROPOSAL_ONLY_NOT_ACCEPTED_AUTHORITY",
+  "schema_version": "V2_4_CR1_PLATFORM_AUTHORITY_PREISSUANCE_V1",
+  "scientific_impact": "NONE",
+  "v2_1_candidate_cim_repo_path": "summary_md/governance/v2_4/cr1_corrective_lineage_preissuance/V2_4_CR1_V2_1_CHANGE_IMPACT_MANIFEST.json",
+  "v2_1_candidate_cim_sha256": "6b85caf2b8730ef4cdc6edb88ea3344e6ae9d7d10c990c868eaeecaa9515530d",
+  "v2_1_inputs_commit": "66affc8f0dbcb794ddf9a47ed97be867a14394f5",
+  "v2_1_scope_review_repo_path": "summary_md/governance/v2_4/cr1_corrective_lineage_preissuance/V2_4_CR1_V2_1_UNKNOWN_SCOPE_REVIEW.json",
+  "v2_1_scope_review_sha256": "4f012ec2207df1534b207f0edf7e7e898f429666fc7d7e392fddee9c344a0ba9"
+}

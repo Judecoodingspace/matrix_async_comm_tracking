@@ -1,0 +1,52 @@
+{
+  "attempt_001": {
+    "terminal_state": "FAILED",
+    "v2_3_finalized": false
+  },
+  "attempt_002": {
+    "attempt_id": "v2_4_hr_qual_002",
+    "authorization_hash": "9cb574da78accb9bc2d1ab0d31d2aef4f10f6c4d1d621340a468bd3a53fa13cb",
+    "cr1_validator_replay_on_old_raw": "PASS",
+    "effective_config_rederivation_byte_exact": true,
+    "effective_config_sha256": "aa3a8eceeb3811060eebb93d83335a18eeb9e8c23e10af68d6525933901c82a0",
+    "finalization_receipt_mtime_ns": 1790693730273613451,
+    "finalization_sha256": "3b9f185e3899c5b80ec635f90b8df34795f7593c4c6a488f6c2e5ad4f7976447",
+    "manifest_sha256": "28934dc4abe7a448d23cb61cdf2658c664551c8ac57fa031f6d5a18620c09cc0",
+    "normalized_rederivation_byte_exact": true,
+    "normalized_sha256": "4f2e35a2727b33efb962c36ac249e3fac7ed705fa260f4150e6d9329e982e835",
+    "post_finalization_report_mtime_ns": 1790693730305613451,
+    "post_finalization_report_present": true,
+    "post_finalization_report_sha256": "1242748efe4173562a58d0f74c020150e23062f2d5b4dce0d314167c6d534a8f",
+    "post_finalization_report_unreferenced_by_manifest": true,
+    "post_finalization_report_written_after_receipt": true,
+    "raw_sha256": "4aef0e4d03c7b340a0722be74765031ce180a9e3426c3266de2009945e17dd96",
+    "referenced_content_verification_depth": "CONTENT",
+    "referenced_parent_content_intact": true,
+    "runtime_fifo_finalization_gate": {
+      "byte_conservation": 1,
+      "frame_budget_conservation": 1,
+      "ledger_io_failure": "",
+      "packet_identity_authoritative": 1,
+      "passed": 1,
+      "terminal_conservation": 1,
+      "work_conserving": 1
+    },
+    "source_sha": "b027d50e56b7ee200604308bcf664a2ace102c0b",
+    "structural_verdict": "PASS",
+    "terminal_state": "COMPLETED",
+    "v2_3_incidents": {
+      "METADATA": null,
+      "NORMALIZED_EVIDENCE": null,
+      "RAW_EVIDENCE": null
+    },
+    "v2_3_state": "FINALIZED"
+  },
+  "direct_qualification_of_cr1": false,
+  "old_raw_reuse_class": "RAW_REUSABLE_VIA_CORRECTIVE_LINEAGE",
+  "real_qualification_rerun_performed": false,
+  "reason": "002 RAW and every V2-3 referenced byte are hash-valid; runtime FIFO gate and read-only CR1 replay pass. The post-finalization report is an unreferenced extra file and remains untouched. A separate V2-3 corrective child may inherit unchanged RAW after independent V2-1 closure and accepted Platform Authority.",
+  "replacement_authority_evidence_repo_path": "summary_md/governance/v2_4/cr1_corrective_lineage_preissuance/REPLACEMENT_ATTEMPT_002_AUTHORITY_EVIDENCE.json",
+  "replacement_authority_evidence_sha256": "dec1f585af168c2ebe07f7873da067679f1214b087ca27b2c8b2b433062b7afd",
+  "schema_version": "V2_4_CR1_RAW_REUSE_ASSESSMENT_V1",
+  "status": "TEAM_A_CANDIDATE_NOT_AUTHORIZATION"
+}

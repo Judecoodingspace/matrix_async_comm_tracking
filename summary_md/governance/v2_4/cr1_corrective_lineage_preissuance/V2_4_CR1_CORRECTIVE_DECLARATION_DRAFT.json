@@ -1,0 +1,221 @@
+{
+  "draft_only": true,
+  "executable": false,
+  "future_consumer_integration": "H_R_FORMAL_PREISSUANCE purpose makes stale initial fail lineage; current operator still pins initial. A separately reviewed future consumer change must pin this child before Formal-support reuse can be admissible.",
+  "planned_child_root": "/tmp/mdmt_mia_v2_4_qualification_20260929/.v2_3_corrections/v2_4_hr_qual_002/validator_cr1",
+  "planned_declaration": {
+    "correction": {
+      "accepted_authority": null,
+      "affected_layers": [
+        "NORMALIZED_EVIDENCE"
+      ],
+      "defect_class": "VALIDATOR",
+      "defect_evidence": {
+        "reference": {
+          "commit": "b027d50e56b7ee200604308bcf664a2ace102c0b",
+          "kind": "GIT_BLOB",
+          "repo_path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "sha256": "52ec2b546b89e529024a06cedecf5eaaae1b4e806cd18c3324dd7614cc63d369",
+          "size_bytes": 21044
+        },
+        "route": "VALIDATOR_FIFO_FINALIZATION_GATE_OMITTED"
+      },
+      "parent_node_id": "initial",
+      "purposes": [
+        "H_R_PRODUCTION_PROOF",
+        "H_R_FORMAL_PREISSUANCE"
+      ],
+      "v2_1_change_impact": {
+        "attestation_path": null,
+        "attestation_sha256": null,
+        "cim_path": "/mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/.worktrees/v2_4_hr_production_proof/summary_md/governance/v2_4/cr1_corrective_lineage_preissuance/V2_4_CR1_V2_1_CHANGE_IMPACT_MANIFEST.json",
+        "cim_sha256": "6b85caf2b8730ef4cdc6edb88ea3344e6ae9d7d10c990c868eaeecaa9515530d",
+        "scientific_impact": "NONE",
+        "scope_review_path": "/mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/.worktrees/v2_4_hr_production_proof/summary_md/governance/v2_4/cr1_corrective_lineage_preissuance/V2_4_CR1_V2_1_UNKNOWN_SCOPE_REVIEW.json",
+        "scope_review_sha256": "4f012ec2207df1534b207f0edf7e7e898f429666fc7d7e392fddee9c344a0ba9",
+        "v2_1_inputs_commit": "66affc8f0dbcb794ddf9a47ed97be867a14394f5"
+      }
+    },
+    "effective_scientific_config": {
+      "kind": "NODE_FILE",
+      "path": "output/hr/H_R_EFFECTIVE_CONFIG.json",
+      "sha256": "aa3a8eceeb3811060eebb93d83335a18eeb9e8c23e10af68d6525933901c82a0",
+      "size_bytes": 77024
+    },
+    "evidence": {
+      "NORMALIZED_EVIDENCE": {
+        "kind": "NODE_FILE",
+        "path": "output/hr/H_R_NORMALIZED_EVIDENCE.json",
+        "sha256": "4f2e35a2727b33efb962c36ac249e3fac7ed705fa260f4150e6d9329e982e835",
+        "size_bytes": 624
+      },
+      "RAW_EVIDENCE": {
+        "kind": "INHERITED",
+        "layer": "RAW_EVIDENCE",
+        "parent_finalization_sha256": "3b9f185e3899c5b80ec635f90b8df34795f7593c4c6a488f6c2e5ad4f7976447",
+        "parent_manifest_sha256": "28934dc4abe7a448d23cb61cdf2658c664551c8ac57fa031f6d5a18620c09cc0",
+        "parent_node_id": "initial",
+        "sha256": "4aef0e4d03c7b340a0722be74765031ce180a9e3426c3266de2009945e17dd96",
+        "size_bytes": 406628
+      }
+    },
+    "provenance": {
+      "derivation": {
+        "extraction_config": {
+          "kind": "NODE_FILE",
+          "path": "output/hr/H_R_EXTRACTION_CONFIG.json",
+          "sha256": "b0d865126183d6fd66e2a2fcd7a9545b85b47ffec6298dc482275584c5573e6c",
+          "size_bytes": 424
+        },
+        "extraction_contract": {
+          "commit": "66affc8f0dbcb794ddf9a47ed97be867a14394f5",
+          "kind": "GIT_BLOB",
+          "repo_path": "summary_md/governance/v2_4/V2_4_IMPLEMENTATION_CONTRACT_REV2.md",
+          "sha256": "9f5780ece33b6f30a7d60fdcea002bae282c2770804a05dca69c82527dd94c0f",
+          "size_bytes": 18412
+        },
+        "extractor": {
+          "commit": "66affc8f0dbcb794ddf9a47ed97be867a14394f5",
+          "kind": "GIT_BLOB",
+          "repo_path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "sha256": "cb2b53b87946acac4c6fe57a66b8ae3d00c58192f6b05130d56c1c23ce34d12d",
+          "size_bytes": 21417
+        },
+        "normalized_evidence": {
+          "kind": "NODE_FILE",
+          "path": "output/hr/H_R_NORMALIZED_EVIDENCE.json",
+          "sha256": "4f2e35a2727b33efb962c36ac249e3fac7ed705fa260f4150e6d9329e982e835",
+          "size_bytes": 624
+        },
+        "raw_evidence": {
+          "kind": "INHERITED",
+          "layer": "RAW_EVIDENCE",
+          "parent_finalization_sha256": "3b9f185e3899c5b80ec635f90b8df34795f7593c4c6a488f6c2e5ad4f7976447",
+          "parent_manifest_sha256": "28934dc4abe7a448d23cb61cdf2658c664551c8ac57fa031f6d5a18620c09cc0",
+          "parent_node_id": "initial",
+          "sha256": "4aef0e4d03c7b340a0722be74765031ce180a9e3426c3266de2009945e17dd96",
+          "size_bytes": 406628
+        }
+      },
+      "validation": {
+        "normalized_evidence": {
+          "kind": "NODE_FILE",
+          "path": "output/hr/H_R_NORMALIZED_EVIDENCE.json",
+          "sha256": "4f2e35a2727b33efb962c36ac249e3fac7ed705fa260f4150e6d9329e982e835",
+          "size_bytes": 624
+        },
+        "validation_config": {
+          "kind": "NODE_FILE",
+          "path": "output/hr/H_R_VALIDATION_CONFIG.json",
+          "sha256": "8643d0cf05f7b10f008748c03ee2bcc51d8f37854054cc3f7880a090be5802a1",
+          "size_bytes": 465
+        },
+        "validation_contract": {
+          "commit": "66affc8f0dbcb794ddf9a47ed97be867a14394f5",
+          "kind": "GIT_BLOB",
+          "repo_path": "summary_md/governance/v2_4/V2_4_IMPLEMENTATION_CONTRACT_REV2.md",
+          "sha256": "9f5780ece33b6f30a7d60fdcea002bae282c2770804a05dca69c82527dd94c0f",
+          "size_bytes": 18412
+        },
+        "validator": {
+          "commit": "66affc8f0dbcb794ddf9a47ed97be867a14394f5",
+          "kind": "GIT_BLOB",
+          "repo_path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "sha256": "cb2b53b87946acac4c6fe57a66b8ae3d00c58192f6b05130d56c1c23ce34d12d",
+          "size_bytes": 21417
+        }
+      }
+    },
+    "retention": [
+      {
+        "path": "output/hr/H_R_NORMALIZED_EVIDENCE.json",
+        "tier": 1
+      },
+      {
+        "path": "output/hr/H_R_EFFECTIVE_CONFIG.json",
+        "tier": 1
+      }
+    ],
+    "terminal_binding": null,
+    "validation": {
+      "STRUCTURAL_VERDICT": "PASS",
+      "description": "H_R mechanical communication structure under CR1 validator; future child must rerun and verify.",
+      "validated_evidence": {
+        "NORMALIZED_EVIDENCE": {
+          "kind": "NODE_FILE",
+          "path": "output/hr/H_R_NORMALIZED_EVIDENCE.json",
+          "sha256": "4f2e35a2727b33efb962c36ac249e3fac7ed705fa260f4150e6d9329e982e835",
+          "size_bytes": 624
+        },
+        "RAW_EVIDENCE": {
+          "kind": "INHERITED",
+          "layer": "RAW_EVIDENCE",
+          "parent_finalization_sha256": "3b9f185e3899c5b80ec635f90b8df34795f7593c4c6a488f6c2e5ad4f7976447",
+          "parent_manifest_sha256": "28934dc4abe7a448d23cb61cdf2658c664551c8ac57fa031f6d5a18620c09cc0",
+          "parent_node_id": "initial",
+          "sha256": "4aef0e4d03c7b340a0722be74765031ce180a9e3426c3266de2009945e17dd96",
+          "size_bytes": 406628
+        }
+      },
+      "validation_provenance": {
+        "normalized_evidence": {
+          "kind": "NODE_FILE",
+          "path": "output/hr/H_R_NORMALIZED_EVIDENCE.json",
+          "sha256": "4f2e35a2727b33efb962c36ac249e3fac7ed705fa260f4150e6d9329e982e835",
+          "size_bytes": 624
+        },
+        "validation_config": {
+          "kind": "NODE_FILE",
+          "path": "output/hr/H_R_VALIDATION_CONFIG.json",
+          "sha256": "8643d0cf05f7b10f008748c03ee2bcc51d8f37854054cc3f7880a090be5802a1",
+          "size_bytes": 465
+        },
+        "validation_contract": {
+          "commit": "66affc8f0dbcb794ddf9a47ed97be867a14394f5",
+          "kind": "GIT_BLOB",
+          "repo_path": "summary_md/governance/v2_4/V2_4_IMPLEMENTATION_CONTRACT_REV2.md",
+          "sha256": "9f5780ece33b6f30a7d60fdcea002bae282c2770804a05dca69c82527dd94c0f",
+          "size_bytes": 18412
+        },
+        "validator": {
+          "commit": "66affc8f0dbcb794ddf9a47ed97be867a14394f5",
+          "kind": "GIT_BLOB",
+          "repo_path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "sha256": "cb2b53b87946acac4c6fe57a66b8ae3d00c58192f6b05130d56c1c23ce34d12d",
+          "size_bytes": 21417
+        }
+      }
+    }
+  },
+  "planned_materialization": [
+    {
+      "expected_sha256": "4f2e35a2727b33efb962c36ac249e3fac7ed705fa260f4150e6d9329e982e835",
+      "path": "output/hr/H_R_NORMALIZED_EVIDENCE.json",
+      "reason": "New child-owned NORMALIZED_EVIDENCE with CR1 validator provenance; rederived bytes currently match the parent."
+    },
+    {
+      "expected_sha256": "aa3a8eceeb3811060eebb93d83335a18eeb9e8c23e10af68d6525933901c82a0",
+      "path": "output/hr/H_R_EFFECTIVE_CONFIG.json",
+      "reason": "V2-3 NODE_FILE effective-config ref must be child-local; exact bytes may be copied only after authority."
+    },
+    {
+      "expected_sha256": "b0d865126183d6fd66e2a2fcd7a9545b85b47ffec6298dc482275584c5573e6c",
+      "path": "output/hr/H_R_EXTRACTION_CONFIG.json",
+      "reason": "Child-local extraction config required by V2-3 provenance."
+    },
+    {
+      "expected_sha256": "8643d0cf05f7b10f008748c03ee2bcc51d8f37854054cc3f7880a090be5802a1",
+      "path": "output/hr/H_R_VALIDATION_CONFIG.json",
+      "reason": "Child-local validation config required by V2-3 provenance."
+    }
+  ],
+  "planned_node_id": "validator_cr1",
+  "schema_version": "V2_4_CR1_CORRECTIVE_DECLARATION_DRAFT_V1",
+  "unissued_prerequisites": [
+    "Independent Team B acceptance of exact V2-1 scope review and CIM",
+    "Independent V2_1_INDEPENDENT_CLOSURE_ATTESTATION_V1 for both purposes",
+    "Accepted Platform Authority decision=ACCEPT exact-bound to accepted V2-1 record",
+    "Separate authorization to materialize child and call create_correction",
+    "Separately reviewed H_R preissue consumer binding to the accepted corrective child"
+  ]
+}

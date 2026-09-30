@@ -1,0 +1,22 @@
+{
+  "applies_to_attempt_id": "v2_4_hr_qual_002",
+  "authorized_scope": {
+    "attempt_count": 1,
+    "frame_count": 3,
+    "not_formal_h_r": true,
+    "purpose": "replacement V2-4 qualification after failed attempt 001",
+    "scientific": false
+  },
+  "line_number": 6241,
+  "line_sha256": "73567ef4f512bed252683de4fd5596015216ee88821cd4117070131013dac74f",
+  "normalized_authority_statement": "User authorized one new three-frame non-scientific real qualification attempt after the first attempt failed, to validate the correction and complete V2-3 finalization.",
+  "question_item_id": "[\"request_user_input_async\",\"call_0D6FlKtPc2H3KubwFIgFEYII\",0]",
+  "role": "USER",
+  "schema_version": "V2_4_REPLACEMENT_ATTEMPT_AUTHORITY_EVIDENCE_V1",
+  "source_file_is_live_append_only": true,
+  "source_file_sha256": "59b87674f19efa735e22c6941b72f41bdd31459495e93764cb47f589a21d6762",
+  "source_file_size_bytes_at_capture": 24387675,
+  "source_path": "/home/aiso-image/.codex/sessions/2026/09/27/rollout-2026-09-27T10-06-13-01a0e09c-e228-75c0-8d85-dba8cc341ac3.jsonl",
+  "user_answer": "授权一次新的 3 帧 attempt（推荐）",
+  "verification_rule": "Compare SHA256 of the first source_file_size_bytes_at_capture bytes to source_file_sha256; the live session may append later. Also verify the exact line number and line SHA256."
+}

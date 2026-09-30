@@ -1,0 +1,345 @@
+{
+  "affected_behavior_units": [],
+  "affected_invariants": [],
+  "base_implementation_sha": "415d9c7132d8203c7970e45a70b77981fc41fc3b",
+  "candidate_verdict": "CANDIDATE_REVIEWABLE_TEAM_B_PENDING",
+  "changed_behavior_units": [],
+  "changed_files": [
+    "scripts/qualify_mdmt_mia_hr_production_path.py",
+    "scripts/run_mdmt_mia_hr_formal.py",
+    "scripts/run_mdmt_mia_hr_real_child.py",
+    "src/tracking/mdmt_mia_hr_evidence.py",
+    "summary_md/governance/v2_4/V2_4_CONTRACT_TEAM_B_REVIEW.md",
+    "summary_md/governance/v2_4/V2_4_IMPLEMENTATION_CONTRACT_REV2.md",
+    "summary_md/governance/v2_4/V2_4_IMPLEMENTATION_PLAN.md",
+    "summary_md/governance/v2_4/V2_4_PLAN_TEAM_B_REVIEW.md",
+    "summary_md/governance/v2_4/V2_4_QUALIFICATION_ATTEMPT_1.md",
+    "tests/test_mdmt_mia_hr_production_path.py"
+  ],
+  "changed_hunks": [
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,131 @@",
+      "path": "scripts/qualify_mdmt_mia_hr_production_path.py"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,170 @@",
+      "path": "scripts/run_mdmt_mia_hr_formal.py"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,201 @@",
+      "path": "scripts/run_mdmt_mia_hr_real_child.py"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,395 @@",
+      "path": "src/tracking/mdmt_mia_hr_evidence.py"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,10 @@",
+      "path": "summary_md/governance/v2_4/V2_4_CONTRACT_TEAM_B_REVIEW.md"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,859 @@",
+      "path": "summary_md/governance/v2_4/V2_4_IMPLEMENTATION_CONTRACT_REV2.md"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,1001 @@",
+      "path": "summary_md/governance/v2_4/V2_4_IMPLEMENTATION_PLAN.md"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,16 @@",
+      "path": "summary_md/governance/v2_4/V2_4_PLAN_TEAM_B_REVIEW.md"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,15 @@",
+      "path": "summary_md/governance/v2_4/V2_4_QUALIFICATION_ATTEMPT_1.md"
+    },
+    {
+      "behavior_unit_ids": [],
+      "hunk": "@@ -0,0 +1,251 @@",
+      "path": "tests/test_mdmt_mia_hr_production_path.py"
+    }
+  ],
+  "dependency_mapping_identity": "a6d8f572b1f41fa8607743d03bb7cd4e8b479bfbf7f36a4b909926fa8c89641c",
+  "diff_sha256": "5757d466ac3b277b3e6e953a939b3f1cc17c4de1143d9c6a7ff0013e2aa518a9",
+  "evidence_inheritance": [
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_FIFO_MECHANISM",
+      "protected_dependency_closure": [
+        "child.propagate_registered_capacity",
+        "runtime.fifo_frame_service",
+        "runtime.parse_registered_capacity"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_CAPACITY_PROPAGATION",
+      "protected_dependency_closure": [
+        "child.propagate_registered_capacity",
+        "runtime.parse_registered_capacity"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_ELIGIBILITY_RECONSTRUCTION",
+      "protected_dependency_closure": [
+        "c7.bound_released_credit",
+        "c7.reconstruct_credit_validation",
+        "child.propagate_registered_capacity",
+        "runtime.fifo_frame_service",
+        "runtime.parse_registered_capacity"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_FULL_DOMAIN_PATH",
+      "protected_dependency_closure": [
+        "c7.launch_exact_domain"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "UNMAPPED",
+      "condition": "BLOCK until unknown dependency or applicability is independently closed",
+      "direct_changed_units": [],
+      "evidence_id": "C6_HARNESS_DYNAMIC_BOUNDARY",
+      "protected_dependency_closure": [
+        "harness.resolve_dynamic_modules"
+      ],
+      "unresolved_dynamic_units": [
+        "harness.resolve_dynamic_modules"
+      ],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "V2_2_EXECUTION_RELIABILITY",
+      "protected_dependency_closure": [
+        "v2_2.execution_lifecycle",
+        "v2_2.qualification_protocol"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "V2_3_ARTIFACT_ARCHITECTURE",
+      "protected_dependency_closure": [
+        "v2_2.execution_lifecycle",
+        "v2_3.artifact_finalization",
+        "v2_3.cli_interface",
+        "v2_3.corrective_lineage",
+        "v2_3.qualification_protocol",
+        "v2_3.receipt_consumption",
+        "v2_3.v21_evidence_binding"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    }
+  ],
+  "mapping_applicability": {
+    "anchor_implementation_sha": "a174dc5d718ccc73b412d0ead9554ba7d8a857d2",
+    "status": "APPLICABLE_TO_BASE",
+    "target_requires_delta_review": true
+  },
+  "mapping_digest": "0b61884bbf137cb8cec5e3c5ef5fc19dc958250b817078e8d9fc8e52f8bec286",
+  "minimum_requalification": [
+    "INDEPENDENT_DEPENDENCY_CLOSURE_REVIEW"
+  ],
+  "required_requalification_layers": [],
+  "role": "TEAM_A_CANDIDATE_EVIDENCE_NOT_AUTHORIZATION",
+  "schema_version": "CHANGE_IMPACT_MANIFEST_V1",
+  "target_implementation_sha": "66affc8f0dbcb794ddf9a47ed97be867a14394f5",
+  "unknown_scope_review": {
+    "review_sha256": "15a82c41b509239e4889aef6622b9c08828314b520ff5be2f5c4e84965631817",
+    "reviewed_hunk_count": 10,
+    "status": "EXACT_BOUND"
+  },
+  "unmapped_unknown_paths": [
+    {
+      "hunk": "@@ -0,0 +1,131 @@",
+      "hunk_sha256": "14c36980579fd63166ccd3904cf7c60c175305798665438dad917630342d12fc",
+      "introduction_kind": "NEW_BEHAVIOR",
+      "path": "scripts/qualify_mdmt_mia_hr_production_path.py",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "5757d466ac3b277b3e6e953a939b3f1cc17c4de1143d9c6a7ff0013e2aa518a9",
+      "scope_basis": "New H_R tiny qualification orchestrator composes the new operator and frozen selection. Its addition changes no existing mapped runtime, C6/C7 source locator, dependency edge, or historical evidence. Qualification of the new path remains separate.",
+      "scope_review_sha256": "15a82c41b509239e4889aef6622b9c08828314b520ff5be2f5c4e84965631817",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,170 @@",
+      "hunk_sha256": "145c9b881fdd3c3db4adb652ab6e0429b9d7fc755dfee55f35c01ef9944129d1",
+      "introduction_kind": "NEW_BEHAVIOR",
+      "path": "scripts/run_mdmt_mia_hr_formal.py",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "5757d466ac3b277b3e6e953a939b3f1cc17c4de1143d9c6a7ff0013e2aa518a9",
+      "scope_basis": "New H_R operator composes V2-2/V2-3 and the accepted C7-derived mechanism. It does not edit their mapped source or earlier evidence; this claim concerns only the pre-existing protected graph, not proof of the new operator.",
+      "scope_review_sha256": "15a82c41b509239e4889aef6622b9c08828314b520ff5be2f5c4e84965631817",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,201 @@",
+      "hunk_sha256": "7da10476672434c1ca8886469dfc002d5587ed849c47990bec56a552c476b8c9",
+      "introduction_kind": "NEW_BEHAVIOR",
+      "path": "scripts/run_mdmt_mia_hr_real_child.py",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "5757d466ac3b277b3e6e953a939b3f1cc17c4de1143d9c6a7ff0013e2aa518a9",
+      "scope_basis": "New H_R adapter invokes the accepted C7 real-child mechanism and writes attempt-local outputs. No existing mapped PacketRuntime, C6/C7 source, dependency edge, or historical evidence byte is changed.",
+      "scope_review_sha256": "15a82c41b509239e4889aef6622b9c08828314b520ff5be2f5c4e84965631817",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,395 @@",
+      "hunk_sha256": "1525e3eed19093a6b9c4cb67c4249de221cd43a136da449ead3aaf55d172c4af",
+      "introduction_kind": "NEW_BEHAVIOR",
+      "path": "src/tracking/mdmt_mia_hr_evidence.py",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "5757d466ac3b277b3e6e953a939b3f1cc17c4de1143d9c6a7ff0013e2aa518a9",
+      "scope_basis": "New H_R communication extractor/validator reads runtime sidecars and calls the existing packet-census validator. Its addition does not modify mapped C6/C7 code or historical evidence; the new validator requires its own proof.",
+      "scope_review_sha256": "15a82c41b509239e4889aef6622b9c08828314b520ff5be2f5c4e84965631817",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,10 @@",
+      "hunk_sha256": "10cec288060c2583f5d9712cd187fa16e261a01acbcd555aba31badcb6084ded",
+      "introduction_kind": "SUPPORTING_DOC_OR_EVIDENCE",
+      "path": "summary_md/governance/v2_4/V2_4_CONTRACT_TEAM_B_REVIEW.md",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "5757d466ac3b277b3e6e953a939b3f1cc17c4de1143d9c6a7ff0013e2aa518a9",
+      "scope_basis": "New V2-4 contract-review record; no existing mapped protected source or historical evidence is changed.",
+      "scope_review_sha256": "15a82c41b509239e4889aef6622b9c08828314b520ff5be2f5c4e84965631817",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,859 @@",
+      "hunk_sha256": "39a6f9483377a4e9916930cc86d54a11f47b2918f24a5bfe1e649ceeb5f9405d",
+      "introduction_kind": "SUPPORTING_DOC_OR_EVIDENCE",
+      "path": "summary_md/governance/v2_4/V2_4_IMPLEMENTATION_CONTRACT_REV2.md",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "5757d466ac3b277b3e6e953a939b3f1cc17c4de1143d9c6a7ff0013e2aa518a9",
+      "scope_basis": "New H_R production-wiring contract governs the introduced path but does not edit old mapped C6/C7/V2-2/V2-3 source or retroactively change historical evidence.",
+      "scope_review_sha256": "15a82c41b509239e4889aef6622b9c08828314b520ff5be2f5c4e84965631817",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,1001 @@",
+      "hunk_sha256": "7206940c07794dc71e5df2f903c724904843c2a73002cbc00bc990e58a1fd512",
+      "introduction_kind": "SUPPORTING_DOC_OR_EVIDENCE",
+      "path": "summary_md/governance/v2_4/V2_4_IMPLEMENTATION_PLAN.md",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "5757d466ac3b277b3e6e953a939b3f1cc17c4de1143d9c6a7ff0013e2aa518a9",
+      "scope_basis": "New H_R implementation plan; it does not edit pre-existing mapped source, dependency edges, or protected evidence.",
+      "scope_review_sha256": "15a82c41b509239e4889aef6622b9c08828314b520ff5be2f5c4e84965631817",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,16 @@",
+      "hunk_sha256": "2c19162dceb72c441a9637e48591b4368c10c15eaea3a9633fd6446f44894abf",
+      "introduction_kind": "SUPPORTING_DOC_OR_EVIDENCE",
+      "path": "summary_md/governance/v2_4/V2_4_PLAN_TEAM_B_REVIEW.md",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "5757d466ac3b277b3e6e953a939b3f1cc17c4de1143d9c6a7ff0013e2aa518a9",
+      "scope_basis": "New V2-4 plan-review record; no pre-existing mapped source or historical evidence is changed.",
+      "scope_review_sha256": "15a82c41b509239e4889aef6622b9c08828314b520ff5be2f5c4e84965631817",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,15 @@",
+      "hunk_sha256": "d581e775ef0c253f926a4e05f0ee2139d94d68817f944a5734c3604565623d9d",
+      "introduction_kind": "SUPPORTING_DOC_OR_EVIDENCE",
+      "path": "summary_md/governance/v2_4/V2_4_QUALIFICATION_ATTEMPT_1.md",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "5757d466ac3b277b3e6e953a939b3f1cc17c4de1143d9c6a7ff0013e2aa518a9",
+      "scope_basis": "New failed-attempt history note; it does not rewrite attempt bytes or pre-existing mapped protected source/evidence.",
+      "scope_review_sha256": "15a82c41b509239e4889aef6622b9c08828314b520ff5be2f5c4e84965631817",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    },
+    {
+      "hunk": "@@ -0,0 +1,251 @@",
+      "hunk_sha256": "fda645d1f8c547ae7b0f179887f16f0442a258825233086fb5aa527694cfbe09",
+      "introduction_kind": "TEST_ONLY",
+      "path": "tests/test_mdmt_mia_hr_production_path.py",
+      "potential_behavior_units": [],
+      "potential_evidence_families": [],
+      "potential_invariants": [],
+      "reason": "NO_REVIEWED_BEHAVIOR_MATCH",
+      "review_semantic": "INTRODUCTION_ZERO_EXISTING_PROTECTED_IMPACT",
+      "reviewed_scope_diff_sha256": "5757d466ac3b277b3e6e953a939b3f1cc17c4de1143d9c6a7ff0013e2aa518a9",
+      "scope_basis": "New focused H_R tests; their addition changes no pre-existing mapped production source or historical evidence.",
+      "scope_review_sha256": "15a82c41b509239e4889aef6622b9c08828314b520ff5be2f5c4e84965631817",
+      "unknown_scope_kind": "SCOPED_ZERO_EXISTING_PROTECTED_IMPACT"
+    }
+  ]
+}
