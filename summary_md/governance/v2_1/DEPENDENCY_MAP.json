@@ -491,9 +491,434 @@
         }
       ],
       "validation_level": "L0"
+    },
+    {
+      "behavior_unit_id": "v2_4.hr_execution_authorization",
+      "dependency_edges": [],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "h_r_selected_cell_identity",
+        "h_r_current_source_identity",
+        "h_r_frozen_wrapper_preparer_identity"
+      ],
+      "requalification_gate": "V2_4_H_R_PRODUCTION_PATH_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "symbol": "selection"
+        },
+        {
+          "match_tokens": [
+            "AUTHORIZATION_",
+            "selection(",
+            "wrapper_path",
+            "preparer_path",
+            "service_config_schema",
+            "operator_sha",
+            "child_sha",
+            "runtime_sha",
+            "source_identity_mode"
+          ],
+          "path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "symbol": "load_authorization"
+        },
+        {
+          "match_tokens": [
+            "CURRENT_WORKTREE",
+            "file_digest(repo_root"
+          ],
+          "path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "symbol": "_source_identity_digests"
+        },
+        {
+          "match_tokens": [
+            "CURRENT_WORKTREE",
+            "require_current_head",
+            "SOURCE_SHA_MISMATCH"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_formal.py",
+          "symbol": "_auth"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "v2_4.hr_suppression_service_binding",
+      "dependency_edges": [
+        "runtime.fifo_frame_service",
+        "runtime.parse_registered_capacity"
+      ],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "h_r_suppression_before_first_byte",
+        "h_r_fifo_suppression_coexistence",
+        "h_r_suppression_seal_integrity"
+      ],
+      "requalification_gate": "V2_4_H_R_PRODUCTION_PATH_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/mdmt_mia_async_deadline_runtime.py",
+          "symbol": "_parse_c6_suppression_config"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/mdmt_mia_async_deadline_runtime.py",
+          "symbol": "_classify_whole_packet_currently_non_applicable"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/mdmt_mia_async_deadline_runtime.py",
+          "symbol": "_C6SuppressionSidecar.classify"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/mdmt_mia_async_deadline_runtime.py",
+          "symbol": "_C6SuppressionSidecar.finalize"
+        },
+        {
+          "match_tokens": [
+            "suppression_gate",
+            "suppressed"
+          ],
+          "path": "src/tracking/mdmt_mia_async_deadline_runtime.py",
+          "symbol": "_C4SharedLogicalServer._start_next"
+        },
+        {
+          "match_tokens": [
+            "c6_suppression_config",
+            "MIA_C6_SUPPRESSION_CONFIG",
+            "_C6SuppressionSidecar"
+          ],
+          "path": "src/tracking/mdmt_mia_async_deadline_runtime.py",
+          "symbol": "PacketRuntime.__init__"
+        },
+        {
+          "match_tokens": [
+            "_c6_suppression",
+            "take_suppressed"
+          ],
+          "path": "src/tracking/mdmt_mia_async_deadline_runtime.py",
+          "symbol": "PacketRuntime._send"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "v2_4.hr_runtime_composition",
+      "dependency_edges": [
+        "v2_4.hr_execution_authorization",
+        "v2_4.hr_suppression_service_binding",
+        "v2_2.execution_lifecycle"
+      ],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "h_r_attempt_local_runtime",
+        "h_r_real_wrapper_execution",
+        "h_r_generated_source_integrity",
+        "h_r_outcome_quarantine"
+      ],
+      "requalification_gate": "V2_4_H_R_PRODUCTION_PATH_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_real_child.py",
+          "symbol": "_git_identity"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_real_child.py",
+          "symbol": "_attempt_root"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_real_child.py",
+          "symbol": "_tiny_input"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_real_child.py",
+          "symbol": "controlled_environment"
+        },
+        {
+          "match_tokens": [
+            "load_authorization",
+            "_git_identity",
+            "_attempt_root",
+            "_materialize_generated_source",
+            "generated_source_manifest_sha256",
+            "wrapper",
+            "subprocess.run",
+            "inventory_generated_source",
+            "tracking_outcome_read"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_real_child.py",
+          "symbol": "execute"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_formal.py",
+          "symbol": "launch"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_formal.py",
+          "symbol": "inspect"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "v2_4.hr_communication_evidence",
+      "dependency_edges": [
+        "v2_4.hr_execution_authorization",
+        "v2_4.hr_suppression_service_binding",
+        "v2_4.hr_runtime_composition",
+        "v2_3.artifact_finalization"
+      ],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "h_r_raw_normalized_provenance",
+        "h_r_effective_config_reconciliation",
+        "h_r_structural_verdict_boundary"
+      ],
+      "requalification_gate": "V2_4_H_R_PRODUCTION_PATH_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "RAW_NAME",
+            "NORMALIZED_NAME",
+            "EFFECTIVE_NAME"
+          ],
+          "path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "symbol": "<module>"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "symbol": "source_paths"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "symbol": "read_raw"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "symbol": "validate_raw"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "symbol": "collect_raw"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "symbol": "normalized_from_raw"
+        },
+        {
+          "match_tokens": [
+            "collect_raw",
+            "normalized_from_raw",
+            "H_R_STRUCTURAL_VALIDATION",
+            "NORMALIZED_NAME",
+            "tracking_outcome_read"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_real_child.py",
+          "symbol": "execute"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_formal.py",
+          "symbol": "git_ref"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_formal.py",
+          "symbol": "_declaration"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_formal.py",
+          "symbol": "finalize"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "v2_4.hr_historical_authorization",
+      "dependency_edges": [
+        "v2_4.hr_execution_authorization"
+      ],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "h_r_historical_git_source_identity",
+        "h_r_historical_authorization_fail_closed"
+      ],
+      "requalification_gate": "V2_4_H_R_PREISSUE_CONSUMER_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "HISTORICAL_GIT",
+            "AUTHORIZATION_SOURCE_COMMIT",
+            "AUTHORIZATION_SOURCE_BLOB",
+            "rev-parse",
+            "cat-file",
+            "blob",
+            "hashes.append"
+          ],
+          "path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "symbol": "_source_identity_digests"
+        },
+        {
+          "match_tokens": [
+            "source_identity_mode"
+          ],
+          "path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "symbol": "load_authorization"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "v2_4.hr_preissue_consumer",
+      "dependency_edges": [
+        "v2_4.hr_historical_authorization",
+        "v2_3.artifact_finalization",
+        "v2_3.corrective_lineage",
+        "v2_3.receipt_consumption"
+      ],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "h_r_corrective_child_pin",
+        "h_r_child_receipt_anchor",
+        "h_r_formal_support_reuse_gate"
+      ],
+      "requalification_gate": "V2_4_H_R_PREISSUE_CONSUMER_QUALIFICATION",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "PREISSUE_NODE_ID"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_formal.py",
+          "symbol": "<module>"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_formal.py",
+          "symbol": "preissue_check"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "v2_4.hr_qualification_protocol",
+      "dependency_edges": [
+        "v2_4.hr_execution_authorization",
+        "v2_4.hr_runtime_composition",
+        "v2_4.hr_communication_evidence",
+        "v2_3.artifact_finalization"
+      ],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "h_r_tiny_qualification_boundary",
+        "h_r_qualification_outcome_blind"
+      ],
+      "requalification_gate": "V2_4_H_R_QUALIFICATION_PROTOCOL_REVIEW",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/qualify_mdmt_mia_hr_production_path.py",
+          "symbol": "_git"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/qualify_mdmt_mia_hr_production_path.py",
+          "symbol": "_operator"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/qualify_mdmt_mia_hr_production_path.py",
+          "symbol": "build_qualification_authorization"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/qualify_mdmt_mia_hr_production_path.py",
+          "symbol": "main"
+        }
+      ],
+      "validation_level": "L1"
+    },
+    {
+      "behavior_unit_id": "tests.v2_4_hr_production_path",
+      "dependency_edges": [],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [],
+      "requalification_gate": "V2_4_H_R_TEST_REVIEW",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "tests/test_mdmt_mia_hr_production_path.py",
+          "symbol": "test-only qualification"
+        }
+      ],
+      "validation_level": "L0"
     }
   ],
-  "dependency_mapping_identity": "a6d8f572b1f41fa8607743d03bb7cd4e8b479bfbf7f36a4b909926fa8c89641c",
+  "dependency_mapping_identity": "78c539edd5cab75e83ea97410d606eecf50efda970a8c5781f80669a80da7a70",
   "evidence": [
     {
       "evidence_id": "C7_FIFO_MECHANISM",
@@ -551,10 +976,35 @@
         "v2_3.qualification_protocol"
       ],
       "validation_gate": "V2_3_ARTIFACT_ARCHITECTURE_QUALIFICATION"
+    },
+    {
+      "evidence_id": "V2_4_H_R_PRODUCTION_PATH",
+      "proven_behavior_units": [
+        "v2_4.hr_execution_authorization",
+        "v2_4.hr_suppression_service_binding",
+        "v2_4.hr_runtime_composition",
+        "v2_4.hr_communication_evidence"
+      ],
+      "validation_gate": "V2_4_H_R_PRODUCTION_PATH_QUALIFICATION"
+    },
+    {
+      "evidence_id": "V2_4_H_R_PREISSUE_CONSUMER",
+      "proven_behavior_units": [
+        "v2_4.hr_historical_authorization",
+        "v2_4.hr_preissue_consumer"
+      ],
+      "validation_gate": "V2_4_H_R_PREISSUE_CONSUMER_QUALIFICATION"
+    },
+    {
+      "evidence_id": "V2_4_H_R_QUALIFICATION_PROTOCOL",
+      "proven_behavior_units": [
+        "v2_4.hr_qualification_protocol"
+      ],
+      "validation_gate": "V2_4_H_R_QUALIFICATION_PROTOCOL_REVIEW"
     }
   ],
-  "mapping_digest": "0b61884bbf137cb8cec5e3c5ef5fc19dc958250b817078e8d9fc8e52f8bec286",
-  "mapping_scope": "Reviewed C7 FIFO/capacity/credit and C7 launcher, selected C6 Harness v2 dynamic boundary, and prospective V2-2 execution reliability lifecycle and qualification protocol; all other paths fail closed; prospective V2-3 artifact finalization, historical V2-1 input binding, corrective lineage, receipt consumption, CLI, and qualification behavior",
+  "mapping_digest": "8dba7c8e5f861728f80e4b178991748189a734346332db4d72c0971bbd425868",
+  "mapping_scope": "Reviewed C7 FIFO/capacity/credit and C7 launcher, selected C6 Harness v2 dynamic boundary, and prospective V2-2 execution reliability lifecycle and qualification protocol; all other paths fail closed; prospective V2-3 artifact finalization, historical V2-1 input binding, corrective lineage, receipt consumption, CLI, and qualification behavior; prospective V2-4 H_R execution authorization, real runtime/suppression composition, communication evidence, historical preissue consumption, and non-scientific qualification",
   "protected_invariants": [
     "source_cleanliness",
     "registered_capacity_propagation",
@@ -587,7 +1037,27 @@
     "verification_depth_boundary",
     "current_lineage_consumption",
     "artifact_cli_delegation",
-    "v2_3_artifact_qualification_semantics"
+    "v2_3_artifact_qualification_semantics",
+    "h_r_selected_cell_identity",
+    "h_r_current_source_identity",
+    "h_r_frozen_wrapper_preparer_identity",
+    "h_r_suppression_before_first_byte",
+    "h_r_fifo_suppression_coexistence",
+    "h_r_suppression_seal_integrity",
+    "h_r_attempt_local_runtime",
+    "h_r_real_wrapper_execution",
+    "h_r_generated_source_integrity",
+    "h_r_outcome_quarantine",
+    "h_r_raw_normalized_provenance",
+    "h_r_effective_config_reconciliation",
+    "h_r_structural_verdict_boundary",
+    "h_r_historical_git_source_identity",
+    "h_r_historical_authorization_fail_closed",
+    "h_r_corrective_child_pin",
+    "h_r_child_receipt_anchor",
+    "h_r_formal_support_reuse_gate",
+    "h_r_tiny_qualification_boundary",
+    "h_r_qualification_outcome_blind"
   ],
   "schema_version": "GOVERNANCE_V2_DEPENDENCY_MAP_V1"
 }

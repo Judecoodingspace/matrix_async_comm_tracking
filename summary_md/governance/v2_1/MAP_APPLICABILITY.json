@@ -1,20 +1,24 @@
 {
-  "anchor_implementation_sha": "a174dc5d718ccc73b412d0ead9554ba7d8a857d2",
+  "anchor_implementation_sha": "935ddcb7bba9b9894f495d84982cc310eb959c79",
   "audited_source_sha256": {
     "scripts/governance_v2_artifacts.py": "79d25cdab8ece489a404c8a5fdec6a77b6c89a7f7a96600d934312a0d2b0fba4",
     "scripts/governance_v2_execution.py": "06fbb4a5e64087b9b3f4675ce06af63612c9a4a99df0dcffd8dcc4885476ceb4",
     "scripts/qualify_governance_v2_2.py": "fdffd8d119281a2a121549c586861c4de6055e735bb09dd536e03516e49459bd",
     "scripts/qualify_governance_v2_3.py": "32d998450dc1811830ee4730874333d32964306318c0ad99ac3fc734d0ed56af",
+    "scripts/qualify_mdmt_mia_hr_production_path.py": "f47a7fa99524c6d4d6e4006a929d0bf7bdfc2feeea6d13a28b24accd8c554002",
     "scripts/run_harness_v2.py": "b097ff8a0745cc9c7f9ba719dc92da8f6f34a77df9160604a1ba5c1e2a21cbda",
     "scripts/run_mdmt_mia_c7_outcome_blind_census.py": "d135a34ac1b7bff9e09e5ec627f58539bbe40148274640cfeadef1ad03e88605",
     "scripts/run_mdmt_mia_c7_real_child.py": "f234c71cf82bf389388e81ffefe8605d150b6fc5a1b55c7fdeb596253fbad27c",
+    "scripts/run_mdmt_mia_hr_formal.py": "f3432ce9d63384197a48eba3779b45a9eefe9b7547165102e51c0b98fe4c3598",
+    "scripts/run_mdmt_mia_hr_real_child.py": "bf8a4741911c2009beda1f1bb3774694df9bfe5eccdc465849e371624592f089",
     "src/tracking/governance_v2_artifacts.py": "d83dec63186625d8044cefeaa8ce48b0e44913be66868ded0d4885153bcd33f8",
     "src/tracking/governance_v2_execution.py": "704258174521ab540a42ef9212588ec31d7bd0c95f6080d8dbc1e18beb5642b7",
     "src/tracking/mdmt_mia_async_deadline_runtime.py": "b8274eb2b54df668ab983a836d3b145a3373ea4b68617e3540f1a0617d0e1b50",
     "src/tracking/mdmt_mia_c7_census.py": "9a1887f39d8206a826a15717b84b97773f50a088eb8f507e9ce1921838360652",
-    "src/tracking/mdmt_mia_c7_validator.py": "7922a1d82132e28586dfb3bdfa2b65bc12d8d7a961ddc14d5be747dc8a29552f"
+    "src/tracking/mdmt_mia_c7_validator.py": "7922a1d82132e28586dfb3bdfa2b65bc12d8d7a961ddc14d5be747dc8a29552f",
+    "src/tracking/mdmt_mia_hr_evidence.py": "848b8c2ed3ecf9ccdd9d537d19bcb57eb95516020d66244abf4960cd2eaabe5e"
   },
-  "dependency_mapping_identity": "a6d8f572b1f41fa8607743d03bb7cd4e8b479bfbf7f36a4b909926fa8c89641c",
-  "mapping_digest": "0b61884bbf137cb8cec5e3c5ef5fc19dc958250b817078e8d9fc8e52f8bec286",
+  "dependency_mapping_identity": "78c539edd5cab75e83ea97410d606eecf50efda970a8c5781f80669a80da7a70",
+  "mapping_digest": "8dba7c8e5f861728f80e4b178991748189a734346332db4d72c0971bbd425868",
   "schema_version": "GOVERNANCE_V2_MAP_APPLICABILITY_V1"
 }
