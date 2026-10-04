@@ -1,0 +1,21 @@
+{
+  "schema_version": "V2_1_INDEPENDENT_CLOSURE_ATTESTATION_V1",
+  "review_role": "INDEPENDENT",
+  "decision": "ACCEPT",
+  "cim_sha256": "1de9d6df64e335de2b8ae41ccf135bc3b9a906f8b53997cc5b75f3c7f39b7147",
+  "scope_review_sha256": "aa19a63eaebd5ed6c4fe4b421590616bb950477e02d139651c0f50149ac2f5df",
+  "purposes": [
+    "H_R_FORMAL_PREISSUANCE"
+  ],
+  "relied_evidence_ids": [
+    "V2_2_EXECUTION_RELIABILITY",
+    "V2_3_ARTIFACT_ARCHITECTURE"
+  ],
+  "closed_evidence_ids": [
+    "V2_2_EXECUTION_RELIABILITY",
+    "V2_3_ARTIFACT_ARCHITECTURE"
+  ],
+  "closed_requalification": [
+    "INDEPENDENT_DEPENDENCY_CLOSURE_REVIEW"
+  ]
+}
