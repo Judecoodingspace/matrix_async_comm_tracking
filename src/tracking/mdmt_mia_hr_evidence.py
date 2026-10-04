@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import subprocess
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -335,7 +337,36 @@ def normalized_from_raw(raw_path: Path, auth: Mapping[str, Any]) -> tuple[dict, 
     return normalized, effective
 
 
-def load_authorization(path: Path, attempt_root: Path, repo_root: Path) -> dict:
+def _source_identity_digests(repo_root: Path, source_sha: str, mode: str) -> tuple[str, str, str]:
+    paths = (
+        "scripts/run_mdmt_mia_hr_formal.py",
+        "scripts/run_mdmt_mia_hr_real_child.py",
+        "src/tracking/mdmt_mia_async_deadline_runtime.py",
+    )
+    if mode == "CURRENT_WORKTREE":
+        return tuple(file_digest(repo_root / path) for path in paths)
+    if mode != "HISTORICAL_GIT":
+        raise HREvidenceError("AUTHORIZATION_SOURCE_IDENTITY_MODE_INVALID")
+    if not isinstance(source_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", source_sha):
+        raise HREvidenceError("AUTHORIZATION_SOURCE_COMMIT_INVALID")
+    commit = subprocess.run(
+        ["git", "rev-parse", "--verify", source_sha + "^{commit}"],
+        cwd=repo_root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if commit.returncode or commit.stdout.decode("ascii", errors="replace").strip() != source_sha:
+        raise HREvidenceError("AUTHORIZATION_SOURCE_COMMIT_INVALID")
+    hashes = []
+    for path in paths:
+        blob = subprocess.run(
+            ["git", "cat-file", "blob", source_sha + ":" + path],
+            cwd=repo_root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        if blob.returncode:
+            raise HREvidenceError("AUTHORIZATION_SOURCE_BLOB_MISSING:" + path)
+        hashes.append(digest(blob.stdout))
+    return tuple(hashes)
+
+
+def load_authorization(path: Path, attempt_root: Path, repo_root: Path, *,
+                       source_identity_mode: str = "CURRENT_WORKTREE") -> dict:
     auth = read_json(path)
     signed = dict(auth)
     supplied_hash = signed.pop("authorization_hash", None)
@@ -386,9 +417,11 @@ def load_authorization(path: Path, attempt_root: Path, repo_root: Path) -> dict:
             or auth["mia_config_path"] != resources["mia_config_path"]
             or auth["device"] != resources["device"]):
         raise HREvidenceError("C7_FROZEN_EXECUTION_IDENTITY_MISMATCH")
-    if (file_digest(repo_root / "scripts/run_mdmt_mia_hr_formal.py") != auth["operator_sha256"]
-            or file_digest(repo_root / "scripts/run_mdmt_mia_hr_real_child.py") != auth["child_sha256"]
-            or file_digest(repo_root / "src/tracking/mdmt_mia_async_deadline_runtime.py") != auth["runtime_sha256"]
+    operator_sha, child_sha, runtime_sha = _source_identity_digests(
+        repo_root, auth["source_sha"], source_identity_mode)
+    if (operator_sha != auth["operator_sha256"]
+            or child_sha != auth["child_sha256"]
+            or runtime_sha != auth["runtime_sha256"]
             or file_digest(Path(auth["wrapper_path"])) != auth["wrapper_sha256"]
             or file_digest(Path(auth["preparer_path"])) != auth["preparer_sha256"]):
         raise HREvidenceError("AUTHORIZATION_SOURCE_IDENTITY_MISMATCH")

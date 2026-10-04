@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -95,6 +96,66 @@ def test_authorization_tampering_fails(tmp_path, field, value):
     path.write_bytes(canonical(auth))
     with pytest.raises(HREvidenceError, match="AUTHORIZATION_HASH_MISMATCH"):
         load_authorization(path, tmp_path / "qual-one", ROOT)
+
+
+def _historical_auth(tmp_path: Path) -> dict:
+    auth = _auth(tmp_path)
+    auth["source_sha"] = "b027d50e56b7ee200604308bcf664a2ace102c0b"
+    for key, path in (
+        ("operator_sha256", "scripts/run_mdmt_mia_hr_formal.py"),
+        ("child_sha256", "scripts/run_mdmt_mia_hr_real_child.py"),
+        ("runtime_sha256", "src/tracking/mdmt_mia_async_deadline_runtime.py"),
+    ):
+        raw = subprocess.check_output(["git", "cat-file", "blob",
+                                       auth["source_sha"] + ":" + path], cwd=ROOT)
+        auth[key] = digest(raw)
+    auth["authorization_hash"] = digest(canonical({
+        key: value for key, value in auth.items() if key != "authorization_hash"}))
+    return auth
+
+
+def test_authorization_current_worktree_remains_strict(tmp_path):
+    auth = _historical_auth(tmp_path)
+    path = tmp_path / "auth.json"
+    path.write_bytes(canonical(auth))
+    with pytest.raises(HREvidenceError, match="AUTHORIZATION_SOURCE_IDENTITY_MISMATCH"):
+        load_authorization(path, tmp_path / "qual-one", ROOT)
+
+
+def test_authorization_historical_git_binds_exact_blobs(tmp_path):
+    auth = _historical_auth(tmp_path)
+    path = tmp_path / "auth.json"
+    path.write_bytes(canonical(auth))
+    observed = load_authorization(path, tmp_path / "qual-one", ROOT,
+                                  source_identity_mode="HISTORICAL_GIT")
+    assert observed["source_sha"] == auth["source_sha"]
+    assert observed["operator_sha256"] == auth["operator_sha256"]
+    assert observed["child_sha256"] == auth["child_sha256"]
+    assert observed["runtime_sha256"] == auth["runtime_sha256"]
+
+
+@pytest.mark.parametrize("change,error", [
+    ("source_sha", "AUTHORIZATION_SOURCE_IDENTITY_MISMATCH"),
+    ("operator_sha256", "AUTHORIZATION_SOURCE_IDENTITY_MISMATCH"),
+    ("child_sha256", "AUTHORIZATION_SOURCE_IDENTITY_MISMATCH"),
+    ("runtime_sha256", "AUTHORIZATION_SOURCE_IDENTITY_MISMATCH"),
+    ("missing_commit", "AUTHORIZATION_SOURCE_COMMIT_INVALID"),
+])
+def test_authorization_historical_git_rejects_wrong_identity(tmp_path, change, error):
+    auth = _historical_auth(tmp_path)
+    if change == "source_sha":
+        auth["source_sha"] = "5995a5f35426615fc6354d9c3386269f1b94c9f9"
+    elif change == "missing_commit":
+        auth["source_sha"] = "f" * 40
+    else:
+        auth[change] = "0" * 64
+    auth["authorization_hash"] = digest(canonical({
+        key: value for key, value in auth.items() if key != "authorization_hash"}))
+    path = tmp_path / "auth.json"
+    path.write_bytes(canonical(auth))
+    with pytest.raises(HREvidenceError, match=error):
+        load_authorization(path, tmp_path / "qual-one", ROOT,
+                           source_identity_mode="HISTORICAL_GIT")
 
 
 def test_controlled_environment_binds_both_mechanisms(tmp_path):
@@ -275,9 +336,9 @@ def test_preissue_consumes_exact_corrective_child(tmp_path, monkeypatch):
                            consumer_record=tmp_path / "consumer.json")
     calls = {}
 
-    def fake_auth(path, root, supplied_id, *, require_current_head):
-        assert (path, root, supplied_id, require_current_head) == (
-            args.authorization, attempts, attempt_id, False)
+    def fake_auth(path, root, supplied_id, *, require_current_head, source_identity_mode):
+        assert (path, root, supplied_id, require_current_head, source_identity_mode) == (
+            args.authorization, attempts, attempt_id, False, "HISTORICAL_GIT")
         return {}
 
     def fake_inspect(root, supplied_id, node_id):

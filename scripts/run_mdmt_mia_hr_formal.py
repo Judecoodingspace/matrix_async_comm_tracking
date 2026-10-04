@@ -41,9 +41,11 @@ def git_ref(relative: str, commit: str) -> dict:
             "size_bytes": len(raw), "sha256": digest(raw)}
 
 
-def _auth(path: Path, attempts_root: Path, attempt_id: str, *, require_current_head: bool = True) -> dict:
+def _auth(path: Path, attempts_root: Path, attempt_id: str, *, require_current_head: bool = True,
+          source_identity_mode: str = "CURRENT_WORKTREE") -> dict:
     attempt_root = attempts_root.resolve() / attempt_id
-    auth = load_authorization(path, attempt_root, ROOT)
+    auth = load_authorization(path, attempt_root, ROOT,
+                              source_identity_mode=source_identity_mode)
     if require_current_head and auth["source_sha"] != head():
         raise HROperatorError("SOURCE_SHA_MISMATCH")
     return auth
@@ -120,7 +122,8 @@ def finalize(args) -> dict:
 
 
 def preissue_check(args) -> dict:
-    _auth(args.authorization, args.attempts_root, args.attempt_id, require_current_head=False)
+    _auth(args.authorization, args.attempts_root, args.attempt_id,
+          require_current_head=False, source_identity_mode="HISTORICAL_GIT")
     final = artifacts.inspect(args.attempts_root, args.attempt_id, PREISSUE_NODE_ID)
     if final.get("state") != "FINALIZED":
         raise HROperatorError("V2_3_NOT_FINALIZED")
