@@ -18,7 +18,7 @@
     "src/tracking/mdmt_mia_c7_validator.py": "7922a1d82132e28586dfb3bdfa2b65bc12d8d7a961ddc14d5be747dc8a29552f",
     "src/tracking/mdmt_mia_hr_evidence.py": "848b8c2ed3ecf9ccdd9d537d19bcb57eb95516020d66244abf4960cd2eaabe5e"
   },
-  "dependency_mapping_identity": "78c539edd5cab75e83ea97410d606eecf50efda970a8c5781f80669a80da7a70",
-  "mapping_digest": "8dba7c8e5f861728f80e4b178991748189a734346332db4d72c0971bbd425868",
+  "dependency_mapping_identity": "c6e97f4266d8f6db9aac54fbef8b2c5e8b4414b2ee8eed178107fa892f5922b9",
+  "mapping_digest": "d8562af2f7ad419ed928b7e4475bb6a59d6cc848e7383df4a1941b50ae747162",
   "schema_version": "GOVERNANCE_V2_MAP_APPLICABILITY_V1"
 }

@@ -109,17 +109,26 @@ def _future_edit(tmp_path: Path, relative: str, symbol: str, kind: str = "functi
         assert needle in source
         changed = source.replace(needle, needle +
             '        current_worktree_registration_probe = "CURRENT_WORKTREE"\n', 1)
+    elif kind == "service_seal_call":
+        needle = 'service_report = self._c4_service.seal_evidence(self._census.terminals)'
+        assert source.count(needle) == 1
+        changed = source.replace(needle, needle + '  # future service-seal call edit', 1)
     else:
         tree = ast.parse(source)
-        function = next(node for node in tree.body
-                        if isinstance(node, ast.FunctionDef) and node.name == symbol)
+        node = tree
+        for part in symbol.split("."):
+            node = next(child for child in node.body
+                        if isinstance(child, (ast.ClassDef, ast.FunctionDef)) and child.name == part)
+        function = node
+        assert isinstance(function, ast.FunctionDef)
         lines = source.splitlines(keepends=True)
         first = function.body[0]
         if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
             index = first.end_lineno
         else:
             index = first.lineno - 1
-        lines.insert(index, "    _v24_registration_probe = True\n")
+        lines.insert(index, " " * (function.col_offset + 4) +
+                     "_v24_registration_probe = True\n")
         changed = "".join(lines)
     ast.parse(changed)
     target = _fixture_commit(clone, {relative: changed.encode()})
@@ -155,6 +164,14 @@ def test_old_graph_preserved_and_applicability_reanchored():
         "v2_3.corrective_lineage", "v2_3.receipt_consumption"]
     assert "harness.resolve_dynamic_modules" not in {
         edge for name in NEW_UNITS for edge in by[name]["dependency_edges"]}
+    evidence_owner = by["v2_4.hr_communication_evidence"]
+    assert "h_r_service_finalization_integrity" in evidence_owner["protected_invariants"]
+    runtime_locators = {row["symbol"]: row["match_tokens"]
+                        for row in evidence_owner["source_locator"]
+                        if row["path"] == "src/tracking/mdmt_mia_async_deadline_runtime.py"}
+    assert runtime_locators["_C4SharedLogicalServer.seal_evidence"] == ["*"]
+    assert runtime_locators["PacketRuntime.finalize"] == [
+        "seal_evidence", "c4_service_status", "c4_service_validation", "c4_service_summary"]
 
     def acyclic(name: str, active: set[str]) -> None:
         assert name not in active
@@ -204,6 +221,23 @@ def test_future_runtime_change_targets_real_runtime_family(tmp_path, path, symbo
     assert classes[PREISSUE] == "INHERITABLE"
     assert RUN_GATE in result["minimum_requalification"]
     assert "harness.resolve_dynamic_modules" not in result["changed_behavior_units"]
+
+
+@pytest.mark.parametrize("symbol,kind", [
+    ("_C4SharedLogicalServer.seal_evidence", "function"),
+    ("PacketRuntime.finalize", "service_seal_call"),
+])
+def test_future_service_finalization_edit_targets_runtime_only(tmp_path, symbol, kind):
+    result = _future_edit(tmp_path, "src/tracking/mdmt_mia_async_deadline_runtime.py",
+                          symbol, kind)
+    assert result["changed_behavior_units"] == ["v2_4.hr_communication_evidence"]
+    classes = _classes(result)
+    assert classes[RUNTIME] == "NON_INHERITABLE"
+    assert classes[PREISSUE] == "INHERITABLE"
+    assert RUN_GATE in result["minimum_requalification"]
+    assert PRE_GATE not in result["minimum_requalification"]
+    assert result["unmapped_unknown_paths"] == []
+    assert result["candidate_verdict"] == "CANDIDATE_REVIEWABLE_TEAM_B_PENDING"
 
 
 @pytest.mark.parametrize("path,symbol,kind,unit", [

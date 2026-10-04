@@ -703,7 +703,8 @@
       "protected_invariants": [
         "h_r_raw_normalized_provenance",
         "h_r_effective_config_reconciliation",
-        "h_r_structural_verdict_boundary"
+        "h_r_structural_verdict_boundary",
+        "h_r_service_finalization_integrity"
       ],
       "requalification_gate": "V2_4_H_R_PRODUCTION_PATH_QUALIFICATION",
       "source_locator": [
@@ -782,6 +783,23 @@
           ],
           "path": "scripts/run_mdmt_mia_hr_formal.py",
           "symbol": "finalize"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/mdmt_mia_async_deadline_runtime.py",
+          "symbol": "_C4SharedLogicalServer.seal_evidence"
+        },
+        {
+          "match_tokens": [
+            "seal_evidence",
+            "c4_service_status",
+            "c4_service_validation",
+            "c4_service_summary"
+          ],
+          "path": "src/tracking/mdmt_mia_async_deadline_runtime.py",
+          "symbol": "PacketRuntime.finalize"
         }
       ],
       "validation_level": "L1"
@@ -918,7 +936,7 @@
       "validation_level": "L0"
     }
   ],
-  "dependency_mapping_identity": "78c539edd5cab75e83ea97410d606eecf50efda970a8c5781f80669a80da7a70",
+  "dependency_mapping_identity": "c6e97f4266d8f6db9aac54fbef8b2c5e8b4414b2ee8eed178107fa892f5922b9",
   "evidence": [
     {
       "evidence_id": "C7_FIFO_MECHANISM",
@@ -1003,7 +1021,7 @@
       "validation_gate": "V2_4_H_R_QUALIFICATION_PROTOCOL_REVIEW"
     }
   ],
-  "mapping_digest": "8dba7c8e5f861728f80e4b178991748189a734346332db4d72c0971bbd425868",
+  "mapping_digest": "d8562af2f7ad419ed928b7e4475bb6a59d6cc848e7383df4a1941b50ae747162",
   "mapping_scope": "Reviewed C7 FIFO/capacity/credit and C7 launcher, selected C6 Harness v2 dynamic boundary, and prospective V2-2 execution reliability lifecycle and qualification protocol; all other paths fail closed; prospective V2-3 artifact finalization, historical V2-1 input binding, corrective lineage, receipt consumption, CLI, and qualification behavior; prospective V2-4 H_R execution authorization, real runtime/suppression composition, communication evidence, historical preissue consumption, and non-scientific qualification",
   "protected_invariants": [
     "source_cleanliness",
@@ -1057,7 +1075,8 @@
     "h_r_child_receipt_anchor",
     "h_r_formal_support_reuse_gate",
     "h_r_tiny_qualification_boundary",
-    "h_r_qualification_outcome_blind"
+    "h_r_qualification_outcome_blind",
+    "h_r_service_finalization_integrity"
   ],
   "schema_version": "GOVERNANCE_V2_DEPENDENCY_MAP_V1"
 }
