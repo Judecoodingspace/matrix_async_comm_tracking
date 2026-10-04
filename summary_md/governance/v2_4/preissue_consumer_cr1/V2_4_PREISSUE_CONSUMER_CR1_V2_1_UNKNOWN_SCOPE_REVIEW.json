@@ -1,0 +1,314 @@
+{
+  "base_sha": "6da670a0a08ada3ccbbf463ff9f0c8504241c1b4",
+  "dependency_mapping_identity": "a6d8f572b1f41fa8607743d03bb7cd4e8b479bfbf7f36a4b909926fa8c89641c",
+  "diff_sha256": "af66322c9a4351bf1c95a5871584ab6210b386aaaa06c9b4b5c086c31cabd932",
+  "mapping_digest": "0b61884bbf137cb8cec5e3c5ef5fc19dc958250b817078e8d9fc8e52f8bec286",
+  "reviewed_unknown_hunks": [
+    {
+      "hunk": "@@ -20,6 +20,7 @@ from tracking.mdmt_mia_hr_evidence import (",
+      "hunk_sha256": "e437593f5ee32d43451c0a0d12392a9a02929a41065d8a76fabf0311bc50cd04",
+      "path": "scripts/run_mdmt_mia_hr_formal.py",
+      "potential_behavior_units": [
+        "v2_3.corrective_lineage",
+        "v2_3.receipt_consumption"
+      ],
+      "potential_evidence_families": [
+        "V2_3_ARTIFACT_ARCHITECTURE"
+      ],
+      "potential_invariants": [
+        "artifact_cli_delegation",
+        "c1_c6_fail_close",
+        "corrective_parent_immutability",
+        "current_lineage_consumption",
+        "purpose_scoped_supersession",
+        "raw_a2_lineage_block",
+        "receipt_reuse_admissibility",
+        "retention_lineage_safety",
+        "sticky_verified_mismatch",
+        "v2_3_artifact_qualification_semantics",
+        "verification_depth_boundary"
+      ],
+      "scope_basis": "The new fixed validator_cr1 constant selects the accepted corrective lineage node for H_R preissue receipt consumption; it does not select a scientific cell or alter finalization."
+    },
+    {
+      "hunk": "@@ -40,9 +41,11 @@ def git_ref(relative: str, commit: str) -> dict:",
+      "hunk_sha256": "e133d99c3ee7429140af26ad6721a514b14e1e206ade495574a1404db000f9e7",
+      "path": "scripts/run_mdmt_mia_hr_formal.py",
+      "potential_behavior_units": [
+        "v2_2.execution_lifecycle",
+        "v2_3.artifact_finalization",
+        "v2_3.receipt_consumption"
+      ],
+      "potential_evidence_families": [
+        "V2_2_EXECUTION_RELIABILITY",
+        "V2_3_ARTIFACT_ARCHITECTURE"
+      ],
+      "potential_invariants": [
+        "artifact_cli_delegation",
+        "atomic_finalization",
+        "attempt_identity_integrity",
+        "attempt_namespace_isolation",
+        "attempt_session_liveness",
+        "authoritative_artifact_identity",
+        "c1_c6_fail_close",
+        "corrective_parent_immutability",
+        "current_lineage_consumption",
+        "detached_execution_reliability",
+        "execution_reliability_qualification_semantics",
+        "mechanical_science_separation",
+        "mechanical_terminal_integrity",
+        "outcome_blind_stdio_boundary",
+        "purpose_scoped_supersession",
+        "raw_a2_lineage_block",
+        "receipt_reuse_admissibility",
+        "reconstructible_artifact_binding",
+        "retention_lineage_safety",
+        "sticky_verified_mismatch",
+        "v2_3_artifact_qualification_semantics",
+        "verification_depth_boundary"
+      ],
+      "scope_basis": "The shared H_R authorization dispatcher gates launch, finalize, and preissue; the default current-worktree mode remains strict while only preissue explicitly opts into historical source verification."
+    },
+    {
+      "hunk": "@@ -119,17 +122,19 @@ def finalize(args) -> dict:",
+      "hunk_sha256": "26b3c19ea219f4e429ca9fe7c139de094c260f65d89a6b5c0df901d47e67721b",
+      "path": "scripts/run_mdmt_mia_hr_formal.py",
+      "potential_behavior_units": [
+        "v2_3.corrective_lineage",
+        "v2_3.receipt_consumption"
+      ],
+      "potential_evidence_families": [
+        "V2_3_ARTIFACT_ARCHITECTURE"
+      ],
+      "potential_invariants": [
+        "artifact_cli_delegation",
+        "c1_c6_fail_close",
+        "corrective_parent_immutability",
+        "current_lineage_consumption",
+        "purpose_scoped_supersession",
+        "raw_a2_lineage_block",
+        "receipt_reuse_admissibility",
+        "retention_lineage_safety",
+        "sticky_verified_mismatch",
+        "v2_3_artifact_qualification_semantics",
+        "verification_depth_boundary"
+      ],
+      "scope_basis": "Preissue inspects the exact finalized corrective child, reads its manifest, and passes its hashes and evidence to receipt reuse; no initial fallback or V2-1 input verification change is introduced."
+    },
+    {
+      "hunk": "@@ -3,6 +3,8 @@ from __future__ import annotations",
+      "hunk_sha256": "6a2f72308230b7aa79e51ed1672d57c92e78733c0b5014ace2495f25f33ac4e5",
+      "path": "src/tracking/mdmt_mia_hr_evidence.py",
+      "potential_behavior_units": [
+        "v2_2.execution_lifecycle",
+        "v2_3.artifact_finalization",
+        "v2_3.receipt_consumption"
+      ],
+      "potential_evidence_families": [
+        "V2_2_EXECUTION_RELIABILITY",
+        "V2_3_ARTIFACT_ARCHITECTURE"
+      ],
+      "potential_invariants": [
+        "artifact_cli_delegation",
+        "atomic_finalization",
+        "attempt_identity_integrity",
+        "attempt_namespace_isolation",
+        "attempt_session_liveness",
+        "authoritative_artifact_identity",
+        "c1_c6_fail_close",
+        "corrective_parent_immutability",
+        "current_lineage_consumption",
+        "detached_execution_reliability",
+        "execution_reliability_qualification_semantics",
+        "mechanical_science_separation",
+        "mechanical_terminal_integrity",
+        "outcome_blind_stdio_boundary",
+        "purpose_scoped_supersession",
+        "raw_a2_lineage_block",
+        "receipt_reuse_admissibility",
+        "reconstructible_artifact_binding",
+        "retention_lineage_safety",
+        "sticky_verified_mismatch",
+        "v2_3_artifact_qualification_semantics",
+        "verification_depth_boundary"
+      ],
+      "scope_basis": "The added standard-library imports support source identity verification shared by H_R launch, finalize, and preissue; they add no runtime communication or scientific result processing."
+    },
+    {
+      "hunk": "@@ -335,7 +337,36 @@ def normalized_from_raw(raw_path: Path, auth: Mapping[str, Any]) -> tuple[dict,",
+      "hunk_sha256": "e364a83e164fb9241d445690ae0674e6bcb46a7d7f485dd629239607fe6a4b22",
+      "path": "src/tracking/mdmt_mia_hr_evidence.py",
+      "potential_behavior_units": [
+        "v2_2.execution_lifecycle",
+        "v2_3.artifact_finalization",
+        "v2_3.receipt_consumption"
+      ],
+      "potential_evidence_families": [
+        "V2_2_EXECUTION_RELIABILITY",
+        "V2_3_ARTIFACT_ARCHITECTURE"
+      ],
+      "potential_invariants": [
+        "artifact_cli_delegation",
+        "atomic_finalization",
+        "attempt_identity_integrity",
+        "attempt_namespace_isolation",
+        "attempt_session_liveness",
+        "authoritative_artifact_identity",
+        "c1_c6_fail_close",
+        "corrective_parent_immutability",
+        "current_lineage_consumption",
+        "detached_execution_reliability",
+        "execution_reliability_qualification_semantics",
+        "mechanical_science_separation",
+        "mechanical_terminal_integrity",
+        "outcome_blind_stdio_boundary",
+        "purpose_scoped_supersession",
+        "raw_a2_lineage_block",
+        "receipt_reuse_admissibility",
+        "reconstructible_artifact_binding",
+        "retention_lineage_safety",
+        "sticky_verified_mismatch",
+        "v2_3_artifact_qualification_semantics",
+        "verification_depth_boundary"
+      ],
+      "scope_basis": "The exact-commit Git blob helper checks operator, child, and runtime identities for historical preissue while preserving current-byte checks for new launch and finalize."
+    },
+    {
+      "hunk": "@@ -386,9 +417,11 @@ def load_authorization(path: Path, attempt_root: Path, repo_root: Path) -> dict:",
+      "hunk_sha256": "eef11d6de5260a6d13b960e71fd1994566c8b066bbd8dacc22ce62c196d7146b",
+      "path": "src/tracking/mdmt_mia_hr_evidence.py",
+      "potential_behavior_units": [
+        "v2_2.execution_lifecycle",
+        "v2_3.artifact_finalization",
+        "v2_3.receipt_consumption"
+      ],
+      "potential_evidence_families": [
+        "V2_2_EXECUTION_RELIABILITY",
+        "V2_3_ARTIFACT_ARCHITECTURE"
+      ],
+      "potential_invariants": [
+        "artifact_cli_delegation",
+        "atomic_finalization",
+        "attempt_identity_integrity",
+        "attempt_namespace_isolation",
+        "attempt_session_liveness",
+        "authoritative_artifact_identity",
+        "c1_c6_fail_close",
+        "corrective_parent_immutability",
+        "current_lineage_consumption",
+        "detached_execution_reliability",
+        "execution_reliability_qualification_semantics",
+        "mechanical_science_separation",
+        "mechanical_terminal_integrity",
+        "outcome_blind_stdio_boundary",
+        "purpose_scoped_supersession",
+        "raw_a2_lineage_block",
+        "receipt_reuse_admissibility",
+        "reconstructible_artifact_binding",
+        "retention_lineage_safety",
+        "sticky_verified_mismatch",
+        "v2_3_artifact_qualification_semantics",
+        "verification_depth_boundary"
+      ],
+      "scope_basis": "Authorization loading now chooses the source identity backend and retains frozen wrapper/preparer checks; it is called by the H_R launch, finalize, and preissue boundaries."
+    },
+    {
+      "hunk": "@@ -2,8 +2,10 @@",
+      "hunk_sha256": "db8083f589731e8f8359e245c883757909dd2027d6934821de07fab84bcd5c10",
+      "path": "tests/test_mdmt_mia_hr_production_path.py",
+      "potential_behavior_units": [
+        "v2_3.artifact_finalization",
+        "v2_3.receipt_consumption"
+      ],
+      "potential_evidence_families": [
+        "V2_3_ARTIFACT_ARCHITECTURE"
+      ],
+      "potential_invariants": [
+        "artifact_cli_delegation",
+        "atomic_finalization",
+        "authoritative_artifact_identity",
+        "c1_c6_fail_close",
+        "corrective_parent_immutability",
+        "current_lineage_consumption",
+        "mechanical_science_separation",
+        "purpose_scoped_supersession",
+        "raw_a2_lineage_block",
+        "receipt_reuse_admissibility",
+        "reconstructible_artifact_binding",
+        "retention_lineage_safety",
+        "sticky_verified_mismatch",
+        "v2_3_artifact_qualification_semantics",
+        "verification_depth_boundary"
+      ],
+      "scope_basis": "Test imports support historical authorization and preissue assertions only; they are not production code and cannot change the accepted V2-3 artifact implementation."
+    },
+    {
+      "hunk": "@@ -96,6 +98,66 @@ def test_authorization_tampering_fails(tmp_path, field, value):",
+      "hunk_sha256": "8d0477321c303f3a7ed6788b2860041f9345ef2667e751cf9638c760425ce208",
+      "path": "tests/test_mdmt_mia_hr_production_path.py",
+      "potential_behavior_units": [
+        "v2_2.execution_lifecycle",
+        "v2_3.artifact_finalization",
+        "v2_3.receipt_consumption"
+      ],
+      "potential_evidence_families": [
+        "V2_2_EXECUTION_RELIABILITY",
+        "V2_3_ARTIFACT_ARCHITECTURE"
+      ],
+      "potential_invariants": [
+        "artifact_cli_delegation",
+        "atomic_finalization",
+        "attempt_identity_integrity",
+        "attempt_namespace_isolation",
+        "attempt_session_liveness",
+        "authoritative_artifact_identity",
+        "c1_c6_fail_close",
+        "corrective_parent_immutability",
+        "current_lineage_consumption",
+        "detached_execution_reliability",
+        "execution_reliability_qualification_semantics",
+        "mechanical_science_separation",
+        "mechanical_terminal_integrity",
+        "outcome_blind_stdio_boundary",
+        "purpose_scoped_supersession",
+        "raw_a2_lineage_block",
+        "receipt_reuse_admissibility",
+        "reconstructible_artifact_binding",
+        "retention_lineage_safety",
+        "sticky_verified_mismatch",
+        "v2_3_artifact_qualification_semantics",
+        "verification_depth_boundary"
+      ],
+      "scope_basis": "Focused tests exercise strict current authorization for new execution/finalization and exact historical blob validation for preissue, including failed source identities."
+    },
+    {
+      "hunk": "@@ -249,3 +311,101 @@ def test_qualification_report_stdout_does_not_mutate_finalized_attempt(tmp_path,",
+      "hunk_sha256": "d90676de7fcfe5f7b29cbad418b75e9efd09b62dec16ae4e12cf6b9eea912b38",
+      "path": "tests/test_mdmt_mia_hr_production_path.py",
+      "potential_behavior_units": [
+        "v2_3.corrective_lineage",
+        "v2_3.receipt_consumption"
+      ],
+      "potential_evidence_families": [
+        "V2_3_ARTIFACT_ARCHITECTURE"
+      ],
+      "potential_invariants": [
+        "artifact_cli_delegation",
+        "c1_c6_fail_close",
+        "corrective_parent_immutability",
+        "current_lineage_consumption",
+        "purpose_scoped_supersession",
+        "raw_a2_lineage_block",
+        "receipt_reuse_admissibility",
+        "retention_lineage_safety",
+        "sticky_verified_mismatch",
+        "v2_3_artifact_qualification_semantics",
+        "verification_depth_boundary"
+      ],
+      "scope_basis": "Focused tests exercise the fixed corrective child, child manifest and receipt anchor, refusal behavior, and no fallback to the historical initial node."
+    }
+  ],
+  "role": "TEAM_A_CANDIDATE_EVIDENCE_NOT_AUTHORIZATION",
+  "schema_version": "GOVERNANCE_V2_UNKNOWN_SCOPE_REVIEW_V1",
+  "target_sha": "935ddcb7bba9b9894f495d84982cc310eb959c79"
+}
