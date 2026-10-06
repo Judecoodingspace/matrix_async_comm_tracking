@@ -19,6 +19,9 @@ class HREvidenceError(ValueError):
 SELECTION_SHA256 = "15264520fe185b5fa34000f978e502ef350dca2a8332c28a4685a7fd7c59a522"
 VALIDATION_SHA256 = "0a521db4f52d5963796f4708e89fa16344ccb8c7fb03830c29549af1e09ea364"
 SELECTED_CELL_ID = "P66__P20"
+FORMAL_SUPPORT_CONSUMER_SHA256 = "45cb1631497311fa416840ec84fd55b90b13b42c3a8cb7386e8f52ad94e71fc9"
+FORMAL_SUPPORT_CIM_SHA256 = "3315dea2dc7a5f9bcbd69af5a9b7296e1b60efcef273dace8fca54281a68411e"
+FORMAL_SUPPORT_ATTESTATION_SHA256 = "2c5cb35129fcdc8d897986c665850cdbfc16a197a2c99587ab96d502c66b442e"
 C7_FULL_AUTH_SHA256 = "046f8803df9a2f218cbe0fe00686806e0631f27456ab27e97adca9fa10e67afe"
 GENERATED_MANIFEST_ID = "871956be0adb5b42aaadd8abd2c41416de32c9dd87398ed5d6f3736b9724be3e"
 RAW_NAME = "H_R_RAW_EVIDENCE.jsonl"
@@ -365,9 +368,66 @@ def _source_identity_digests(repo_root: Path, source_sha: str, mode: str) -> tup
     return tuple(hashes)
 
 
-def load_authorization(path: Path, attempt_root: Path, repo_root: Path, *,
+def validate_formal_support_consumer(path: Path) -> str:
+    """Bind Formal issuance and admission to the one accepted content-verified reuse."""
+    raw = path.read_bytes()
+    observed_sha = digest(raw)
+    if observed_sha != FORMAL_SUPPORT_CONSUMER_SHA256:
+        raise HREvidenceError("FORMAL_SUPPORT_CONSUMER_SHA_MISMATCH")
+    try:
+        record = json.loads(raw)
+    except ValueError as exc:
+        raise HREvidenceError("FORMAL_SUPPORT_CONSUMER_INVALID") from exc
+    if not isinstance(record, dict):
+        raise HREvidenceError("FORMAL_SUPPORT_CONSUMER_INVALID")
+    expected = {
+        "schema_version": "GOVERNANCE_V2_ARTIFACT_NODE_V1",
+        "purpose": "H_R_FORMAL_PREISSUANCE",
+        "consumption_class": "FORMAL_AUTHORIZATION_SUPPORT",
+        "attempt_id": "v2_4_hr_qual_002", "node_id": "validator_cr1",
+        "decision": "REUSE_ADMISSIBLE", "verification_depth": "CONTENT",
+    }
+    if any(record.get(key) != value for key, value in expected.items()):
+        raise HREvidenceError("FORMAL_SUPPORT_CONSUMER_DECISION_INVALID")
+    checks = record.get("C1_C6", {})
+    if not isinstance(checks, dict) or any(
+            not isinstance(checks.get("C" + str(i)), dict)
+            or checks["C" + str(i)].get("status") != "PASS" for i in range(1, 7)):
+        raise HREvidenceError("FORMAL_SUPPORT_CONSUMER_CHECK_INVALID")
+    c4 = checks["C4"]
+    if (c4.get("cim_sha256") != FORMAL_SUPPORT_CIM_SHA256
+            or c4.get("independent_review_sha256") != FORMAL_SUPPORT_ATTESTATION_SHA256
+            or c4.get("relied_evidence_ids") != ["V2_4_H_R_PREISSUE_CONSUMER"]):
+        raise HREvidenceError("FORMAL_SUPPORT_CONSUMER_V21_INVALID")
+    anchor = record.get("anchor", {})
+    if not isinstance(anchor, dict) or any(
+            anchor.get(key) != expected[key] for key in ("attempt_id", "node_id")):
+        raise HREvidenceError("FORMAL_SUPPORT_CONSUMER_ANCHOR_INVALID")
+    for gate in ("C5", "C6"):
+        layers = checks[gate].get("layers", {})
+        if (not isinstance(layers, dict)
+                or layers.get("RAW_EVIDENCE", {}).get("heads") != ["initial"]
+                or layers.get("RAW_EVIDENCE", {}).get("owner_node_id") != "initial"
+                or layers.get("NORMALIZED_EVIDENCE", {}).get("heads") != ["validator_cr1"]
+                or layers.get("NORMALIZED_EVIDENCE", {}).get("owner_node_id") != "validator_cr1"):
+            raise HREvidenceError("FORMAL_SUPPORT_CONSUMER_LINEAGE_INVALID")
+    return observed_sha
+
+
+def formal_config_expectation(auth: Mapping[str, Any]) -> dict:
+    cell = auth["cell"]
+    return {
+        "run_id": auth["run_id"], "cell_id": cell["cell_id"],
+        "pair_id": cell["pair_id"], "capacity_id": cell["capacity_id"],
+        "capacity_bytes": cell["capacity_bytes"], "mode": "fifo",
+        "rate_logical_bytes_per_frame": cell["capacity_bytes"],
+        "ledger_enabled": True, "suppression_enabled": True,
+    }
+
+
+def load_authorization(path: Path | Mapping[str, Any], attempt_root: Path, repo_root: Path, *,
                        source_identity_mode: str = "CURRENT_WORKTREE") -> dict:
-    auth = read_json(path)
+    auth = read_json(path) if isinstance(path, Path) else dict(path)
     signed = dict(auth)
     supplied_hash = signed.pop("authorization_hash", None)
     if supplied_hash != digest(canonical(signed)):
@@ -383,8 +443,39 @@ def load_authorization(path: Path, attempt_root: Path, repo_root: Path, *,
         "evidence_layout", "v2_3_purpose", "v2_3_policy",
         "mdmt_root", "mia_root", "mia_config_path", "device",
     }
-    if set(auth) != required or auth["schema_version"] != "H_R_PRODUCTION_AUTHORIZATION_V1":
+    formal = auth.get("schema_version") == "H_R_FORMAL_AUTHORIZATION_V1"
+    formal_fields = {
+        "authorization_purpose", "formal_output_root", "formal_support_consumer_record_path",
+        "formal_support_consumer_record_sha256", "formal_service_config",
+        "formal_suppression_config", "formal_effective_config_expectation",
+    }
+    if set(auth) != (required | formal_fields if formal else required) or (
+            auth.get("schema_version") != ("H_R_FORMAL_AUTHORIZATION_V1" if formal
+                                            else "H_R_PRODUCTION_AUTHORIZATION_V1")):
         raise HREvidenceError("AUTHORIZATION_SCHEMA_MISMATCH")
+    if formal:
+        if (auth["authorization_purpose"] != "H_R_FORMAL"
+                or auth["qualification_only"] is not False
+                or auth["qualification_frame_count"] != 0
+                or auth["formal_output_root"] != str((attempt_root.resolve() / "output"))
+                or auth["run_id"] != auth["attempt_id"]
+                or not isinstance(auth["attempt_id"], str)
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}", auth["attempt_id"])):
+            raise HREvidenceError("FORMAL_AUTHORIZATION_SCOPE_MISMATCH")
+        service = {
+            "schema_version": "C7_REGISTERED_FIFO_SERVICE_V1", "mode": "fifo",
+            "capacity_id": auth["cell"]["capacity_id"],
+            "rate_logical_bytes_per_frame": auth["cell"]["capacity_bytes"],
+            "ledger_enabled": True, "run_id": auth["run_id"],
+            "pair_id": auth["cell"]["pair_id"],
+        }
+        suppression = {"enabled": True, "run_id": auth["run_id"]}
+        if (auth["formal_service_config"] != service
+                or auth["formal_suppression_config"] != suppression
+                or auth["formal_effective_config_expectation"] != formal_config_expectation(auth)
+                or auth["formal_support_consumer_record_sha256"] !=
+                   validate_formal_support_consumer(Path(auth["formal_support_consumer_record_path"]))):
+            raise HREvidenceError("FORMAL_AUTHORIZATION_BINDING_MISMATCH")
     if (auth["attempt_root"] != str(attempt_root.resolve())
             or auth["attempt_id"] != attempt_root.name
             or auth["cell"] != selection(Path(auth["selection_path"]), Path(auth["validation_path"]))

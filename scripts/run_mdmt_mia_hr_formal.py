@@ -14,8 +14,9 @@ sys.path.insert(0, str(ROOT / "src"))
 from tracking import governance_v2_artifacts as artifacts
 from tracking import governance_v2_execution as execution
 from tracking.mdmt_mia_hr_evidence import (
-    EFFECTIVE_NAME, NORMALIZED_NAME, RAW_NAME, HREvidenceError, digest,
-    file_digest, load_authorization, node_ref, normalized_from_raw, read_json,
+    EFFECTIVE_NAME, NORMALIZED_NAME, RAW_NAME, HREvidenceError, canonical, digest,
+    file_digest, formal_config_expectation, load_authorization, node_ref,
+    normalized_from_raw, read_json, validate_formal_support_consumer, write_json,
 )
 
 CONTRACT = "summary_md/governance/v2_4/V2_4_IMPLEMENTATION_CONTRACT_REV2.md"
@@ -51,8 +52,59 @@ def _auth(path: Path, attempts_root: Path, attempt_id: str, *, require_current_h
     return auth
 
 
+def issue_formal_authorization(attempts_root: Path, attempt_id: str,
+                               consumer_record: Path, authorization_path: Path) -> dict:
+    """Issue only from the accepted content-verified support record; never launch."""
+    from qualify_mdmt_mia_hr_production_path import build_qualification_authorization
+
+    if authorization_path.exists() or (attempts_root / attempt_id).exists():
+        raise HROperatorError("FORMAL_AUTHORIZATION_TARGET_OCCUPIED")
+    consumer_sha = validate_formal_support_consumer(consumer_record)
+    auth = build_qualification_authorization(attempts_root, attempt_id)
+    if auth["qualification_only"] is not True or auth["qualification_frame_count"] != 3:
+        raise HROperatorError("QUALIFICATION_AUTHORIZATION_TEMPLATE_INVALID")
+    auth.update({
+        "schema_version": "H_R_FORMAL_AUTHORIZATION_V1",
+        "authorization_purpose": "H_R_FORMAL",
+        "qualification_only": False, "qualification_frame_count": 0,
+        "formal_output_root": str((attempts_root / attempt_id / "output").resolve()),
+        "formal_support_consumer_record_path": str(consumer_record.resolve()),
+        "formal_support_consumer_record_sha256": consumer_sha,
+        "formal_service_config": {
+            "schema_version": "C7_REGISTERED_FIFO_SERVICE_V1", "mode": "fifo",
+            "capacity_id": auth["cell"]["capacity_id"],
+            "rate_logical_bytes_per_frame": auth["cell"]["capacity_bytes"],
+            "ledger_enabled": True, "run_id": auth["run_id"],
+            "pair_id": auth["cell"]["pair_id"],
+        },
+        "formal_suppression_config": {"enabled": True, "run_id": auth["run_id"]},
+        "formal_effective_config_expectation": formal_config_expectation(auth),
+    })
+    auth.pop("authorization_hash")
+    auth["authorization_hash"] = digest(canonical(auth))
+    load_authorization(auth, attempts_root / attempt_id, ROOT)
+    write_json(authorization_path, auth)
+    return auth
+
+
 def launch(args) -> dict:
     auth = _auth(args.authorization, args.attempts_root, args.attempt_id)
+    if auth["schema_version"] != "H_R_PRODUCTION_AUTHORIZATION_V1" or auth["qualification_only"] is not True:
+        raise HROperatorError("QUALIFICATION_AUTHORIZATION_REQUIRED")
+    child = ROOT / "scripts/run_mdmt_mia_hr_real_child.py"
+    argv = [sys.executable, str(child), "--authorization", str(args.authorization.resolve())]
+    return execution.launch(args.attempts_root, auth["attempt_id"], argv,
+                            ROOT / "scripts/governance_v2_execution.py")
+
+
+def formal_launch(args) -> dict:
+    auth = _auth(args.authorization, args.attempts_root, args.attempt_id)
+    if auth["schema_version"] != "H_R_FORMAL_AUTHORIZATION_V1":
+        raise HROperatorError("FORMAL_AUTHORIZATION_REQUIRED")
+    if (auth["formal_output_root"] != str((args.attempts_root.resolve() / args.attempt_id / "output"))
+            or auth["cell"]["cell_id"] != "P66__P20"
+            or auth["cell"]["capacity_bytes"] != 16649):
+        raise HROperatorError("FORMAL_EXECUTION_IDENTITY_MISMATCH")
     child = ROOT / "scripts/run_mdmt_mia_hr_real_child.py"
     argv = [sys.executable, str(child), "--authorization", str(args.authorization.resolve())]
     return execution.launch(args.attempts_root, auth["attempt_id"], argv,
@@ -150,7 +202,7 @@ def preissue_check(args) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="phase", required=True)
-    for name in ("launch", "inspect", "finalize", "preissue-check"):
+    for name in ("launch", "formal-launch", "inspect", "finalize", "preissue-check"):
         command = sub.add_parser(name)
         command.add_argument("--attempts-root", type=Path, required=True)
         command.add_argument("--attempt-id", required=True)
@@ -161,7 +213,7 @@ def main() -> int:
             command.add_argument("--consumer-record", type=Path, required=True)
     args = parser.parse_args()
     try:
-        result = {"launch": launch, "inspect": inspect,
+        result = {"launch": launch, "formal-launch": formal_launch, "inspect": inspect,
                   "finalize": finalize, "preissue-check": preissue_check}[args.phase](args)
         print(json.dumps(result, sort_keys=True))
         return 0

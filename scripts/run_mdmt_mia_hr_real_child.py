@@ -149,6 +149,18 @@ def execute(auth_path: Path) -> dict:
         raise HRChildError("GENERATED_SOURCE_MUTATED")
     raw = collect_raw(root, auth, before)
     normalized, effective = normalized_from_raw(raw, auth)
+    if auth["schema_version"] == "H_R_FORMAL_AUTHORIZATION_V1":
+        observed = {
+            "run_id": effective["run_id"], "cell_id": effective["cell_id"],
+            "pair_id": effective["pair_id"], "capacity_id": effective["capacity_id"],
+            "capacity_bytes": effective["capacity_bytes"],
+            "mode": "fifo" if effective["observed_fifo"] else "non_fifo",
+            "rate_logical_bytes_per_frame": effective["observed_effective_rate"],
+            "ledger_enabled": effective["observed_ledger_enabled"],
+            "suppression_enabled": effective["observed_suppression_enabled"],
+        }
+        if observed != auth["formal_effective_config_expectation"]:
+            raise HRChildError("FORMAL_EFFECTIVE_CONFIG_MISMATCH")
     hr = root / "output/hr"
     write_json(hr / NORMALIZED_NAME, normalized)
     write_json(hr / EFFECTIVE_NAME, effective)
