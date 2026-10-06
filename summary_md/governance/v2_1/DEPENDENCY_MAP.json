@@ -1030,6 +1030,7 @@
             "formal_fields",
             "FORMAL_AUTHORIZATION_SCOPE_MISMATCH",
             "FORMAL_AUTHORIZATION_BINDING_MISMATCH",
+            "formal_suppression_config",
             "formal_support_consumer_record_sha256",
             "formal_effective_config_expectation",
             "read_json(path) if isinstance(path, Path)"
@@ -1133,7 +1134,7 @@
       "validation_gate": "V2_4_H_R_FORMAL_AUTHORIZATION_REVIEW"
     }
   ],
-  "mapping_digest": "24e9226c67a2725769e67dd028d60913558717a8e9c40a78c7035c1f8a0429cb",
+  "mapping_digest": "a93a9c292ec6e1a56ed8d628eb110c58828a32cf2623b875fa6bbede82723fb7",
   "mapping_scope": "Reviewed C7 FIFO/capacity/credit and C7 launcher, selected C6 Harness v2 dynamic boundary, and prospective V2-2 execution reliability lifecycle and qualification protocol; all other paths fail closed; prospective V2-3 artifact finalization, historical V2-1 input binding, corrective lineage, receipt consumption, CLI, and qualification behavior; prospective V2-4 H_R execution authorization, real runtime/suppression composition, communication evidence, historical preissue consumption, and non-scientific qualification; prospective H_R Formal authorization issuance, accepted support-record consumption, schema/config/attempt/source binding, admission, and CLI routing, separate from qualification and preissue production",
   "protected_invariants": [
     "source_cleanliness",

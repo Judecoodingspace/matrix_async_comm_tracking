@@ -17,6 +17,7 @@ DOC = ROOT / "summary_md/governance/v2_1"
 OLD_MAP = "92c05753d869318bff246b1d32e28be8f4703236"
 BASE = "6fe1183fbd412a0f5284cb40e0c4ef3fcd187a8e"
 TARGET = "4de4e5a00abbd6c5b4205364738751a73c53c9f7"
+ROUND0 = "f542f95c2cc7c9cb08918b923e8561340d98a1ee"
 FORMAL = "v2_4.hr_formal_authorization"
 FORMAL_FAMILY = "V2_4_H_R_FORMAL_AUTHORIZATION"
 FORMAL_GATE = "V2_4_H_R_FORMAL_AUTHORIZATION_REVIEW"
@@ -43,14 +44,16 @@ def _classes(result: dict) -> dict[str, str]:
     return {row["evidence_id"]: row["classification"] for row in result["evidence_inheritance"]}
 
 
-def _future_edit(tmp_path: Path, path: str, needle: str) -> dict:
+def _future_edit_probe(tmp_path: Path, path: str, needle: str,
+                       replacement: str | None = None) -> tuple[Path, str]:
     clone = tmp_path / "repo"
     subprocess.run(["git", "clone", "--quiet", "--shared", "--no-checkout",
                     str(ROOT), str(clone)], capture_output=True, check=True)
     _git(clone, "read-tree", TARGET)
     source = _git(clone, "show", TARGET + ":" + path).decode()
     assert source.count(needle) == 1
-    changed = source.replace(needle, needle + "  # formal-map-fixture", 1)
+    changed = source.replace(needle, replacement or needle + "  # formal-map-fixture", 1)
+    assert changed != source
     ast.parse(changed)
     blob = _git(clone, "hash-object", "-w", "--stdin", content=changed.encode()).decode().strip()
     _git(clone, "update-index", "--add", "--cacheinfo", f"100644,{blob},{path}")
@@ -61,6 +64,11 @@ def _future_edit(tmp_path: Path, path: str, needle: str) -> dict:
                GIT_COMMITTER_EMAIL="governance-fixture@example.invalid")
     target = _git(clone, "commit-tree", tree, "-p", TARGET,
                   "-m", "future Formal map fixture", env=env).decode().strip()
+    return clone, target
+
+
+def _future_edit(tmp_path: Path, path: str, needle: str) -> dict:
+    clone, target = _future_edit_probe(tmp_path, path, needle)
     mapping, claim = _current()
     result = audit_diff(clone, TARGET, target, mapping, claim)
     assert result["mapping_applicability"]["status"] == "APPLICABLE_TO_BASE"
@@ -183,6 +191,30 @@ def test_future_formal_only_edit_has_explicit_owner(tmp_path, path, needle):
     assert result["minimum_requalification"] == [FORMAL_GATE]
 
 
+def test_formal_suppression_validation_reversal_closes_team_b_p1(tmp_path):
+    path = "src/tracking/mdmt_mia_hr_evidence.py"
+    needle = '                or auth["formal_suppression_config"] != suppression'
+    clone, future = _future_edit_probe(tmp_path, path, needle,
+                                       needle.replace("!=", "=="))
+    round0_map = validate_mapping(json.loads(_git(
+        ROOT, "show", ROUND0 + ":summary_md/governance/v2_1/DEPENDENCY_MAP.json")))
+    round0_claim = json.loads(_git(
+        ROOT, "show", ROUND0 + ":summary_md/governance/v2_1/MAP_APPLICABILITY.json"))
+    before = audit_diff(clone, TARGET, future, round0_map, round0_claim)
+    assert before["candidate_verdict"] == "BLOCK"
+    assert before["unmapped_unknown_paths"][0]["unknown_scope_kind"] == "UNBOUNDED_UNKNOWN"
+    assert _classes(before)[FORMAL_FAMILY] == "UNMAPPED"
+
+    mapping, claim = _current()
+    result = audit_diff(clone, TARGET, future, mapping, claim)
+    assert result["candidate_verdict"] == "CANDIDATE_REVIEWABLE_TEAM_B_PENDING"
+    assert result["changed_behavior_units"] == [FORMAL]
+    assert result["changed_hunks"][0]["behavior_unit_ids"] == [FORMAL]
+    assert result["unmapped_unknown_paths"] == []
+    assert _classes(result)[FORMAL_FAMILY] == "NON_INHERITABLE"
+    assert result["minimum_requalification"] == [FORMAL_GATE]
+
+
 @pytest.mark.parametrize("path,needle,owner", [
     ("scripts/run_mdmt_mia_hr_formal.py",
      '    if result.get("decision") != "REUSE_ADMISSIBLE":',
@@ -190,6 +222,9 @@ def test_future_formal_only_edit_has_explicit_owner(tmp_path, path, needle):
     ("scripts/qualify_mdmt_mia_hr_production_path.py",
      '        "qualification_only": True, "qualification_frame_count": 3,',
      "v2_4.hr_qualification_protocol"),
+    ("src/tracking/mdmt_mia_hr_evidence.py",
+     '    if (auth["wrapper_path"] != wrapper["canonical_path"]',
+     "v2_4.hr_execution_authorization"),
     ("src/tracking/mdmt_mia_async_deadline_runtime.py",
      "service_report = self._c4_service.seal_evidence(self._census.terminals)",
      "v2_4.hr_communication_evidence"),
