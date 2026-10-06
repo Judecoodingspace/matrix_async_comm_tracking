@@ -1,0 +1,329 @@
+{
+  "affected_behavior_units": [
+    "tests.v2_4_hr_production_path",
+    "v2_4.hr_communication_evidence",
+    "v2_4.hr_formal_authorization",
+    "v2_4.hr_qualification_protocol",
+    "v2_4.hr_runtime_composition"
+  ],
+  "affected_invariants": [
+    "h_r_attempt_local_runtime",
+    "h_r_effective_config_reconciliation",
+    "h_r_formal_admission_fail_closed",
+    "h_r_formal_authorization_identity",
+    "h_r_formal_outcome_blind_boundary",
+    "h_r_formal_qualification_separation",
+    "h_r_formal_support_consumer_binding",
+    "h_r_generated_source_integrity",
+    "h_r_outcome_quarantine",
+    "h_r_qualification_outcome_blind",
+    "h_r_raw_normalized_provenance",
+    "h_r_real_wrapper_execution",
+    "h_r_service_finalization_integrity",
+    "h_r_structural_verdict_boundary",
+    "h_r_tiny_qualification_boundary"
+  ],
+  "base_implementation_sha": "6fe1183fbd412a0f5284cb40e0c4ef3fcd187a8e",
+  "candidate_verdict": "CANDIDATE_REVIEWABLE_TEAM_B_PENDING",
+  "changed_behavior_units": [
+    "tests.v2_4_hr_production_path",
+    "v2_4.hr_communication_evidence",
+    "v2_4.hr_formal_authorization",
+    "v2_4.hr_runtime_composition"
+  ],
+  "changed_files": [
+    "scripts/run_mdmt_mia_hr_formal.py",
+    "scripts/run_mdmt_mia_hr_real_child.py",
+    "src/tracking/mdmt_mia_hr_evidence.py",
+    "tests/test_mdmt_mia_hr_formal_authorization.py"
+  ],
+  "changed_hunks": [
+    {
+      "behavior_unit_ids": [
+        "v2_4.hr_formal_authorization"
+      ],
+      "hunk": "@@ -14,8 +14,9 @@ sys.path.insert(0, str(ROOT / \"src\"))",
+      "path": "scripts/run_mdmt_mia_hr_formal.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "v2_4.hr_formal_authorization",
+        "v2_4.hr_runtime_composition"
+      ],
+      "hunk": "@@ -51,8 +52,59 @@ def _auth(path: Path, attempts_root: Path, attempt_id: str, *, require_current_h",
+      "path": "scripts/run_mdmt_mia_hr_formal.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "v2_4.hr_formal_authorization"
+      ],
+      "hunk": "@@ -150,7 +202,7 @@ def preissue_check(args) -> dict:",
+      "path": "scripts/run_mdmt_mia_hr_formal.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "v2_4.hr_formal_authorization"
+      ],
+      "hunk": "@@ -161,7 +213,7 @@ def main() -> int:",
+      "path": "scripts/run_mdmt_mia_hr_formal.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "v2_4.hr_communication_evidence"
+      ],
+      "hunk": "@@ -149,6 +149,18 @@ def execute(auth_path: Path) -> dict:",
+      "path": "scripts/run_mdmt_mia_hr_real_child.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "v2_4.hr_formal_authorization"
+      ],
+      "hunk": "@@ -19,6 +19,9 @@ class HREvidenceError(ValueError):",
+      "path": "src/tracking/mdmt_mia_hr_evidence.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "v2_4.hr_formal_authorization"
+      ],
+      "hunk": "@@ -365,9 +368,66 @@ def _source_identity_digests(repo_root: Path, source_sha: str, mode: str) -> tup",
+      "path": "src/tracking/mdmt_mia_hr_evidence.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "v2_4.hr_formal_authorization"
+      ],
+      "hunk": "@@ -383,8 +443,39 @@ def load_authorization(path: Path, attempt_root: Path, repo_root: Path, *,",
+      "path": "src/tracking/mdmt_mia_hr_evidence.py"
+    },
+    {
+      "behavior_unit_ids": [
+        "tests.v2_4_hr_production_path"
+      ],
+      "hunk": "@@ -0,0 +1,158 @@",
+      "path": "tests/test_mdmt_mia_hr_formal_authorization.py"
+    }
+  ],
+  "dependency_mapping_identity": "56c95e90942b73b7b59d87795320a743e452c7426d26c8e4af3efb2089dedd08",
+  "diff_sha256": "3d138626af6c1bab117285842c6a7a662a53defbbcb46e026ccaa936d0a4a5fe",
+  "evidence_inheritance": [
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_FIFO_MECHANISM",
+      "protected_dependency_closure": [
+        "child.propagate_registered_capacity",
+        "runtime.fifo_frame_service",
+        "runtime.parse_registered_capacity"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_CAPACITY_PROPAGATION",
+      "protected_dependency_closure": [
+        "child.propagate_registered_capacity",
+        "runtime.parse_registered_capacity"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_ELIGIBILITY_RECONSTRUCTION",
+      "protected_dependency_closure": [
+        "c7.bound_released_credit",
+        "c7.reconstruct_credit_validation",
+        "child.propagate_registered_capacity",
+        "runtime.fifo_frame_service",
+        "runtime.parse_registered_capacity"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "C7_FULL_DOMAIN_PATH",
+      "protected_dependency_closure": [
+        "c7.launch_exact_domain"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "UNMAPPED",
+      "condition": "BLOCK until unknown dependency or applicability is independently closed",
+      "direct_changed_units": [],
+      "evidence_id": "C6_HARNESS_DYNAMIC_BOUNDARY",
+      "protected_dependency_closure": [
+        "harness.resolve_dynamic_modules"
+      ],
+      "unresolved_dynamic_units": [
+        "harness.resolve_dynamic_modules"
+      ],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "V2_2_EXECUTION_RELIABILITY",
+      "protected_dependency_closure": [
+        "v2_2.execution_lifecycle",
+        "v2_2.qualification_protocol"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "V2_3_ARTIFACT_ARCHITECTURE",
+      "protected_dependency_closure": [
+        "v2_2.execution_lifecycle",
+        "v2_3.artifact_finalization",
+        "v2_3.cli_interface",
+        "v2_3.corrective_lineage",
+        "v2_3.qualification_protocol",
+        "v2_3.receipt_consumption",
+        "v2_3.v21_evidence_binding"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "NON_INHERITABLE",
+      "condition": "rerun proof for changed behavior units: v2_4.hr_communication_evidence, v2_4.hr_runtime_composition",
+      "direct_changed_units": [
+        "v2_4.hr_communication_evidence",
+        "v2_4.hr_runtime_composition"
+      ],
+      "evidence_id": "V2_4_H_R_PRODUCTION_PATH",
+      "protected_dependency_closure": [
+        "child.propagate_registered_capacity",
+        "runtime.fifo_frame_service",
+        "runtime.parse_registered_capacity",
+        "v2_2.execution_lifecycle",
+        "v2_3.artifact_finalization",
+        "v2_4.hr_communication_evidence",
+        "v2_4.hr_execution_authorization",
+        "v2_4.hr_runtime_composition",
+        "v2_4.hr_suppression_service_binding"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "INHERITABLE",
+      "condition": "protected dependency closure unchanged in this diff",
+      "direct_changed_units": [],
+      "evidence_id": "V2_4_H_R_PREISSUE_CONSUMER",
+      "protected_dependency_closure": [
+        "v2_2.execution_lifecycle",
+        "v2_3.artifact_finalization",
+        "v2_3.corrective_lineage",
+        "v2_3.receipt_consumption",
+        "v2_3.v21_evidence_binding",
+        "v2_4.hr_execution_authorization",
+        "v2_4.hr_historical_authorization",
+        "v2_4.hr_preissue_consumer"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": []
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "CONDITIONALLY_INHERITABLE",
+      "condition": "PASS qualification of changed upstream units: v2_4.hr_communication_evidence, v2_4.hr_runtime_composition",
+      "direct_changed_units": [],
+      "evidence_id": "V2_4_H_R_QUALIFICATION_PROTOCOL",
+      "protected_dependency_closure": [
+        "child.propagate_registered_capacity",
+        "runtime.fifo_frame_service",
+        "runtime.parse_registered_capacity",
+        "v2_2.execution_lifecycle",
+        "v2_3.artifact_finalization",
+        "v2_4.hr_communication_evidence",
+        "v2_4.hr_execution_authorization",
+        "v2_4.hr_qualification_protocol",
+        "v2_4.hr_runtime_composition",
+        "v2_4.hr_suppression_service_binding"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": [
+        "v2_4.hr_communication_evidence",
+        "v2_4.hr_runtime_composition"
+      ]
+    },
+    {
+      "blocking_unknown_hunks": [],
+      "classification": "NON_INHERITABLE",
+      "condition": "rerun proof for changed behavior units: v2_4.hr_formal_authorization",
+      "direct_changed_units": [
+        "v2_4.hr_formal_authorization"
+      ],
+      "evidence_id": "V2_4_H_R_FORMAL_AUTHORIZATION",
+      "protected_dependency_closure": [
+        "child.propagate_registered_capacity",
+        "runtime.fifo_frame_service",
+        "runtime.parse_registered_capacity",
+        "v2_2.execution_lifecycle",
+        "v2_3.artifact_finalization",
+        "v2_3.corrective_lineage",
+        "v2_3.receipt_consumption",
+        "v2_3.v21_evidence_binding",
+        "v2_4.hr_communication_evidence",
+        "v2_4.hr_execution_authorization",
+        "v2_4.hr_formal_authorization",
+        "v2_4.hr_historical_authorization",
+        "v2_4.hr_preissue_consumer",
+        "v2_4.hr_qualification_protocol",
+        "v2_4.hr_runtime_composition",
+        "v2_4.hr_suppression_service_binding"
+      ],
+      "unresolved_dynamic_units": [],
+      "upstream_changed_units": [
+        "v2_4.hr_communication_evidence",
+        "v2_4.hr_runtime_composition"
+      ]
+    }
+  ],
+  "mapping_applicability": {
+    "anchor_implementation_sha": "4de4e5a00abbd6c5b4205364738751a73c53c9f7",
+    "status": "RETROSPECTIVE"
+  },
+  "mapping_digest": "a93a9c292ec6e1a56ed8d628eb110c58828a32cf2623b875fa6bbede82723fb7",
+  "minimum_requalification": [
+    "V2_4_H_R_FORMAL_AUTHORIZATION_REVIEW",
+    "V2_4_H_R_PRODUCTION_PATH_QUALIFICATION",
+    "V2_4_H_R_TEST_REVIEW"
+  ],
+  "required_requalification_layers": [
+    "L0",
+    "L1"
+  ],
+  "role": "TEAM_A_CANDIDATE_EVIDENCE_NOT_AUTHORIZATION",
+  "schema_version": "CHANGE_IMPACT_MANIFEST_V1",
+  "target_implementation_sha": "4de4e5a00abbd6c5b4205364738751a73c53c9f7",
+  "unknown_scope_review": {
+    "status": "NOT_SUPPLIED"
+  },
+  "unmapped_unknown_paths": []
+}
