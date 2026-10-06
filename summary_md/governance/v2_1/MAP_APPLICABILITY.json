@@ -1,5 +1,5 @@
 {
-  "anchor_implementation_sha": "935ddcb7bba9b9894f495d84982cc310eb959c79",
+  "anchor_implementation_sha": "4de4e5a00abbd6c5b4205364738751a73c53c9f7",
   "audited_source_sha256": {
     "scripts/governance_v2_artifacts.py": "79d25cdab8ece489a404c8a5fdec6a77b6c89a7f7a96600d934312a0d2b0fba4",
     "scripts/governance_v2_execution.py": "06fbb4a5e64087b9b3f4675ce06af63612c9a4a99df0dcffd8dcc4885476ceb4",
@@ -9,16 +9,16 @@
     "scripts/run_harness_v2.py": "b097ff8a0745cc9c7f9ba719dc92da8f6f34a77df9160604a1ba5c1e2a21cbda",
     "scripts/run_mdmt_mia_c7_outcome_blind_census.py": "d135a34ac1b7bff9e09e5ec627f58539bbe40148274640cfeadef1ad03e88605",
     "scripts/run_mdmt_mia_c7_real_child.py": "f234c71cf82bf389388e81ffefe8605d150b6fc5a1b55c7fdeb596253fbad27c",
-    "scripts/run_mdmt_mia_hr_formal.py": "f3432ce9d63384197a48eba3779b45a9eefe9b7547165102e51c0b98fe4c3598",
-    "scripts/run_mdmt_mia_hr_real_child.py": "bf8a4741911c2009beda1f1bb3774694df9bfe5eccdc465849e371624592f089",
+    "scripts/run_mdmt_mia_hr_formal.py": "69c9bd8bcfb73520fa342dc34f8a0dac924920c5085897ac119f2ff4d445d38a",
+    "scripts/run_mdmt_mia_hr_real_child.py": "741459c97b39dc280a8604b49f228289e1113647e5aa03dfa9e4273109c9dd0a",
     "src/tracking/governance_v2_artifacts.py": "d83dec63186625d8044cefeaa8ce48b0e44913be66868ded0d4885153bcd33f8",
     "src/tracking/governance_v2_execution.py": "704258174521ab540a42ef9212588ec31d7bd0c95f6080d8dbc1e18beb5642b7",
     "src/tracking/mdmt_mia_async_deadline_runtime.py": "b8274eb2b54df668ab983a836d3b145a3373ea4b68617e3540f1a0617d0e1b50",
     "src/tracking/mdmt_mia_c7_census.py": "9a1887f39d8206a826a15717b84b97773f50a088eb8f507e9ce1921838360652",
     "src/tracking/mdmt_mia_c7_validator.py": "7922a1d82132e28586dfb3bdfa2b65bc12d8d7a961ddc14d5be747dc8a29552f",
-    "src/tracking/mdmt_mia_hr_evidence.py": "848b8c2ed3ecf9ccdd9d537d19bcb57eb95516020d66244abf4960cd2eaabe5e"
+    "src/tracking/mdmt_mia_hr_evidence.py": "84ca835fafa1d567ea13c873c4837359730856edc3e5ad57e30b75c2cf4d3592"
   },
-  "dependency_mapping_identity": "c6e97f4266d8f6db9aac54fbef8b2c5e8b4414b2ee8eed178107fa892f5922b9",
-  "mapping_digest": "d8562af2f7ad419ed928b7e4475bb6a59d6cc848e7383df4a1941b50ae747162",
+  "dependency_mapping_identity": "56c95e90942b73b7b59d87795320a743e452c7426d26c8e4af3efb2089dedd08",
+  "mapping_digest": "24e9226c67a2725769e67dd028d60913558717a8e9c40a78c7035c1f8a0429cb",
   "schema_version": "GOVERNANCE_V2_MAP_APPLICABILITY_V1"
 }

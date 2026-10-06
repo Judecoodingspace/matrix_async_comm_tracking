@@ -34,8 +34,14 @@ def _load():
 
 
 def _prospective_load():
-    return (validate_mapping(json.loads((DOC / "DEPENDENCY_MAP.json").read_text())),
-            json.loads((DOC / "MAP_APPLICABILITY.json").read_text()))
+    # These fixtures test the accepted V2-2 registration, whose source set
+    # predates later V2-3/V2-4 and Formal authorization paths.
+    authority = "a174dc5d718ccc73b412d0ead9554ba7d8a857d2"
+    def committed(path):
+        return json.loads(subprocess.check_output(
+            ["git", "show", authority + ":" + path], cwd=str(ROOT)))
+    return (validate_mapping(committed("summary_md/governance/v2_1/DEPENDENCY_MAP.json")),
+            committed("summary_md/governance/v2_1/MAP_APPLICABILITY.json"))
 
 
 def _parent(sha):

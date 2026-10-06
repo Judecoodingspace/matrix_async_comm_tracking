@@ -512,7 +512,10 @@
         },
         {
           "match_tokens": [
-            "AUTHORIZATION_",
+            "raise HREvidenceError(\"AUTHORIZATION_HASH_MISMATCH\")",
+            "raise HREvidenceError(\"AUTHORIZATION_SCHEMA_MISMATCH\")",
+            "raise HREvidenceError(\"AUTHORIZATION_SCOPE_MISMATCH\")",
+            "raise HREvidenceError(\"AUTHORIZATION_SOURCE_IDENTITY_MISMATCH\")",
             "selection(",
             "wrapper_path",
             "preparer_path",
@@ -800,6 +803,14 @@
           ],
           "path": "src/tracking/mdmt_mia_async_deadline_runtime.py",
           "symbol": "PacketRuntime.finalize"
+        },
+        {
+          "match_tokens": [
+            "formal_effective_config_expectation",
+            "FORMAL_EFFECTIVE_CONFIG_MISMATCH"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_real_child.py",
+          "symbol": "execute"
         }
       ],
       "validation_level": "L1"
@@ -931,12 +942,106 @@
           ],
           "path": "tests/test_mdmt_mia_hr_production_path.py",
           "symbol": "test-only qualification"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "tests/test_mdmt_mia_hr_formal_authorization.py",
+          "symbol": "test-only qualification"
         }
       ],
       "validation_level": "L0"
+    },
+    {
+      "behavior_unit_id": "v2_4.hr_formal_authorization",
+      "dependency_edges": [
+        "v2_4.hr_execution_authorization",
+        "v2_4.hr_preissue_consumer",
+        "v2_4.hr_qualification_protocol",
+        "v2_4.hr_runtime_composition"
+      ],
+      "dynamic_dependency_status": "CLOSED",
+      "protected_invariants": [
+        "h_r_formal_support_consumer_binding",
+        "h_r_formal_authorization_identity",
+        "h_r_formal_qualification_separation",
+        "h_r_formal_admission_fail_closed",
+        "h_r_formal_outcome_blind_boundary"
+      ],
+      "requalification_gate": "V2_4_H_R_FORMAL_AUTHORIZATION_REVIEW",
+      "source_locator": [
+        {
+          "match_tokens": [
+            "formal_config_expectation",
+            "validate_formal_support_consumer",
+            "write_json"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_formal.py",
+          "symbol": "<module>"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_formal.py",
+          "symbol": "issue_formal_authorization"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_formal.py",
+          "symbol": "formal_launch"
+        },
+        {
+          "match_tokens": [
+            "formal-launch"
+          ],
+          "path": "scripts/run_mdmt_mia_hr_formal.py",
+          "symbol": "main"
+        },
+        {
+          "match_tokens": [
+            "FORMAL_SUPPORT_CONSUMER_SHA256",
+            "FORMAL_SUPPORT_CIM_SHA256",
+            "FORMAL_SUPPORT_ATTESTATION_SHA256"
+          ],
+          "path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "symbol": "<module>"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "symbol": "validate_formal_support_consumer"
+        },
+        {
+          "match_tokens": [
+            "*"
+          ],
+          "path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "symbol": "formal_config_expectation"
+        },
+        {
+          "match_tokens": [
+            "H_R_FORMAL_AUTHORIZATION_V1",
+            "formal_fields",
+            "FORMAL_AUTHORIZATION_SCOPE_MISMATCH",
+            "FORMAL_AUTHORIZATION_BINDING_MISMATCH",
+            "formal_support_consumer_record_sha256",
+            "formal_effective_config_expectation",
+            "read_json(path) if isinstance(path, Path)"
+          ],
+          "path": "src/tracking/mdmt_mia_hr_evidence.py",
+          "symbol": "load_authorization"
+        }
+      ],
+      "validation_level": "L1"
     }
   ],
-  "dependency_mapping_identity": "c6e97f4266d8f6db9aac54fbef8b2c5e8b4414b2ee8eed178107fa892f5922b9",
+  "dependency_mapping_identity": "56c95e90942b73b7b59d87795320a743e452c7426d26c8e4af3efb2089dedd08",
   "evidence": [
     {
       "evidence_id": "C7_FIFO_MECHANISM",
@@ -1019,10 +1124,17 @@
         "v2_4.hr_qualification_protocol"
       ],
       "validation_gate": "V2_4_H_R_QUALIFICATION_PROTOCOL_REVIEW"
+    },
+    {
+      "evidence_id": "V2_4_H_R_FORMAL_AUTHORIZATION",
+      "proven_behavior_units": [
+        "v2_4.hr_formal_authorization"
+      ],
+      "validation_gate": "V2_4_H_R_FORMAL_AUTHORIZATION_REVIEW"
     }
   ],
-  "mapping_digest": "d8562af2f7ad419ed928b7e4475bb6a59d6cc848e7383df4a1941b50ae747162",
-  "mapping_scope": "Reviewed C7 FIFO/capacity/credit and C7 launcher, selected C6 Harness v2 dynamic boundary, and prospective V2-2 execution reliability lifecycle and qualification protocol; all other paths fail closed; prospective V2-3 artifact finalization, historical V2-1 input binding, corrective lineage, receipt consumption, CLI, and qualification behavior; prospective V2-4 H_R execution authorization, real runtime/suppression composition, communication evidence, historical preissue consumption, and non-scientific qualification",
+  "mapping_digest": "24e9226c67a2725769e67dd028d60913558717a8e9c40a78c7035c1f8a0429cb",
+  "mapping_scope": "Reviewed C7 FIFO/capacity/credit and C7 launcher, selected C6 Harness v2 dynamic boundary, and prospective V2-2 execution reliability lifecycle and qualification protocol; all other paths fail closed; prospective V2-3 artifact finalization, historical V2-1 input binding, corrective lineage, receipt consumption, CLI, and qualification behavior; prospective V2-4 H_R execution authorization, real runtime/suppression composition, communication evidence, historical preissue consumption, and non-scientific qualification; prospective H_R Formal authorization issuance, accepted support-record consumption, schema/config/attempt/source binding, admission, and CLI routing, separate from qualification and preissue production",
   "protected_invariants": [
     "source_cleanliness",
     "registered_capacity_propagation",
@@ -1076,7 +1188,12 @@
     "h_r_formal_support_reuse_gate",
     "h_r_tiny_qualification_boundary",
     "h_r_qualification_outcome_blind",
-    "h_r_service_finalization_integrity"
+    "h_r_service_finalization_integrity",
+    "h_r_formal_support_consumer_binding",
+    "h_r_formal_authorization_identity",
+    "h_r_formal_qualification_separation",
+    "h_r_formal_admission_fail_closed",
+    "h_r_formal_outcome_blind_boundary"
   ],
   "schema_version": "GOVERNANCE_V2_DEPENDENCY_MAP_V1"
 }

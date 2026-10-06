@@ -290,8 +290,12 @@ def test_post_registration_formal_support_v21_synthetic_check(tmp_path):
     mapping, claim = _current()
     clone = _clone(tmp_path)
     inputs_commit = _fixture_commit(clone, {
-        "summary_md/governance/v2_1/DEPENDENCY_MAP.json": (DOC / "DEPENDENCY_MAP.json").read_bytes(),
-        "summary_md/governance/v2_1/MAP_APPLICABILITY.json": (DOC / "MAP_APPLICABILITY.json").read_bytes(),
+        "summary_md/governance/v2_1/DEPENDENCY_MAP.json": _git(
+            ROOT, "show", "92c05753d869318bff246b1d32e28be8f4703236:"
+            "summary_md/governance/v2_1/DEPENDENCY_MAP.json"),
+        "summary_md/governance/v2_1/MAP_APPLICABILITY.json": _git(
+            ROOT, "show", "92c05753d869318bff246b1d32e28be8f4703236:"
+            "summary_md/governance/v2_1/MAP_APPLICABILITY.json"),
     })
     cim = audit_diff(clone, ACCEPTED, ACCEPTED, mapping, claim)
     assert cim["candidate_verdict"] == "CANDIDATE_REVIEWABLE_TEAM_B_PENDING"
