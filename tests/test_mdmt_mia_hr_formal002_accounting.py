@@ -1,5 +1,6 @@
 """Accounting failures must invalidate measurement even for excluded packets."""
 import copy
+import json
 import sys
 from pathlib import Path
 
@@ -89,3 +90,33 @@ def test_corrupt_or_unreconciled_required_record_fails_closed(evidence, change):
 def test_duplicate_json_key_is_invalid():
     with pytest.raises(analysis.AccountingError):
         analysis.strict_json('{"bytes_served":5,"bytes_served":6}')
+
+
+def test_corrected_c7_inventory_digest_and_required_fail_closed_negatives():
+    cell = analysis.C7 / "cells/P66__P20"
+    inventory = json.loads((cell / "cell_inventory.json").read_bytes())
+    seal = json.loads((cell / "cell_seal.json").read_bytes())
+    terminal = json.loads((cell / "CELL_COMMITTED.json").read_bytes())
+    observed = {relative: analysis.sha(analysis.C7 / relative) for relative in analysis.EXPECTED}
+    rebuilt = analysis.rebuild_c7_cell_inventory(cell)
+    # This positive case uses the actual sealed C7 inventory and seal metadata.
+    analysis.validate_c7_inventory_binding(inventory, seal, terminal, observed, rebuilt)
+    malformed = "205aafad0d21237207cd46c6e07998d9459b436849e7660b1a6f14031a7cdb85ef4"
+    with pytest.raises(analysis.AccountingError, match="C7_RECORDED_DIGEST_MALFORMED"):
+        analysis.validate_c7_inventory_binding(inventory, seal, terminal, observed,
+                                               rebuilt, malformed)
+    changed_file = dict(observed)
+    changed_file["cells/P66__P20/windows.jsonl"] = "0" * 64
+    with pytest.raises(analysis.AccountingError, match="C7_SOURCE_IDENTITY_CHANGED"):
+        analysis.validate_c7_inventory_binding(inventory, seal, terminal, changed_file,
+                                               rebuilt)
+    changed_inventory = copy.deepcopy(inventory)
+    changed_inventory["files"][0]["byte_count"] += 1
+    with pytest.raises(analysis.AccountingError, match="C7_INVENTORY_BYTES_CHANGED"):
+        analysis.validate_c7_inventory_binding(changed_inventory, seal, terminal, observed,
+                                               rebuilt)
+    changed_seal = copy.deepcopy(seal)
+    changed_seal["sealed_payload"]["inventory_sha256"] = "0" * 64
+    with pytest.raises(analysis.AccountingError, match="C7_SEAL_IDENTITY_CHANGED"):
+        analysis.validate_c7_inventory_binding(inventory, changed_seal, terminal, observed,
+                                               rebuilt)

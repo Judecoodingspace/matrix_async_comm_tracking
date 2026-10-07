@@ -2,6 +2,29 @@
 
 Updated: 2026-10-07
 
+## Formal002 C7 inventory digest corrective candidate (2026-10-07)
+
+- The original frozen design commit `8cec5529214b64d14528c04f6063ca28427c13cd`
+  records a 67-character internal inventory digest. Independent SHA-256
+  recomputation from the intact five-file C7 inventory yields the 64-character
+  digest already embedded in the intact C7 seal. All four frozen C7 raw file
+  hashes, the inventory, seal, and commit marker match their authority.
+- Prospective authority:
+  `summary_md/experiments/2026-10-7/H_R_FORMAL002_C7_INVENTORY_DIGEST_CORRECTIVE_AUTHORITY.md`.
+  The correction applies only to `FORMAL002_C7_COMPARABILITY_PRECHECK`; the
+  original frozen design and C7 bytes remain unchanged.
+- Focused verification command:
+  `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python -m pytest -q tests/test_mdmt_mia_hr_formal002_accounting.py`
+  returned **15 passed**, including the real sealed inventory and four
+  fail-close negatives. No scientific outcomes were read.
+- Existing qual_005/initial and support consumer raw hashes still match their
+  frozen values. No qualification or support action was repeated. Formal002
+  authorization remains unissued and its attempt namespace unused; execution
+  count remains `0`.
+- Next: one focused independent review of the correction candidate. If
+  accepted, publish its exact SHA, then resume at Formal002 V2 authorization
+  using the existing qualification and support consumer.
+
 ## Formal002 final execution chain blocked before authorization (2026-10-07)
 
 - Accepted CR2 `f07c4742039f6755671a5ebd13139724e759ec02` is published and

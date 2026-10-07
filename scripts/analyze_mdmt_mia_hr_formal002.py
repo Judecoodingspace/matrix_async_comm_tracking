@@ -20,6 +20,8 @@ from tracking.mdmt_mia_c7_census import ReceiverStateEvidence, StaleClassificati
 DESIGN = "8cec5529214b64d14528c04f6063ca28427c13cd"
 EXECUTION_SHA = "f07c4742039f6755671a5ebd13139724e759ec02"
 DESIGN_PATH = "summary_md/experiments/2026-10-6/exp_20261006_002_mdmt_mia_hr_formal002_paired_redistribution/FORMAL002_TREATMENT_ONLY_C7_CONTROL_SUPERSESSION.md"
+CORRECTION_PATH = "summary_md/experiments/2026-10-7/H_R_FORMAL002_C7_INVENTORY_DIGEST_CORRECTIVE_AUTHORITY.md"
+CORRECTED_INVENTORY_SHA256 = "205aafad0d21237207cd46c6e07998d9459b436849e7660b6ae138d03efd0f6c"
 BASE = ROOT.parents[1]
 FORMAL_ROOT = BASE / "formal_evidence"
 ATTEMPT_ID = "v2_4_hr_formal_002"
@@ -230,6 +232,7 @@ def derive_endpoint(frames, ledger, run_id, frame_count=300, capacity=16649):
 def script_binding():
     design_bytes = subprocess.check_output(["git", "show", DESIGN + ":" + DESIGN_PATH], cwd=ROOT)
     return {"design_commit": DESIGN, "design_sha256": hashlib.sha256(design_bytes).hexdigest(),
+        "corrective_authority_sha256": sha(ROOT / CORRECTION_PATH),
         "derivation_script_sha256": sha(__file__),
         "analysis_source_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "schema_sources": {name: sha(ROOT / "src/tracking" / name) for name in (
@@ -254,18 +257,46 @@ def baseline_frames():
         yield evidence["raw_observation"]
 
 
+def rebuild_c7_cell_inventory(cell):
+    names = ("cell_aggregate.json", "cell_manifest.json", "cell_qualification.json",
+             "cell_validation.json", "windows.jsonl")
+    return {"schema_version": "C7_CELL_INVENTORY_V1", "files": [
+        {"path": name, "sha256": sha(cell / name), "byte_count": (cell / name).stat().st_size}
+        for name in sorted(names)]}
+
+
+def validate_c7_inventory_binding(inventory, seal, terminal, observed_files, rebuilt_inventory,
+                                  recorded_digest=CORRECTED_INVENTORY_SHA256):
+    """Purpose-scoped Formal002 comparability gate, before any endpoint access."""
+    require(observed_files == EXPECTED, "C7_SOURCE_IDENTITY_CHANGED")
+    require(inventory == rebuilt_inventory, "C7_INVENTORY_BYTES_CHANGED")
+    require(len(recorded_digest) == 64 and all(c in "0123456789abcdef" for c in recorded_digest),
+            "C7_RECORDED_DIGEST_MALFORMED")
+    require(canonical_sha256(inventory) == recorded_digest, "C7_INVENTORY_BINDING")
+    manifest_rows = [row for row in inventory["files"] if row["path"] == "cell_manifest.json"]
+    require(len(manifest_rows) == 1, "C7_MANIFEST_INVENTORY")
+    payload = {"run_id": C7_RUN, "cell_id": "P66__P20",
+               "cell_manifest_sha256": manifest_rows[0]["sha256"],
+               "inventory_sha256": recorded_digest, "status": "VALIDATED"}
+    expected_seal = {"schema_version": "C7_CELL_SEAL_V1", "sealed_payload": payload,
+                     "seal_sha256": canonical_sha256(payload)}
+    require(seal == expected_seal, "C7_SEAL_IDENTITY_CHANGED")
+    require(terminal == {"schema_version": "C7_CELL_COMMIT_V1", "status": "COMMITTED",
+                         "cell_id": "P66__P20", "inventory_sha256": recorded_digest,
+                         "seal_sha256": expected_seal["seal_sha256"]}, "C7_COMMIT_IDENTITY_CHANGED")
+
+
 def seal_baseline():
     require(not (ANALYSIS / "C7_BASELINE_SEAL.json").exists(), "BASELINE_ALREADY_SEALED")
     binding = script_binding()
-    for relative, expected in EXPECTED.items():
-        require(sha(C7 / relative) == expected, "C7_SOURCE_DIGEST:" + relative)
+    observed_files = {relative: sha(C7 / relative) for relative in EXPECTED}
     cell = C7 / "cells/P66__P20"
     inventory = strict_json((cell / "cell_inventory.json").read_bytes())
     seal = strict_json((cell / "cell_seal.json").read_bytes())
+    terminal = strict_json((cell / "CELL_COMMITTED.json").read_bytes())
     manifest = strict_json((cell / "cell_manifest.json").read_bytes())
-    require(canonical_sha256(seal["sealed_payload"]) == seal["seal_sha256"], "C7_SEAL_DIGEST")
-    require(canonical_sha256(inventory) == seal["sealed_payload"]["inventory_sha256"]
-            == "205aafad0d21237207cd46c6e07998d9459b436849e7660b1a6f14031a7cdb85ef4", "C7_INVENTORY_BINDING")
+    validate_c7_inventory_binding(inventory, seal, terminal, observed_files,
+                                  rebuild_c7_cell_inventory(cell))
     require(sha(cell / "cell_manifest.json") == seal["sealed_payload"]["cell_manifest_sha256"], "C7_MANIFEST_BINDING")
     require(seal["sealed_payload"]["cell_id"] == "P66__P20"
             and seal["sealed_payload"]["run_id"] == C7_RUN
@@ -316,7 +347,9 @@ def compare_finalized():
             == EXECUTION_SHA, "EXECUTION_SOURCE_CHANGED")
     binding = strict_json((ANALYSIS / "C7_BASELINE_IMPLEMENTATION_BINDING.json").read_bytes())
     require(binding["derivation_script_sha256"] == sha(__file__)
-            and binding["design_commit"] == DESIGN, "BASELINE_IMPLEMENTATION_CHANGED")
+            and binding["design_commit"] == DESIGN
+            and binding["corrective_authority_sha256"] == sha(ROOT / CORRECTION_PATH),
+            "BASELINE_IMPLEMENTATION_CHANGED")
     baseline_seal = strict_json((ANALYSIS / "C7_BASELINE_SEAL.json").read_bytes())
     require(canonical_sha256(baseline_seal["sealed_payload"]) == baseline_seal["seal_sha256"], "BASELINE_SEAL_INVALID")
     require(sha(ANALYSIS / "C7_BASELINE_RESULT.json") == baseline_seal["sealed_payload"]["result_sha256"]
