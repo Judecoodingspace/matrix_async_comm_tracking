@@ -149,7 +149,7 @@ def execute(auth_path: Path) -> dict:
         raise HRChildError("GENERATED_SOURCE_MUTATED")
     raw = collect_raw(root, auth, before)
     normalized, effective = normalized_from_raw(raw, auth)
-    if auth["schema_version"] == "H_R_FORMAL_AUTHORIZATION_V1":
+    if auth["schema_version"] in {"H_R_FORMAL_AUTHORIZATION_V1", "H_R_FORMAL_AUTHORIZATION_V2"}:
         observed = {
             "run_id": effective["run_id"], "cell_id": effective["cell_id"],
             "pair_id": effective["pair_id"], "capacity_id": effective["capacity_id"],

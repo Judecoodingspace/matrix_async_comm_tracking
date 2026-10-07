@@ -20,7 +20,7 @@ from tracking import mdmt_mia_hr_evidence as evidence
 
 @pytest.fixture
 def formal_fixture(tmp_path, monkeypatch):
-    attempt_id = "test_hr_formal_001"
+    attempt_id = "v2_4_hr_formal_001"
     attempts = tmp_path / "formal"
     attempts.mkdir()
     record_path = tmp_path / "support.json"
@@ -156,3 +156,19 @@ def test_issuer_refuses_existing_target_and_missing_record(tmp_path):
     with pytest.raises(operator.HROperatorError, match="TARGET_OCCUPIED"):
         operator.issue_formal_authorization(attempts, "test_hr_formal_001", tmp_path / "missing", target)
     assert target.read_text() == "existing"
+
+
+def test_v1_cannot_launch_prospective_formal002(formal_fixture):
+    attempts, _, _, auth_path, auth, args = formal_fixture
+    value = dict(auth)
+    value["attempt_id"] = "v2_4_hr_formal_002"
+    value["run_id"] = "v2_4_hr_formal_002"
+    value["attempt_root"] = str((attempts / "v2_4_hr_formal_002").resolve())
+    value["formal_output_root"] = str((attempts / "v2_4_hr_formal_002" / "output").resolve())
+    for key in ("formal_service_config", "formal_suppression_config",
+                "formal_effective_config_expectation"):
+        value[key] = dict(value[key], run_id="v2_4_hr_formal_002")
+    _write_auth(auth_path, value)
+    args.attempt_id = "v2_4_hr_formal_002"
+    with pytest.raises(operator.HROperatorError, match="FORMAL_V1_HISTORICAL_ONLY"):
+        operator.formal_launch(args)

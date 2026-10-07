@@ -16,7 +16,8 @@ from tracking import governance_v2_execution as execution
 from tracking.mdmt_mia_hr_evidence import (
     EFFECTIVE_NAME, NORMALIZED_NAME, RAW_NAME, HREvidenceError, canonical, digest,
     file_digest, formal_config_expectation, load_authorization, node_ref,
-    normalized_from_raw, read_json, validate_formal_support_consumer, write_json,
+    normalized_from_raw, read_json, validate_formal_support_consumer,
+    validate_formal_support_consumer_v2, write_json,
 )
 
 CONTRACT = "summary_md/governance/v2_4/V2_4_IMPLEMENTATION_CONTRACT_REV2.md"
@@ -87,6 +88,50 @@ def issue_formal_authorization(attempts_root: Path, attempt_id: str,
     return auth
 
 
+def issue_formal_authorization_v2(attempts_root: Path, attempt_id: str,
+                                  qualification_attempt_id: str, evidence_node_id: str,
+                                  consumer_record: Path, authorization_path: Path) -> dict:
+    """Issue a prospective Formal authorization from one explicitly selected support record."""
+    from qualify_mdmt_mia_hr_production_path import build_qualification_authorization
+
+    if authorization_path.exists() or (attempts_root / attempt_id).exists():
+        raise HROperatorError("FORMAL_AUTHORIZATION_TARGET_OCCUPIED")
+    consumer_path = consumer_record.resolve()
+    try:
+        consumer_sha = file_digest(consumer_path)
+    except OSError as exc:
+        raise HROperatorError("FORMAL_SUPPORT_CONSUMER_MISSING") from exc
+    validate_formal_support_consumer_v2(
+        consumer_path, consumer_sha, qualification_attempt_id, evidence_node_id, ROOT)
+    auth = build_qualification_authorization(attempts_root, attempt_id)
+    if auth["qualification_only"] is not True or auth["qualification_frame_count"] != 3:
+        raise HROperatorError("QUALIFICATION_AUTHORIZATION_TEMPLATE_INVALID")
+    auth.update({
+        "schema_version": "H_R_FORMAL_AUTHORIZATION_V2",
+        "authorization_purpose": "H_R_FORMAL",
+        "qualification_only": False, "qualification_frame_count": 0,
+        "formal_output_root": str((attempts_root / attempt_id / "output").resolve()),
+        "formal_support_qualification_attempt_id": qualification_attempt_id,
+        "formal_support_evidence_node_id": evidence_node_id,
+        "formal_support_consumer_record_path": str(consumer_path),
+        "formal_support_consumer_record_sha256": consumer_sha,
+        "formal_service_config": {
+            "schema_version": "C7_REGISTERED_FIFO_SERVICE_V1", "mode": "fifo",
+            "capacity_id": auth["cell"]["capacity_id"],
+            "rate_logical_bytes_per_frame": auth["cell"]["capacity_bytes"],
+            "ledger_enabled": True, "run_id": auth["run_id"],
+            "pair_id": auth["cell"]["pair_id"],
+        },
+        "formal_suppression_config": {"enabled": True, "run_id": auth["run_id"]},
+        "formal_effective_config_expectation": formal_config_expectation(auth),
+    })
+    auth.pop("authorization_hash")
+    auth["authorization_hash"] = digest(canonical(auth))
+    load_authorization(auth, attempts_root / attempt_id, ROOT)
+    write_json(authorization_path, auth)
+    return auth
+
+
 def launch(args) -> dict:
     auth = _auth(args.authorization, args.attempts_root, args.attempt_id)
     if auth["schema_version"] != "H_R_PRODUCTION_AUTHORIZATION_V1" or auth["qualification_only"] is not True:
@@ -99,8 +144,11 @@ def launch(args) -> dict:
 
 def formal_launch(args) -> dict:
     auth = _auth(args.authorization, args.attempts_root, args.attempt_id)
-    if auth["schema_version"] != "H_R_FORMAL_AUTHORIZATION_V1":
+    if auth["schema_version"] not in {"H_R_FORMAL_AUTHORIZATION_V1", "H_R_FORMAL_AUTHORIZATION_V2"}:
         raise HROperatorError("FORMAL_AUTHORIZATION_REQUIRED")
+    if (auth["schema_version"] == "H_R_FORMAL_AUTHORIZATION_V1"
+            and auth["attempt_id"] != "v2_4_hr_formal_001"):
+        raise HROperatorError("FORMAL_V1_HISTORICAL_ONLY")
     if (auth["formal_output_root"] != str((args.attempts_root.resolve() / args.attempt_id / "output"))
             or auth["cell"]["cell_id"] != "P66__P20"
             or auth["cell"]["capacity_bytes"] != 16649):
