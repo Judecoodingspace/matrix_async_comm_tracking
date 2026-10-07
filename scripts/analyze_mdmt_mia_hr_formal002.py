@@ -21,13 +21,16 @@ DESIGN = "8cec5529214b64d14528c04f6063ca28427c13cd"
 EXECUTION_SHA = "f07c4742039f6755671a5ebd13139724e759ec02"
 DESIGN_PATH = "summary_md/experiments/2026-10-6/exp_20261006_002_mdmt_mia_hr_formal002_paired_redistribution/FORMAL002_TREATMENT_ONLY_C7_CONTROL_SUPERSESSION.md"
 CORRECTION_PATH = "summary_md/experiments/2026-10-7/H_R_FORMAL002_C7_INVENTORY_DIGEST_CORRECTIVE_AUTHORITY.md"
+PACKET_SCHEMA_CORRECTION_PATH = "summary_md/experiments/2026-10-7/H_R_FORMAL002_PACKET_SCHEMA_MAPPING_CORRECTIVE_AUTHORITY.md"
 CORRECTED_INVENTORY_SHA256 = "205aafad0d21237207cd46c6e07998d9459b436849e7660b6ae138d03efd0f6c"
+BASELINE_PACKET_IDENTITY = "C7_BASELINE_NORMALIZED_TWO_FIELD"
+TREATMENT_PACKET_IDENTITY = "FORMAL_TREATMENT_CENSUS_FOUR_FIELD"
 BASE = ROOT.parents[1]
 FORMAL_ROOT = BASE / "formal_evidence"
 ATTEMPT_ID = "v2_4_hr_formal_002"
 C7_RUN = "exp_20260925_001_c7_full_21_cell_census"
 C7 = BASE / "census" / C7_RUN
-ANALYSIS = FORMAL_ROOT / "analysis" / ATTEMPT_ID
+ANALYSIS = FORMAL_ROOT / "analysis" / "v2_4_hr_formal_002__packet_schema_v2"
 EXPECTED = {
     "cells/P66__P20/windows.jsonl": "dba4f926ed16eefa1fcf7a2660fc07dade63d2952693c8f6c58eee890ab09c74",
     "operational/child/P66__P20/author_outputs/mia/train_66/results/mia_train_66/c4_service_ledger_66-1.jsonl": "1e81c4008efc9745442662f20bd9b4dece6b2598963ae39bb956502c24866c30",
@@ -88,29 +91,54 @@ def write_new(path, value):
         stream.write(canonical(value) + "\n")
 
 
-def key(event):
-    packet = event["packet_id"]
+def packet_identity(record, mode, run_id):
+    packet = record.get("packet_id")
     require(isinstance(packet, dict), "PACKET_ID_REQUIRED")
-    require(set(packet) == {"census_run_id", "sequence_name", "runtime_instance_id", "emission_ordinal"},
-            "PACKET_ID_SCHEMA")
-    integer(packet["emission_ordinal"], 1)
+    if mode == BASELINE_PACKET_IDENTITY:
+        require(set(packet) == {"sequence_name", "packet_sequence"}, "BASELINE_PACKET_ID_SCHEMA")
+        require(packet["sequence_name"] == "66-1", "BASELINE_PACKET_SEQUENCE_NAME")
+        integer(packet["packet_sequence"], 1)
+        if "packet_sequence" in record:
+            require(type(record["packet_sequence"]) is int
+                    and record["packet_sequence"] == packet["packet_sequence"],
+                    "BASELINE_EVENT_PACKET_SEQUENCE_MISMATCH")
+    elif mode == TREATMENT_PACKET_IDENTITY:
+        require(set(packet) == {"census_run_id", "sequence_name", "runtime_instance_id", "emission_ordinal"},
+                "TREATMENT_PACKET_ID_SCHEMA")
+        require(packet["census_run_id"] == run_id and packet["sequence_name"] == "66-1",
+                "TREATMENT_PACKET_RUN_PROVENANCE")
+        require(isinstance(packet["runtime_instance_id"], str) and packet["runtime_instance_id"],
+                "TREATMENT_RUNTIME_INSTANCE_INVALID")
+        integer(packet["emission_ordinal"], 1)
+        if "event_type" in record:
+            require(record.get("runtime_instance_id") == packet["runtime_instance_id"],
+                    "TREATMENT_RUNTIME_INSTANCE_MISMATCH")
+    else:
+        raise AccountingError("UNKNOWN_PACKET_IDENTITY_MODE")
+    return canonical(packet)
+
+
+def key(event, mode, run_id):
+    packet_key = packet_identity(event, mode, run_id)
     require(event["channel"] in {"id_state", "supplement"}, "FIFO_CHANNEL_SCHEMA")
     digest = event["wire_digest"]
     require(isinstance(digest, str) and len(digest) == 64
             and all(c in "0123456789abcdef" for c in digest), "INVALID_WIRE_DIGEST")
-    return canonical(packet), digest, event["channel"]
+    return packet_key, digest, event["channel"]
 
 
 def event_id(event):
     return integer(event["frame"]), integer(event["event_ordinal"], 1), event["event_type"]
 
 
-def slice_signature(event):
-    return key(event), integer(event["bytes_served"], 1), integer(event["JSON_WIRE_BYTES"], 1), integer(event["remaining_service_bytes"])
+def slice_signature(event, mode, run_id):
+    return key(event, mode, run_id), integer(event["bytes_served"], 1), integer(event["JSON_WIRE_BYTES"], 1), integer(event["remaining_service_bytes"])
 
 
-def account_slices(classes, observed_slices, ledger, frame_count, frame_totals):
+def account_slices(classes, observed_slices, ledger, frame_count, frame_totals, mode, run_id):
     """Join every positive slice exactly once, including partial and mixed service."""
+    require(mode in {BASELINE_PACKET_IDENTITY, TREATMENT_PACKET_IDENTITY},
+            "UNKNOWN_PACKET_IDENTITY_MODE")
     for cls in classes.values():
         require(integer(cls["frame"]) < frame_count, "CLASSIFICATION_FRAME_OUTSIDE_HORIZON")
         integer(cls["ordinal"], 1)
@@ -130,7 +158,7 @@ def account_slices(classes, observed_slices, ledger, frame_count, frame_totals):
         require(event_id(event) not in seen, "DUPLICATE_LEDGER_EVENT")
         seen.add(event_id(event))
         if kind == "service_start" and event["channel"] == "id_state":
-            packet_key = key(event)
+            packet_key = key(event, mode, run_id)
             require(packet_key in classes, "START_HAS_NO_CLASSIFICATION")
             cls = classes[packet_key]
             require((frame, ordinal) == (cls["frame"], cls["ordinal"]), "FIRST_SERVICE_MISMATCH")
@@ -141,13 +169,13 @@ def account_slices(classes, observed_slices, ledger, frame_count, frame_totals):
             continue
         identity = event_id(event)
         require(identity in observed_slices, "SLICE_MISSING_FROM_OBSERVER")
-        require(slice_signature(event) == observed_slices[identity], "OBSERVED_LEDGER_SLICE_MISMATCH")
+        require(slice_signature(event, mode, run_id) == observed_slices[identity], "OBSERVED_LEDGER_SLICE_MISMATCH")
         matched.add(identity)
         amount = integer(event["bytes_served"], 1)
         frame_bytes[frame] += amount
         if event["channel"] != "id_state":
             continue
-        packet_key = key(event)
+        packet_key = key(event, mode, run_id)
         require(packet_key in classes and packet_key in starts, "SLICE_HAS_NO_PRIOR_CLASSIFICATION")
         cls = classes[packet_key]
         require(ordinal > cls["ordinal"] and frame >= cls["frame"], "SLICE_BEFORE_FIRST_SERVICE")
@@ -162,7 +190,9 @@ def account_slices(classes, observed_slices, ledger, frame_count, frame_totals):
                if classes[packet_key]["classification"] == "SERVICEABLE")
 
 
-def derive_endpoint(frames, ledger, run_id, frame_count=300, capacity=16649):
+def derive_endpoint(frames, ledger, run_id, mode, frame_count=300, capacity=16649):
+    require(mode in {BASELINE_PACKET_IDENTITY, TREATMENT_PACKET_IDENTITY},
+            "UNKNOWN_PACKET_IDENTITY_MODE")
     classes, observed_slices, frame_totals = {}, {}, []
     registry = StaleClassificationRegistry()
     ordinal_seen, previous_ordinal = set(), 0
@@ -183,9 +213,7 @@ def derive_endpoint(frames, ledger, run_id, frame_count=300, capacity=16649):
                     and event["condition"] == "FIFO_strong"
                     and event["frame_service_budget"] == capacity, "EVENT_PROVENANCE")
             if event.get("packet_id") is not None:
-                packet = event["packet_id"]
-                require(packet["census_run_id"] == run_id and packet["sequence_name"] == "66-1"
-                        and packet["runtime_instance_id"] == event["runtime_instance_id"], "PACKET_RUN_PROVENANCE")
+                packet_identity(event, mode, run_id)
             observation = row["observation_kind"]
             if observation == "frame_open":
                 require(kind == "frame_open", "FRAME_OPEN_KIND")
@@ -196,22 +224,22 @@ def derive_endpoint(frames, ledger, run_id, frame_count=300, capacity=16649):
             if observation == "true_first_service":
                 require(kind == "service_start", "FIRST_SERVICE_KIND")
                 item = row["item"]
-                require(key(item) == key(event), "FIRST_SERVICE_WIRE_IDENTITY")
+                require(key(item, mode, run_id) == key(event, mode, run_id), "FIRST_SERVICE_WIRE_IDENTITY")
                 if event["channel"] == "id_state":
                     state = ReceiverStateEvidence.from_dict(row["receiver_state"])
                     require(state.event_ordinal == ordinal, "RECEIVER_STATE_NOT_EVENT_LOCAL")
                     verified = registry.classify_once(item, ordinal, state).to_dict()
                     require(verified == row["stale_classification"], "FIRST_SERVICE_CLASSIFICATION_MISMATCH")
                     require(verified["classification"] in {"SERVICEABLE", "SUPPRESSIBLE_STALE"}, "UNKNOWN_CLASSIFICATION")
-                    packet_key = key(event)
+                    packet_key = key(event, mode, run_id)
                     require(packet_key not in classes, "DUPLICATE_CLASSIFICATION")
                     classes[packet_key] = {"frame": frame, "ordinal": ordinal,
                         "wire_bytes": integer(item["JSON_WIRE_BYTES"], 1),
                         "classification": verified["classification"]}
             if observation == "service_slice":
                 require(kind == "service_slice", "SLICE_KIND")
-                require(key(row["item"]) == key(event), "SLICE_ITEM_IDENTITY")
-                observed_slices[event_id(event)] = slice_signature(event)
+                require(key(row["item"], mode, run_id) == key(event, mode, run_id), "SLICE_ITEM_IDENTITY")
+                observed_slices[event_id(event)] = slice_signature(event, mode, run_id)
                 total += integer(event["bytes_served"], 1)
         require(len(opens) == len(closes) == 1, "FRAME_BOUNDARIES_MISSING")
         require(observations[0]["observation_kind"] == "frame_open"
@@ -225,14 +253,21 @@ def derive_endpoint(frames, ledger, run_id, frame_count=300, capacity=16649):
             require(event["run_id"] == run_id and event["pair_id"] == "P66"
                     and event["condition"] == "FIFO_strong"
                     and event["frame_service_budget"] == capacity, "LEDGER_PROVENANCE")
+            if event.get("packet_id") is not None:
+                key(event, mode, run_id)
             yield event
-    return account_slices(classes, observed_slices, bound_ledger(), frame_count, frame_totals)
+    return account_slices(classes, observed_slices, bound_ledger(), frame_count,
+                          frame_totals, mode, run_id)
 
 
 def script_binding():
     design_bytes = subprocess.check_output(["git", "show", DESIGN + ":" + DESIGN_PATH], cwd=ROOT)
     return {"design_commit": DESIGN, "design_sha256": hashlib.sha256(design_bytes).hexdigest(),
         "corrective_authority_sha256": sha(ROOT / CORRECTION_PATH),
+        "packet_schema_corrective_authority_sha256": sha(ROOT / PACKET_SCHEMA_CORRECTION_PATH),
+        "analysis_namespace": str(ANALYSIS),
+        "baseline_packet_identity_mode": BASELINE_PACKET_IDENTITY,
+        "treatment_packet_identity_mode": TREATMENT_PACKET_IDENTITY,
         "derivation_script_sha256": sha(__file__),
         "analysis_source_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "schema_sources": {name: sha(ROOT / "src/tracking" / name) for name in (
@@ -310,7 +345,8 @@ def seal_baseline():
     # Freeze the executable identity before deriving any endpoint.
     write_new(ANALYSIS / "C7_BASELINE_IMPLEMENTATION_BINDING.json", binding)
     ledger_path = C7 / next(name for name in EXPECTED if "service_ledger" in name)
-    endpoint = derive_endpoint(baseline_frames(), jsonl(ledger_path), C7_RUN)
+    endpoint = derive_endpoint(baseline_frames(), jsonl(ledger_path), C7_RUN,
+                               BASELINE_PACKET_IDENTITY)
     result = {"schema_version": "H_R_FORMAL002_BASELINE_V1", "status": "PASS",
         "cell_id": "P66__P20", "capacity_bytes": 16649, "frames": [0, 299],
         "run_id": C7_RUN, "serviceable_id_state_serviced_bytes": endpoint,
@@ -348,7 +384,11 @@ def compare_finalized():
     binding = strict_json((ANALYSIS / "C7_BASELINE_IMPLEMENTATION_BINDING.json").read_bytes())
     require(binding["derivation_script_sha256"] == sha(__file__)
             and binding["design_commit"] == DESIGN
-            and binding["corrective_authority_sha256"] == sha(ROOT / CORRECTION_PATH),
+            and binding["corrective_authority_sha256"] == sha(ROOT / CORRECTION_PATH)
+            and binding["packet_schema_corrective_authority_sha256"] == sha(ROOT / PACKET_SCHEMA_CORRECTION_PATH)
+            and binding["analysis_namespace"] == str(ANALYSIS)
+            and binding["baseline_packet_identity_mode"] == BASELINE_PACKET_IDENTITY
+            and binding["treatment_packet_identity_mode"] == TREATMENT_PACKET_IDENTITY,
             "BASELINE_IMPLEMENTATION_CHANGED")
     baseline_seal = strict_json((ANALYSIS / "C7_BASELINE_SEAL.json").read_bytes())
     require(canonical_sha256(baseline_seal["sealed_payload"]) == baseline_seal["seal_sha256"], "BASELINE_SEAL_INVALID")
@@ -428,7 +468,8 @@ def compare_finalized():
     write_new(ANALYSIS / "DURABLE_RETENTION_AND_COMPARABILITY_RECEIPT.json", retention)
     # Firewall opens here: retained/finalized bytes and the frozen control are valid.
     baseline = strict_json((ANALYSIS / "C7_BASELINE_RESULT.json").read_bytes())
-    treatment = derive_endpoint(raw["frames"], jsonl(paths["service_ledger"]), ATTEMPT_ID)
+    treatment = derive_endpoint(raw["frames"], jsonl(paths["service_ledger"]), ATTEMPT_ID,
+                                TREATMENT_PACKET_IDENTITY)
     delta = treatment - integer(baseline["serviceable_id_state_serviced_bytes"])
     result = {"schema_version": "H_R_FORMAL002_FROZEN_COMPARISON_V1", "status": "PASS",
         "design_commit": DESIGN, "execution_source_sha": EXECUTION_SHA, "cell_id": "P66__P20",

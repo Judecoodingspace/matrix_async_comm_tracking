@@ -2,6 +2,31 @@
 
 Updated: 2026-10-07
 
+## Formal002 analyzer packet schema corrective candidate (2026-10-07)
+
+- Base is accepted/published inventory correction
+  `8af235863663c96407a0ef3a229e713959e1c64e`. The frozen C7 observer and
+  service ledger consistently use exact normalized two-field packet IDs;
+  accepted H_R Census-enabled production is expected to emit exact four-field
+  packet IDs. The frozen design and runtime are unchanged.
+- A prospective mapping authority is recorded at
+  `summary_md/experiments/2026-10-7/H_R_FORMAL002_PACKET_SCHEMA_MAPPING_CORRECTIVE_AUTHORITY.md`.
+  The analyzer requires explicit source modes and uses the fixed new analysis
+  namespace `formal_evidence/analysis/v2_4_hr_formal_002__packet_schema_v2/`.
+  The previous incomplete binding in the old namespace remains untouched.
+- Read-only real C7 schema scan passed all 300 windows, 3,646 packet-bearing
+  observer events, 3,646 observer items, and 6,020 packet-bearing ledger
+  events. No endpoint was calculated.
+- Verification command:
+  `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python -m pytest -q tests/test_mdmt_mia_hr_formal002_accounting.py`
+  returned **37 passed**. Exact two/four-field admission, wrong-schema and
+  provenance rejection, synthetic byte-accounting parity, prior accounting
+  negatives, and the corrected inventory regression pass.
+- No Formal002 authorization, attempt or execution exists; C7, qual_005 and
+  support consumption were not rerun. Next action: focused independent review
+  of this candidate, exact-SHA publication if accepted, then baseline sealing
+  in the new namespace before Formal002 V2 authorization.
+
 ## Formal002 C7 inventory digest corrective candidate (2026-10-07)
 
 - The original frozen design commit `8cec5529214b64d14528c04f6063ca28427c13cd`
