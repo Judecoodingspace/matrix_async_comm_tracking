@@ -416,15 +416,17 @@ def validate_formal_support_consumer(path: Path) -> str:
 
 def validate_formal_support_consumer_v2(path: Path, expected_sha256: str,
                                         qualification_attempt_id: str,
-                                        evidence_node_id: str, repo_root: Path) -> str:
+                                        evidence_node_id: str, repo_root: Path,
+                                        attempts_root: Path) -> str:
     """Validate the exact support record selected by a prospective authorization."""
     if (not isinstance(expected_sha256, str)
             or not re.fullmatch(r"[0-9a-f]{64}", expected_sha256)
             or not isinstance(qualification_attempt_id, str)
             or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}", qualification_attempt_id)
+            or qualification_attempt_id in {".", ".."}
             or not isinstance(evidence_node_id, str)
             or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}", evidence_node_id)
-            or evidence_node_id == "initial"
+            or evidence_node_id in {".", ".."}
             or not path.is_absolute()):
         raise HREvidenceError("FORMAL_SUPPORT_BINDING_INVALID")
     try:
@@ -476,6 +478,14 @@ def validate_formal_support_consumer_v2(path: Path, expected_sha256: str,
                 or layers["NORMALIZED_EVIDENCE"].get("owner_node_id") != evidence_node_id):
             raise HREvidenceError("FORMAL_SUPPORT_CONSUMER_LINEAGE_INVALID")
     from . import governance_v2_artifacts as artifacts
+    published = artifacts.inspect(attempts_root, qualification_attempt_id,
+                                  evidence_node_id)
+    if (published.get("state") != "FINALIZED"
+            or published.get("attempt_id") != qualification_attempt_id
+            or published.get("node_id") != evidence_node_id
+            or anchor["manifest_sha256"] != published.get("manifest_sha256")
+            or anchor["finalization_sha256"] != published.get("finalization_sha256")):
+        raise HREvidenceError("FORMAL_SUPPORT_CONSUMER_PROVENANCE_INVALID")
     applicability = record.get("v2_1_applicability")
     if not isinstance(applicability, dict):
         raise HREvidenceError("FORMAL_SUPPORT_CONSUMER_V21_INVALID")
@@ -567,7 +577,8 @@ def load_authorization(path: Path | Mapping[str, Any], attempt_root: Path, repo_
             consumer_sha = validate_formal_support_consumer_v2(
                 consumer_path, auth["formal_support_consumer_record_sha256"],
                 auth["formal_support_qualification_attempt_id"],
-                auth["formal_support_evidence_node_id"], repo_root)
+                auth["formal_support_evidence_node_id"], repo_root,
+                attempt_root.parent)
         if auth["formal_support_consumer_record_sha256"] != consumer_sha:
             raise HREvidenceError("FORMAL_AUTHORIZATION_BINDING_MISMATCH")
     if (auth["attempt_root"] != str(attempt_root.resolve())

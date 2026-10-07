@@ -30,12 +30,52 @@ def _write_record(path: Path, record: dict) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _publish_test_node(attempts: Path, attempt_id: str, node_id: str) -> dict:
+    """Publish a minimal V2-3 node using the real receipt and manifest binding."""
+    node = (attempts / attempt_id if node_id == "initial" else
+            attempts / ".v2_3_corrections" / attempt_id / node_id)
+    meta = node / "v2_3"
+    meta.mkdir(parents=True)
+    evidence_rows = {"RAW_EVIDENCE": {"node": "initial"},
+                     "NORMALIZED_EVIDENCE": {"node": node_id}}
+    provenance = {"validation": {"node": node_id}}
+    effective = {"node": node_id}
+    validation = {
+        "STRUCTURAL_VERDICT": "PASS", "validated_evidence": evidence_rows,
+        "validation_provenance": provenance["validation"],
+        "effective_scientific_config": effective,
+    }
+    validation_raw = artifacts._canonical(validation)
+    (meta / "validation_receipt.json").write_bytes(validation_raw)
+    manifest = {
+        "schema_version": artifacts.SCHEMA, "attempt_id": attempt_id,
+        "node_id": node_id, "evidence": evidence_rows,
+        "provenance": provenance, "effective_scientific_config": effective,
+        "validation_receipt_sha256": hashlib.sha256(validation_raw).hexdigest(),
+    }
+    manifest_raw = artifacts._canonical(manifest)
+    (meta / "manifest.json").write_bytes(manifest_raw)
+    final = {
+        "schema_version": artifacts.SCHEMA, "attempt_id": attempt_id,
+        "node_id": node_id,
+        "manifest_sha256": hashlib.sha256(manifest_raw).hexdigest(),
+        "validation_receipt_sha256": manifest["validation_receipt_sha256"],
+        "finalized_at": "2026-10-07T00:00:00+00:00",
+    }
+    final_raw = artifacts._canonical(final)
+    (meta / "finalization_receipt.json").write_bytes(final_raw)
+    return {"attempt_id": attempt_id, "node_id": node_id,
+            "manifest_sha256": hashlib.sha256(manifest_raw).hexdigest(),
+            "finalization_sha256": hashlib.sha256(final_raw).hexdigest()}
+
+
 @pytest.fixture
 def v2_fixture(tmp_path, monkeypatch):
     qualification_id = "v2_4_hr_qual_005"
     node_id = "validator_cr2"
     attempts = tmp_path / "formal"
     attempts.mkdir()
+    anchor = _publish_test_node(attempts, qualification_id, node_id)
     record_path = tmp_path / "new_support.json"
     c4 = {
         "status": "PASS", "cim_sha256": evidence.FORMAL_SUPPORT_CIM_SHA256,
@@ -64,8 +104,7 @@ def v2_fixture(tmp_path, monkeypatch):
         "purpose": "H_R_FORMAL_PREISSUANCE",
         "consumption_class": "FORMAL_AUTHORIZATION_SUPPORT",
         "attempt_id": qualification_id, "node_id": node_id,
-        "anchor": {"attempt_id": qualification_id, "node_id": node_id,
-                   "manifest_sha256": "c" * 64, "finalization_sha256": "d" * 64},
+        "anchor": anchor,
         "decision": "REUSE_ADMISSIBLE", "verification_depth": "CONTENT",
         "route": None, "reason": None,
         "C1_C6": checks, "v2_1_applicability": v21_reference,
@@ -93,6 +132,47 @@ def test_v2_explicit_new_support_is_admitted(v2_fixture, monkeypatch):
     assert evidence.load_authorization(auth_path, attempts / args.attempt_id, ROOT) == auth
     monkeypatch.setattr(operator.execution, "launch", lambda *items: {"launched": True})
     assert operator.formal_launch(args) == {"launched": True}
+
+
+def test_v2_initial_qualification_node_is_admitted(v2_fixture):
+    attempts, record_path, record, auth_path, auth, args = v2_fixture
+    record["node_id"] = "initial"
+    record["anchor"] = _publish_test_node(attempts, record["attempt_id"], "initial")
+    for gate in ("C5", "C6"):
+        record["C1_C6"][gate]["layers"]["NORMALIZED_EVIDENCE"]["heads"] = ["initial"]
+        record["C1_C6"][gate]["layers"]["NORMALIZED_EVIDENCE"]["owner_node_id"] = "initial"
+    value = dict(auth, formal_support_evidence_node_id="initial",
+                 formal_support_consumer_record_sha256=_write_record(record_path, record))
+    _write_auth(auth_path, value)
+    assert evidence.load_authorization(auth_path, attempts / args.attempt_id, ROOT)[
+        "formal_support_evidence_node_id"] == "initial"
+
+
+@pytest.mark.parametrize("change", [
+    "fabricated_manifest_finalization", "manifest_from_different_node",
+    "finalization_from_different_node", "node_not_finalized", "node_missing",
+])
+def test_v2_published_provenance_fails_closed(v2_fixture, change):
+    attempts, record_path, record, auth_path, auth, args = v2_fixture
+    if change == "fabricated_manifest_finalization":
+        record["anchor"]["manifest_sha256"] = "c" * 64
+        record["anchor"]["finalization_sha256"] = "d" * 64
+    elif change in {"manifest_from_different_node", "finalization_from_different_node"}:
+        other = _publish_test_node(attempts, record["attempt_id"], "validator_cr3")
+        key = ("manifest_sha256" if change == "manifest_from_different_node"
+               else "finalization_sha256")
+        record["anchor"][key] = other[key]
+    elif change in {"node_not_finalized", "node_missing"}:
+        marker = (attempts / ".v2_3_corrections" / record["attempt_id"]
+                  / record["node_id"] / "v2_3/finalization_receipt.json")
+        if change == "node_not_finalized":
+            marker.unlink()
+        else:
+            marker.parent.rename(marker.parent.with_name("removed_v2_3"))
+    value = dict(auth, formal_support_consumer_record_sha256=_write_record(record_path, record))
+    _write_auth(auth_path, value)
+    with pytest.raises(evidence.HREvidenceError, match="FORMAL_SUPPORT_CONSUMER_PROVENANCE_INVALID"):
+        evidence.load_authorization(auth_path, attempts / args.attempt_id, ROOT)
 
 
 @pytest.mark.parametrize("change", [
