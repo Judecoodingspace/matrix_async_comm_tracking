@@ -2,6 +2,30 @@
 
 Updated: 2026-10-07
 
+## Formal002 final execution chain blocked before authorization (2026-10-07)
+
+- Accepted CR2 `f07c4742039f6755671a5ebd13139724e759ec02` is published and
+  exact-readback verified on `github`. Existing qual_005 / initial and the
+  existing consumer pass read-only reuse validation; neither action reran.
+- Frozen design prescribes `v2_4_hr_formal_002`; its attempt/output namespace
+  remains unused. CR2-bound input/checkpoint/config/source hashes, CUDA and
+  durable storage preflight pass. New provenance/receipt files live under
+  `formal_evidence/preauthorization/`; the older preparation files remain intact.
+- `scripts/analyze_mdmt_mia_hr_formal002.py` implements the frozen service-byte
+  recipe. Its 14 focused accounting tests and existing qualification schema
+  compatibility pass; implementation commit is
+  `a9f7a7db1729b6c7f8fb1a4c71589e246314df98` in this separate analysis worktree.
+- Failed command: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python scripts/analyze_mdmt_mia_hr_formal002.py seal-baseline`.
+  It returns `C7_INVENTORY_BINDING`: frozen internal inventory digest ends
+  `b1a6f14031a7cdb85ef4`, while the sealed and recomputed digest ends
+  `b6ae138d03efd0f6c`. All four frozen C7 raw file hashes and the internal seal
+  digest match. No baseline endpoint, authorization or Formal002 execution
+  occurred. No analysis directory was created and no finalized evidence changed.
+- Report: `summary_md/experiments/2026-10-7/H_R_FORMAL002_FINAL_EXECUTION_CHAIN_BLOCKER.md`.
+  Next action: explicitly resolve the frozen inventory identity disagreement
+  before authorization; retain existing qualification/consumer and unused attempt.
+  Exact next read-only command is recorded in that report.
+
 ## H_R Formal authorization V2 CR2 namespace correction (2026-10-07)
 
 - Base: accepted/published `d4013a2358deb18304b219b960365ff505a25cbd`.

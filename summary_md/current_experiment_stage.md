@@ -2,6 +2,17 @@
 
 This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
 
+## Latest Gate: H_R Formal002 control identity (2026-10-07)
+
+- CR2 `f07c4742039f6755671a5ebd13139724e759ec02` published/readback verified;
+  existing qual_005 and consumer reused successfully without reruns.
+- Formal002 remains unissued/unlaunched: the frozen C7 internal inventory
+  digest differs from the same sealed/recomputed inventory, although all four
+  source-file hashes match. Status: `BLOCKED_COMPARABILITY` before authorization.
+- Resolve this recorded identity prospectively before using the still-free
+  `v2_4_hr_formal_002` namespace. Scientific outcome read remains `NO`.
+- Evidence: `summary_md/experiments/2026-10-7/H_R_FORMAL002_FINAL_EXECUTION_CHAIN_BLOCKER.md`.
+
 ## Current Mainline
 
 ### Latest Gate: C6 Formal Attempt4 Scientific Review (2026-09-17)

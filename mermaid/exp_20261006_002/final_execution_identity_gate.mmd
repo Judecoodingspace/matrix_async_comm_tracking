@@ -1,0 +1,6 @@
+flowchart TD
+    A["Publish accepted CR2 and verify exact SHA"] --> B["Reuse qual_005 and existing consumer: PASS"]
+    B --> C["Verify durable inputs and C7 source file hashes: PASS"]
+    C --> D{"Frozen inventory digest equals sealed digest?"}
+    D -->|No| E["BLOCKED_COMPARABILITY: authorization and launch not run"]
+    D -->|Yes, after explicit pre-outcome correction| F["Resume frozen Formal002 chain"]
