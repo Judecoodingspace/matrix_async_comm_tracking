@@ -1,6 +1,37 @@
 # Current Status
 
-Updated: 2026-09-17
+Updated: 2026-10-07
+
+## H_R Formal authorization V2 CR2 namespace correction (2026-10-07)
+
+- Base: accepted/published `d4013a2358deb18304b219b960365ff505a25cbd`.
+  The current explicit user authorization introduces the namespace rule
+  prospectively; no historical canonical namespace is claimed.
+- Changes: Section 26 of `summary_md/governance/v2_4/V2_4_IMPLEMENTATION_CONTRACT_REV2.md`,
+  the V2 issuer in `scripts/run_mdmt_mia_hr_formal.py`, the V2 loader in
+  `src/tracking/mdmt_mia_hr_evidence.py`, focused tests, and this handoff.
+  Both production call sites now inspect only the authorization-selected
+  qualification/node under `<formal attempts root>/qualification`.
+- Verification command:
+  `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python -m pytest tests/test_mdmt_mia_hr_formal_authorization.py tests/test_mdmt_mia_hr_formal_authorization_v2.py -q`
+  returned **53 passed**. Split-namespace admission, wrong-root rejection,
+  absent selected identities and all prior V2 provenance/V1 regressions pass.
+- Read-only real verification: the full `load_authorization()` path passed
+  with an unissued in-memory input selecting existing `v2_4_hr_qual_005` /
+  `initial` and its existing consumer. Manifest/finalization exactly match
+  `dc23cb613f94acf42b4c36d88d8e7091b148aed7659a1499947b8d96abd9a4ec` /
+  `8251aff069ec198719ccce1feb6c401ab52502a5765f39694d1e30b06727c5c0`.
+  All 641 qualification-tree entries have the same before/after inventory
+  digest `f646a229d039d5213c5d102ea381f08aa266560f4fe34d8d39d8482b77f03f5b`;
+  consumer SHA remains `223f395abb637cb44fe4a93b4c616206451dda7e7c74974b8ca0277c2042dcdb`.
+- No qualification/support rerun, real authorization issuance, Formal002
+  execution, scientific-runtime/design change or finalized-evidence change.
+  No tests failed. The only new filesystem workspace is
+  `.worktrees/hr_formal_authorization_v2_cr2_namespace/`.
+- Next: focused local independent review, then publication of the exact
+  accepted CR2 SHA. Exact next read-only review command:
+  `git -C /mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/.worktrees/hr_formal_authorization_v2_cr2_namespace diff d4013a2358deb18304b219b960365ff505a25cbd HEAD`.
+  Real Formal002 authorization/execution remains pending review/publication.
 
 ## Latest C6 Formal scientific result review
 

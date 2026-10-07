@@ -578,7 +578,7 @@ def load_authorization(path: Path | Mapping[str, Any], attempt_root: Path, repo_
                 consumer_path, auth["formal_support_consumer_record_sha256"],
                 auth["formal_support_qualification_attempt_id"],
                 auth["formal_support_evidence_node_id"], repo_root,
-                attempt_root.parent)
+                attempt_root.parent / "qualification")
         if auth["formal_support_consumer_record_sha256"] != consumer_sha:
             raise HREvidenceError("FORMAL_AUTHORIZATION_BINDING_MISMATCH")
     if (auth["attempt_root"] != str(attempt_root.resolve())

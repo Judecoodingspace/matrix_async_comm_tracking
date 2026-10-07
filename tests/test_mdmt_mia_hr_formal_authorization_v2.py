@@ -75,7 +75,7 @@ def v2_fixture(tmp_path, monkeypatch):
     node_id = "validator_cr2"
     attempts = tmp_path / "formal"
     attempts.mkdir()
-    anchor = _publish_test_node(attempts, qualification_id, node_id)
+    anchor = _publish_test_node(attempts / "qualification", qualification_id, node_id)
     record_path = tmp_path / "new_support.json"
     c4 = {
         "status": "PASS", "cim_sha256": evidence.FORMAL_SUPPORT_CIM_SHA256,
@@ -124,6 +124,10 @@ def v2_fixture(tmp_path, monkeypatch):
 
 def test_v2_explicit_new_support_is_admitted(v2_fixture, monkeypatch):
     attempts, record_path, record, auth_path, auth, args = v2_fixture
+    assert artifacts.inspect(attempts / "qualification", record["attempt_id"],
+                             record["node_id"])["state"] == "FINALIZED"
+    assert artifacts.inspect(attempts, record["attempt_id"], record["node_id"])[
+        "state"] != "FINALIZED"
     assert auth["schema_version"] == "H_R_FORMAL_AUTHORIZATION_V2"
     assert auth["formal_support_qualification_attempt_id"] == record["attempt_id"]
     assert auth["formal_support_evidence_node_id"] == record["node_id"]
@@ -137,7 +141,7 @@ def test_v2_explicit_new_support_is_admitted(v2_fixture, monkeypatch):
 def test_v2_initial_qualification_node_is_admitted(v2_fixture):
     attempts, record_path, record, auth_path, auth, args = v2_fixture
     record["node_id"] = "initial"
-    record["anchor"] = _publish_test_node(attempts, record["attempt_id"], "initial")
+    record["anchor"] = _publish_test_node(attempts / "qualification", record["attempt_id"], "initial")
     for gate in ("C5", "C6"):
         record["C1_C6"][gate]["layers"]["NORMALIZED_EVIDENCE"]["heads"] = ["initial"]
         record["C1_C6"][gate]["layers"]["NORMALIZED_EVIDENCE"]["owner_node_id"] = "initial"
@@ -158,18 +162,67 @@ def test_v2_published_provenance_fails_closed(v2_fixture, change):
         record["anchor"]["manifest_sha256"] = "c" * 64
         record["anchor"]["finalization_sha256"] = "d" * 64
     elif change in {"manifest_from_different_node", "finalization_from_different_node"}:
-        other = _publish_test_node(attempts, record["attempt_id"], "validator_cr3")
+        other = _publish_test_node(attempts / "qualification", record["attempt_id"], "validator_cr3")
         key = ("manifest_sha256" if change == "manifest_from_different_node"
                else "finalization_sha256")
         record["anchor"][key] = other[key]
     elif change in {"node_not_finalized", "node_missing"}:
-        marker = (attempts / ".v2_3_corrections" / record["attempt_id"]
+        marker = (attempts / "qualification/.v2_3_corrections" / record["attempt_id"]
                   / record["node_id"] / "v2_3/finalization_receipt.json")
         if change == "node_not_finalized":
             marker.unlink()
         else:
             marker.parent.rename(marker.parent.with_name("removed_v2_3"))
     value = dict(auth, formal_support_consumer_record_sha256=_write_record(record_path, record))
+    _write_auth(auth_path, value)
+    with pytest.raises(evidence.HREvidenceError, match="FORMAL_SUPPORT_CONSUMER_PROVENANCE_INVALID"):
+        evidence.load_authorization(auth_path, attempts / args.attempt_id, ROOT)
+
+
+def test_v2_qualification_in_formal_root_fails_closed(v2_fixture):
+    attempts, record_path, record, auth_path, auth, args = v2_fixture
+    # A genuinely finalized node in the wrong namespace must not be reused.
+    record["node_id"] = "initial"
+    record["anchor"] = _publish_test_node(attempts, record["attempt_id"], "initial")
+    for gate in ("C5", "C6"):
+        record["C1_C6"][gate]["layers"]["NORMALIZED_EVIDENCE"] = {
+            "heads": ["initial"], "owner_node_id": "initial", "supersession": []}
+    value = dict(auth, formal_support_evidence_node_id="initial",
+                 formal_support_consumer_record_sha256=_write_record(record_path, record))
+    _write_auth(auth_path, value)
+    with pytest.raises(evidence.HREvidenceError, match="FORMAL_SUPPORT_CONSUMER_PROVENANCE_INVALID"):
+        evidence.load_authorization(auth_path, attempts / args.attempt_id, ROOT)
+    destination = auth_path.with_name("wrong_namespace_issuance.json")
+    with pytest.raises(evidence.HREvidenceError, match="FORMAL_SUPPORT_CONSUMER_PROVENANCE_INVALID"):
+        operator.issue_formal_authorization_v2(
+            attempts, "test_wrong_namespace", record["attempt_id"], "initial",
+            record_path, destination)
+    assert not destination.exists()
+
+
+def test_v2_missing_canonical_namespace_fails_closed(v2_fixture):
+    attempts, record_path, record, auth_path, auth, args = v2_fixture
+    # Matching identities elsewhere cannot trigger a directory search.
+    (attempts / "qualification").rename(attempts / "other_qualification")
+    with pytest.raises(evidence.HREvidenceError, match="FORMAL_SUPPORT_CONSUMER_PROVENANCE_INVALID"):
+        evidence.load_authorization(auth_path, attempts / args.attempt_id, ROOT)
+
+
+@pytest.mark.parametrize("identity", ["attempt_id", "node_id"])
+def test_v2_selected_identity_absent_from_namespace_fails_closed(v2_fixture, identity):
+    attempts, record_path, record, auth_path, auth, args = v2_fixture
+    selected = "qual_missing" if identity == "attempt_id" else "node_missing"
+    record[identity] = selected
+    record["anchor"][identity] = selected
+    value = dict(auth)
+    if identity == "attempt_id":
+        value["formal_support_qualification_attempt_id"] = selected
+    else:
+        value["formal_support_evidence_node_id"] = selected
+        for gate in ("C5", "C6"):
+            record["C1_C6"][gate]["layers"]["NORMALIZED_EVIDENCE"] = {
+                "heads": [selected], "owner_node_id": selected, "supersession": []}
+    value["formal_support_consumer_record_sha256"] = _write_record(record_path, record)
     _write_auth(auth_path, value)
     with pytest.raises(evidence.HREvidenceError, match="FORMAL_SUPPORT_CONSUMER_PROVENANCE_INVALID"):
         evidence.load_authorization(auth_path, attempts / args.attempt_id, ROOT)

@@ -103,7 +103,7 @@ def issue_formal_authorization_v2(attempts_root: Path, attempt_id: str,
         raise HROperatorError("FORMAL_SUPPORT_CONSUMER_MISSING") from exc
     validate_formal_support_consumer_v2(
         consumer_path, consumer_sha, qualification_attempt_id, evidence_node_id,
-        ROOT, attempts_root)
+        ROOT, attempts_root / "qualification")
     auth = build_qualification_authorization(attempts_root, attempt_id)
     if auth["qualification_only"] is not True or auth["qualification_frame_count"] != 3:
         raise HROperatorError("QUALIFICATION_AUTHORIZATION_TEMPLATE_INVALID")

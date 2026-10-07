@@ -857,3 +857,53 @@ Still:
 V2_4_IMPLEMENTATION_AUTHORIZED = NO
 H_R_FORMAL_AUTHORIZED = NO
 ```
+
+---
+
+# 26. Prospective H_R qualification namespace authority (2026-10-07)
+
+This section records the explicit user authorization to establish the CR2
+infrastructure layout prospectively. This namespace contract is introduced by
+this change; it is not claimed to have existed historically.
+
+```text
+H_R_FORMAL_EVIDENCE_ROOT = <formal_evidence_root>
+H_R_FORMAL_ATTEMPTS_ROOT = <formal_evidence_root>
+H_R_QUALIFICATION_ATTEMPTS_ROOT = <formal_evidence_root>/qualification
+
+CURRENT_FORMAL_EVIDENCE_ROOT =
+/mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/formal_evidence
+CURRENT_QUALIFICATION_ATTEMPTS_ROOT =
+/mnt/data/yzm/experiments/matrix_async_pose_comm_tracking/formal_evidence/qualification
+```
+
+Qualification attempts live at
+`<formal_evidence_root>/qualification/<qualification_attempt_id>`; Formal
+scientific attempts live at `<formal_evidence_root>/<formal_attempt_id>`.
+The qualification CLI receives the qualification attempts root. The Formal
+issuer and operator receive the Formal attempts root.
+
+For prospective `H_R_FORMAL_AUTHORIZATION_V2`, both issuance and admission
+derive the qualification attempts root by appending the literal `qualification`
+directory to the Formal attempts root. They resolve only the exact
+`formal_support_qualification_attempt_id` and `formal_support_evidence_node_id`
+selected by the authorization, using the existing V2-3 initial/corrective node
+layout within that qualification namespace. Consumer SHA, attempt/node
+identities, published manifest/finalization identities, support decision,
+CONTENT verification, C1-C6 and V2-1 applicability checks remain mandatory.
+Missing, invalid or unfinalized selected nodes fail closed.
+
+The infrastructure contract defines **where** qualification attempts live;
+the unchanged V2 authorization schema defines **which** attempt and node are
+selected. No latest selector, recursive search, matching-directory scan,
+fallback to the Formal root or historical qualifications, compatibility
+symlink, evidence migration, copy or move is permitted.
+
+The existing finalized `v2_4_hr_qual_005` initial node already resides under
+this layout and may be validated there as existing authoritative evidence.
+Its bytes and the existing fresh support consumer bytes remain unchanged;
+neither qualification nor support consumption is repeated. This rule does not
+change Formal002 scientific design, PacketRuntime, the real child, service or
+suppression semantics, C7, or Formal001, and does not issue a Formal
+authorization or authorize execution of Formal002 in the CR2 implementation
+task.
