@@ -2,6 +2,53 @@
 
 Updated: 2026-10-07
 
+## Formal002 treatment-only execution and sealed result (2026-10-07)
+
+- Accepted packet-schema analyzer `b9daea8a581965718cea522a1cd5c05d876d74b7`
+  was pushed to `github` branch
+  `analysis/20261007-formal002-packet-schema-correction` through the
+  per-command `127.0.0.1:18080` proxy; explicit `ls-remote` returned the exact
+  SHA. No persistent Git proxy or `origin` change occurred.
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python scripts/analyze_mdmt_mia_hr_formal002.py seal-baseline`
+  passed once in the new
+  `formal_evidence/analysis/v2_4_hr_formal_002__packet_schema_v2/` namespace.
+  Baseline result and seal SHA-256 values are
+  `0b4236fb0d61dfc52124d02f648a42b521f7a185eda3e0a9a287ca187c8cf330`
+  and `80f69f9691f7b27903875b37e2cef6a9af64cb969ffd15c98ee3a0bbe81162ae`.
+  The endpoint value was not displayed before treatment comparison; the old
+  failed binding remains untouched.
+- Existing `v2_4_hr_qual_005` / `initial` and consumer were validated read-only.
+  Formal V2 authorization was issued at
+  `formal_evidence/preauthorization/v2_4_hr_formal_002_authorization_v2.json`
+  with SHA-256 `1e24ca6bcaf413963363dac62465a399fbdc23365e015c041e71cc35a49ddb71`;
+  full `load_authorization()` revalidation passed. Qualification and support
+  consumption were not repeated.
+- Exactly one accepted `scripts/run_mdmt_mia_hr_formal.py formal-launch` ran.
+  Mechanical `inspect` reached `COMPLETED`, `session_live_pids=[]`,
+  `wrapper_identity_status=TERMINAL_VALID`. Authorization and current
+  provenance were retained byte-identically inside the attempt before
+  accepted `finalize`; no writes followed inside the finalized attempt.
+  Manifest SHA is `3144f95872c5dd36d946b5bacc745a0673120698a742611db49d78474e11d370`;
+  finalization SHA is `55921c86de77bc6739963f45368c8b34cebe7b9bc6523d4aeacb5de3eda18b05`.
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python scripts/analyze_mdmt_mia_hr_formal002.py compare-finalized`
+  passed all retained-evidence and source gates, then sealed the result. The
+  frozen control is 1,823,646 and treatment 2,045,878 serviceable ID-State
+  bytes; delta **+222,232** yields `REDISTRIBUTION_SUPPORTED` under strict
+  `>0`. Comparison result/seal file SHA-256 values are
+  `4a7833cbaa14cca6ba9eccc5c010852f912e6bc4b6411b5f242f33e06322af42`
+  and `c54084b6b0994519c3d5d3c128c3d89281f2f597b7da9a4bf32502aa615f2955`.
+  Historical cross-run byte-parity gaps remain a documented limitation;
+  tracking and Formal001 outcomes were not read.
+- Changed tracked files in this handoff: the seven-dimension Formal002
+  analysis report, its Mermaid flow, `summary_md/experiments/INDEX.md`,
+  `summary_md/current_experiment_stage.md`, and this status file. The initial
+  inline authorization issuer import failed before creating a file; the
+  corrected import issued and validated the single authorization.
+- Next read-only command from the workspace root:
+  `sha256sum formal_evidence/analysis/v2_4_hr_formal_002__packet_schema_v2/FORMAL002_COMPARISON.json`.
+  Expected SHA-256:
+  `4a7833cbaa14cca6ba9eccc5c010852f912e6bc4b6411b5f242f33e06322af42`.
+
 ## Formal002 analyzer packet schema corrective candidate (2026-10-07)
 
 - Base is accepted/published inventory correction

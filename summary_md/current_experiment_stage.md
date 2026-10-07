@@ -2,16 +2,24 @@
 
 This is the short handoff for the MATRIX asynchronous multi-UAV MOT project.
 
-## Latest Gate: H_R Formal002 control identity (2026-10-07)
+## Latest Gate: H_R Formal002 treatment-only result (2026-10-07)
 
-- CR2 `f07c4742039f6755671a5ebd13139724e759ec02` published/readback verified;
-  existing qual_005 and consumer reused successfully without reruns.
-- Formal002 remains unissued/unlaunched: the frozen C7 internal inventory
-  digest differs from the same sealed/recomputed inventory, although all four
-  source-file hashes match. Status: `BLOCKED_COMPARABILITY` before authorization.
-- Resolve this recorded identity prospectively before using the still-free
-  `v2_4_hr_formal_002` namespace. Scientific outcome read remains `NO`.
-- Evidence: `summary_md/experiments/2026-10-7/H_R_FORMAL002_FINAL_EXECUTION_CHAIN_BLOCKER.md`.
+- Accepted packet-schema analyzer `b9daea8a581965718cea522a1cd5c05d876d74b7`
+  was published to `github` and exact-SHA readback verified. The corrected
+  C7 baseline was sealed in the explicit new analysis namespace before any
+  treatment outcome access; prior failed analysis bindings remain untouched.
+- Existing qual_005/initial and support consumer were reused without reruns.
+  One `v2_4_hr_formal_002` V2 authorization and one accepted `formal-launch`
+  produced a `COMPLETED`, terminal-valid, no-live-PID attempt. Node `initial`
+  finalized with manifest SHA `3144f95872c5dd36d946b5bacc745a0673120698a742611db49d78474e11d370`
+  and finalization SHA `55921c86de77bc6739963f45368c8b34cebe7b9bc6523d4aeacb5de3eda18b05`.
+- Sealed C7 observed control: 1,823,646 serviceable ID-State bytes. Formal002
+  treatment: 2,045,878. Delta: **+222,232**; frozen strict `>0` gate returns
+  `REDISTRIBUTION_SUPPORTED`. This is a local communication-service decision,
+  with documented historical cross-run byte-parity gaps; tracking outcomes
+  and Formal001 outcomes were not read.
+- Analysis:
+  `summary_md/experiments/2026-10-7/exp_20261006_002_mdmt_mia_hr_formal002_paired_redistribution_analysis.md`.
 
 ## Current Mainline
 

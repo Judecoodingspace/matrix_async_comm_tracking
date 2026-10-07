@@ -1,0 +1,11 @@
+flowchart TD
+    C7["Sealed C7 observed control<br/>P66__P20, 300 frames"] --> B["Exact two-field packet identity<br/>TRUE-first-service byte accounting"]
+    B --> BS["Baseline result and seal<br/>1,823,646 serviceable ID-State bytes"]
+    Q["Finalized qual_005 and existing consumer"] --> A["H_R Formal V2 authorization"]
+    A --> L["One accepted formal-launch<br/>suppression enabled"]
+    L --> F["COMPLETED and FINALIZED<br/>durable retention verified"]
+    F --> T["Exact four-field packet identity<br/>2,045,878 serviceable ID-State bytes"]
+    BS --> D{"Treatment minus C7 control > 0?"}
+    T --> D
+    D -->|"Yes: +222,232 bytes"| S["REDISTRIBUTION_SUPPORTED<br/>frozen local decision"]
+    S --> H["Historical cross-run byte parity gaps<br/>remain documented limitation"]
